@@ -204,7 +204,9 @@ end
 
   # Import the appropriate subproblem formulation
 if FORM == AC
-  include("lECP.jl")
+  #include("lECP.jl")
+  include("ProxPtSDP.jl")
+  testECP()
 elseif FORM == SDP
   #The PSD constraints of mMP 
   include("DualAC.jl")

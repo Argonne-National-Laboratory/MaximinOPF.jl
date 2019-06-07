@@ -8,6 +8,7 @@ Brian Dandurand
 
 # The master problem MP
   mMP = Model(solver=CplexSolver(CPX_PARAM_SCRIND=1,CPX_PARAM_TILIM=MAX_TIME,CPX_PARAM_MIPINTERVAL=50))
+  #mMP = Model(solver=CplexSolver(CPX_PARAM_SCRIND=1,CPX_PARAM_TILIM=MAX_TIME,CPX_PARAM_MIPINTERVAL=50,CPX_PARAM_LPMETHOD=4,CPX_PARAM_SOLUTIONTYPE=2,CPX_PARAM_STARTALG=4))
  # Define the model here
   @variable(mMP, x[l=L], Bin, start=0)
   @variable(mMP, -1 <= α[i=N] <= 1, start=0)
@@ -83,26 +84,32 @@ Brian Dandurand
 	@constraint(mMP, LambdaFequalsT[l in L], λF[l] - λT[l]  == 0) 
 	@constraint(mMP, muFequalsT[l in L], μF[l] - μT[l]  == 0)
   elseif HEUR == 3
-	@constraint(mMP, LambdaMuConstr2[l in L], λF[l]*YtfR[l] - λT[l]*YftR[l] - μF[l]*YtfI[l] + μT[l]*YftI[l] == 0.0)
+	#@constraint(mMP, LambdaMuConstr2[l in L], λF[l]*YtfR[l] - λT[l]*YftR[l] - μF[l]*YtfI[l] + μT[l]*YftI[l] == 0.0)
+	for l in L
+	 if (l<34 || l>38) && l!=44 && l!=46 && l!=69 && l!=70
+	  @constraint(mMP, λF[l] - λT[l]  == 0) 
+	  @constraint(mMP, μF[l] - μT[l]  == 0)
+	 end
+	end
   end
 
 
 
-sg_α = zeros(nbuses,2)
-sg_β = zeros(nbuses,2)
-sg_γ = zeros(nbuses,2) 
-sg_δ = zeros(nbuses,2) 
-sg_λF = zeros(nlines,2)
-sg_μF = zeros(nlines,2)
-sg_λT = zeros(nlines,2)
-sg_μT = zeros(nlines,2)
+sg_α = zeros(nbuses,3)
+sg_β = zeros(nbuses,3)
+sg_γ = zeros(nbuses,3) 
+sg_δ = zeros(nbuses,3) 
+sg_λF = zeros(nlines,3)
+sg_μF = zeros(nlines,3)
+sg_λT = zeros(nlines,3)
+sg_μT = zeros(nlines,3)
 W_val = zeros(nbuses)
 Wr_val = zeros(nlines)
 Wi_val = zeros(nlines)
 e_val = zeros(nbuses)
 f_val = zeros(nbuses)
 
-maxNSG = 2
+nSG=0
 
 #The QP subproblem
   mSDP = Model(solver=IpoptSolver())
@@ -120,9 +127,10 @@ maxNSG = 2
   ###   For now, there is no reference angle.
 
 
+maxNSG = 1
 function generateCuts(cb)
   global sg_α, sg_β, sg_γ, sg_δ, sg_λF, sg_μF, sg_λT, sg_μT
-  global η0Val, ncuts
+  global η0Val, ncuts, nSG
   try
     solveEta0Eigs()
   catch exc
@@ -130,12 +138,15 @@ function generateCuts(cb)
     println(exc)
     solveEta0SDP()
   end
-  if  η0Val <= -TOL 
-	    @lazyconstraint(cb, 0.0 <= sum( (sg_α[i,1])* α[i] for i in N) + sum( (sg_β[i,1])* β[i] for i in N )  
-		+ sum( (sg_γ[i,1])* γ[i] for i in N)  + sum( (sg_δ[i,1])* δ[i] for i in N)
-		+ sum( (sg_λF[l,1])* λF[l] + (sg_λT[l,1])* λT[l] for l in L) + sum( (sg_μF[l,1])* μF[l] + (sg_μT[l,1])* μT[l] for l in L),
+  #if  η0Val <= -TOL 
+  if nSG > 0 
+	for s=1:nSG
+	    @lazyconstraint(cb, 0.0 <= sum( (sg_α[i,s])* α[i] for i in N) + sum( (sg_β[i,s])* β[i] for i in N )  
+		+ sum( (sg_γ[i,s])* γ[i] for i in N)  + sum( (sg_δ[i,s])* δ[i] for i in N)
+		+ sum( (sg_λF[l,s])* λF[l] + (sg_λT[l,s])* λT[l] for l in L) + sum( (sg_μF[l,s])* μF[l] + (sg_μT[l,s])* μT[l] for l in L),
 		localcut=useLocalCuts)
 	    ncuts += 1
+	end
   else
     println("Tolerance met for not generating a new lazy cut.")
   end
@@ -144,7 +155,7 @@ end
 # Define callback function for generating and adding cuts
 function solveEta0Eigs()
 
-	global nSG
+	global nSG, maxNSG
 	global η0Val
 	global α_val, β_val, γ_val, δ_val
 	global λF_val, μF_val, λT_val, μT_val
@@ -183,36 +194,35 @@ function solveEta0Eigs()
 	f_val = zeros(nbuses)
         H3=Hermitian(H2)
 	#E=eigs(H3,nev=1,which=:SR, maxiter=100000, tol=1e-8)
-	E=eigs(H,nev=1,which=:SR, maxiter=100000, tol=1e-8)
+	E=eigs(H,nev=6,which=:SR, maxiter=100000, tol=1e-8)
+#println("(",E[1][1],",",E[1][2],",",E[1][3],",",E[1][4],",",E[1][5],",",E[1][6],")")
 	η0Val = real(E[1][1])
 	nSG = 0
-	 if real(E[1][1]) <= -TOL 
-	  nSG = 1
+        for s=1:maxNSG
+	 sInd = 2*(s-1)+1
+	 if real(E[1][sInd]) <= -TOL 
+	  nSG += 1
 	  for i in N
- 	    e_val[i] = E[2][i,1]
-	    f_val[i] = E[2][nbuses+i,1]
-#=
- 	    e_val[i] = real(E[2][i,1])
-	    f_val[i] = imag(E[2][i,1])
-=#
+ 	    e_val[i] = E[2][i,sInd]
+	    f_val[i] = E[2][nbuses+i,sInd]
 	  end
 	  
 	  for i in N
 	    W_val[i] = e_val[i]^2 + f_val[i]^2
-            sg_α[i,1] = acYshR[i] * W_val[i] 
-            sg_β[i,1] = -acYshI[i] * W_val[i] 
-	    sg_δ[i,1] = W_val[i] 
-	    sg_γ[i,1] = -W_val[i]
+            sg_α[i,s] = acYshR[i] * W_val[i] 
+            sg_β[i,s] = -acYshI[i] * W_val[i] 
+	    sg_δ[i,s] = W_val[i] 
+	    sg_γ[i,s] = -W_val[i]
 	  end
 	  #sgnorm = sum(sg_α[i,1]^2 + sg_β[i,1]^2 + sg_δ[i,1]^2 + sg_γ[i,1]^2 for i in N)
 	  for l in L
 	    from = busIdx[lines[l].from]; to = busIdx[lines[l].to]
 	    Wr_val[l] = e_val[from]*e_val[to] + f_val[from]*f_val[to]
 	    Wi_val[l] = e_val[to]*f_val[from] - e_val[from]*f_val[to]
-	    sg_λF[l,1] = (acYffR[l] * W_val[from] + acYftR[l] * Wr_val[l] + acYftI[l] * Wi_val[l])
-	    sg_λT[l,1] = (acYttR[l] * W_val[to] + acYtfR[l] * Wr_val[l] - acYtfI[l] * Wi_val[l])
-	    sg_μF[l,1] = (-acYffI[l] * W_val[from] - acYftI[l] * Wr_val[l] + acYftR[l]* Wi_val[l])
-	    sg_μT[l,1] = (-acYttI[l] * W_val[to] - acYtfI[l] * Wr_val[l] - acYtfR[l] * Wi_val[l])
+	    sg_λF[l,s] = (acYffR[l] * W_val[from] + acYftR[l] * Wr_val[l] + acYftI[l] * Wi_val[l])
+	    sg_λT[l,s] = (acYttR[l] * W_val[to] + acYtfR[l] * Wr_val[l] - acYtfI[l] * Wi_val[l])
+	    sg_μF[l,s] = (-acYffI[l] * W_val[from] - acYftI[l] * Wr_val[l] + acYftR[l]* Wi_val[l])
+	    sg_μT[l,s] = (-acYttI[l] * W_val[to] - acYtfI[l] * Wr_val[l] - acYtfR[l] * Wi_val[l])
 	  end
           #sgnorm += sum(sg_λF[l,1]^2 + sg_λT[l,1]^2 + sg_μF[l,1]^2 + sg_μT[l,1]^2 for l in L)
 	  #sgnorm = sqrt(sgnorm)
@@ -234,20 +244,7 @@ function solveEta0Eigs()
 	  end
 =#
 	end
-#=
-   if nSG == 1
-     for i in N
-	print(" (",E[2][i,1],",",E[2][i+nbuses,1],")")
-     end
-	print("\n")
-   elseif nSG == 2
-     for i in N
-	print(" (",E[2][i,1],",",E[2][i+nbuses,1],",")
-	print(E[2][i,2],",",E[2][i+nbuses,2],")")
-     end
-	print("\n")
-   end
-=#
+    end #s=1:3
 #print("\n")
 end
 
@@ -435,6 +432,12 @@ for l in L
 	end
 end
 @printf("\n")
+for l in L
+    from = busIdx[lines[l].from];to = busIdx[lines[l].to] 
+    if getvalue(x[l]) < 0.5
+	println("Line $l: (", getvalue(α[from]),",",getvalue(α[to]),")  (",getvalue(β[from]),",",getvalue(β[to]),")")
+    end
+end
 @printf("MPs took: avg: %f, total %f.\n",avg_TimeMP, total_TimeMP)
 
 ###Printing summary as one line to aid in latex writeup
