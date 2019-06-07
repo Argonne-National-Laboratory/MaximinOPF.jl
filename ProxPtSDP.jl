@@ -16,6 +16,14 @@ MAX_TIME=24*3600
 ζpLB_val = zeros(nbuses)
 ζqUB_val = zeros(nbuses)
 ζqLB_val = zeros(nbuses)
+α_ctr = zeros(nbuses)
+β_ctr = zeros(nbuses)
+γ_ctr = zeros(nbuses)
+δ_ctr = zeros(nbuses)
+ζpUB_ctr = zeros(nbuses)
+ζpLB_ctr = zeros(nbuses)
+ζqUB_ctr = zeros(nbuses)
+ζqLB_ctr = zeros(nbuses)
 x_val = zeros(nlines)
 W_val = zeros(nbuses)
 Wr_val = zeros(nlines)
@@ -25,19 +33,23 @@ f_val = zeros(nbuses)
 objval = 0
 bestBd = 0
 η0Val = 0
+etaCtr = 0
 nCuts = 0
 new_cut = false
-MAX_N_CUTS = 10000
+#MAX_N_CUTS = 10000
+MAX_N_CUTS = 500
 maxNSG = 1
-sg_α = zeros(nbuses,MAX_N_CUTS)
-sg_β = zeros(nbuses,MAX_N_CUTS)
-sg_γ = zeros(nbuses,MAX_N_CUTS) 
-sg_δ = zeros(nbuses,MAX_N_CUTS) 
+SSC = 0.01
+sg_α = zeros(nbuses,MAX_N_CUTS+1)
+sg_β = zeros(nbuses,MAX_N_CUTS+1)
+sg_γ = zeros(nbuses,MAX_N_CUTS+1) 
+sg_δ = zeros(nbuses,MAX_N_CUTS+1) 
 
 function solveMP(firstIt=false)
   global α_val, β_val, γ_val, δ_val
   global x_val
   global nCuts
+  global η0Val, etaCtr
   global sg_α, sg_β, sg_γ, sg_δ
   global objval
 
@@ -56,9 +68,9 @@ function solveMP(firstIt=false)
   @constraint(mMP, sum(x[l] for l in L) <= K)
   fixX=zeros(Int,nlines)
   #fixX[208]=1
-  fixX[183]=1
-  #fixX[41]=1
-  #fixX[80]=1
+  #fixX[183]=1
+  fixX[41]=1
+  fixX[80]=1
   for l in L
     setlowerbound(x[l],fixX[l])
     setupperbound(x[l],fixX[l])
@@ -80,9 +92,9 @@ function solveMP(firstIt=false)
   else
     @objective(mMP, Max, sum(ζpLB[g]*Pmin[g] - ζpUB[g]*Pmax[g] + ζqLB[g]*Qmin[g] - ζqUB[g]*Qmax[g]  for g in G) 
 	+ sum( γm[i]*Wmin[i]-γp[i]*Wmax[i] + α[i]*PD[i] + β[i]*QD[i] for i in N)
-	- 5*(sum( (α_val[i] -α[i])^2 + (β_val[i]- β[i])^2 + (γ_val[i] - γm[i])^2 + (δ_val[i] - γp[i])^2 for i in N) 
-	+ sum( (ζpUB_val[g] - ζpUB[g])^2 + (ζpLB_val[g] - ζpLB[g])^2 for g in G) 
-	+ sum( (ζqUB_val[g] - ζqUB[g])^2 + (ζqLB_val[g] - ζqLB[g])^2 for g in G) ) 
+	- 0.5*(sum( (α_ctr[i] -α[i])^2 + (β_ctr[i]- β[i])^2 + (γ_ctr[i] - γm[i])^2 + (δ_ctr[i] - γp[i])^2 for i in N) 
+	+ sum( (ζpUB_ctr[g] - ζpUB[g])^2 + (ζpLB_ctr[g] - ζpLB[g])^2 for g in G) 
+	+ sum( (ζqUB_ctr[g] - ζqUB[g])^2 + (ζqLB_ctr[g] - ζqLB[g])^2 for g in G) ) 
     )
   end
 
@@ -124,14 +136,39 @@ function solveMP(firstIt=false)
 end #end of function
 
 function testECP()
-   global objval, nCuts, new_cut
+   global objval, nCuts, new_cut, SSC
+   global α_ctr, β_ctr, γ_ctr, δ_ctr
+   global ζpUB_ctr, ζpLB_ctr, ζqUB_ctr, ζqLB_ctr
+   global α_val, β_val, γ_val, δ_val
+   global ζpUB_val, ζpLB_val, ζqUB_val, ζqLB_val
    start_time = time_ns()
    solveMP(true)
+   solveEta0Eigs()
+   etaCtr = η0Val
 @show objval
    for kk=1:MAX_N_CUTS
-     solveEta0Eigs()
      if new_cut
 	solveMP()
+        solveEta0Eigs()
+@show -etaCtr,-η0Val 
+	if -(η0Val-etaCtr)/etaCtr >= SSC
+println("Serious step")
+   	  etaCtr = η0Val
+	  for i in N
+	    α_ctr[i] = α_val[i]
+	    β_ctr[i] = β_val[i]
+	    γ_ctr[i] = γ_val[i]
+	    δ_ctr[i] = δ_val[i]
+	  end
+	  for g in G
+	    ζpUB_ctr[g] = ζpUB_val[g]
+	    ζpLB_ctr[g] = ζpLB_val[g]
+	    ζqUB_ctr[g] = ζqUB_val[g]
+	    ζqLB_ctr[g] = ζqLB_val[g]
+	  end
+	else
+println("Null step")
+	end
 @show nCuts
 @show objval,η0Val
      else
