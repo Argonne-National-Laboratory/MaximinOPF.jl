@@ -72,26 +72,6 @@ nuVals = zeros(nlines)
   @constraint(mMP, [l in L], -relFac*rho_q*(1 - x[l]) <= μT[l])
   @constraint(mMP, [l in L], relFac*rho_q*(1 - x[l]) >= μT[l])
 
-#=
-  #The following four constraints are implied by solving the D1 subproblem with alphas, betas set to zero.
-    #These constraints actually provide an exact characterization of the D1 dual function
-    @constraint(mMP, EtaIInit1[i in N,(PD[i]-PminI[i]!=0 || QD[i]-QminI[i]!=0)], 
-	ζii[i] <= (PD[i] - sum(Pmin[g] for g in BusGeners[i]))*α[i] + (QD[i] - sum(Qmin[g] for g in BusGeners[i]))*β[i])
-    @constraint(mMP, EtaIInit2[i in N,(PD[i]-PminI[i]!=0 || QD[i]-QmaxI[i]!=0)], 
-	ζii[i] <= (PD[i] - sum(Pmin[g] for g in BusGeners[i]))*α[i] + (QD[i] - sum(Qmax[g] for g in BusGeners[i]))*β[i])
-    @constraint(mMP, EtaIInit3[i in N,(PD[i]-PmaxI[i]!=0 || QD[i]-QminI[i]!=0)], 
-	ζii[i] <= (PD[i] - sum(Pmax[g] for g in BusGeners[i]))*α[i] + (QD[i] - sum(Qmin[g] for g in BusGeners[i]))*β[i])
-    @constraint(mMP, EtaIInit4[i in N,(PD[i]-PmaxI[i]!=0 || QD[i]-QmaxI[i]!=0)], 
-	ζii[i] <= (PD[i] - sum(Pmax[g] for g in BusGeners[i]))*α[i] + (QD[i] - sum(Qmax[g] for g in BusGeners[i]))*β[i])
- 
-    for i in N
-      if( (PD[i]-PminI[i])==0 && (QD[i]-QminI[i])==0 && (PD[i]-PmaxI[i])==0 && (QD[i]-QmaxI[i])==0)
-	setlowerbound(ζii[i],0)
-	setupperbound(ζii[i],0)
-      end
-    end
-=#
-
 
   #These constraints are not valid in general, but their inclusion often results in much faster time to near optimal solution.
 

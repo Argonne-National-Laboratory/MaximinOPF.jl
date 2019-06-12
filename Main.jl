@@ -62,11 +62,18 @@ opfdata = opf_loaddata(CASE_NUM)
 lines, buses, generators, baseMVA = opfdata.lines, opfdata.buses, opfdata.generators, opfdata.baseMVA
 nbuses, nlines, ngens = length(buses), length(lines), length(generators)
 
+N = 1:nbuses; L = 1:nlines; G = 1:ngens
+
 # build a dictionary between buses ids and their indexes
 busIdx = mapBusIdToIdx(buses)
 
 # set up the fromLines and toLines for each bus
 fromLines, toLines = mapLinesToBuses(buses, lines, busIdx)
+
+fromBus=zeros(Int,nlines); toBus=zeros(Int,nlines)
+for l in L
+    fromBus[l] = busIdx[lines[l].from]; toBus[l] = busIdx[lines[l].to] 
+end
 
 # generators at each bus
 BusGeners = mapGenersToBuses(buses, generators, busIdx)
@@ -118,9 +125,6 @@ end
 
 
 
-N = 1:nbuses
-L = 1:nlines
-G = 1:ngens
 
 
 
@@ -145,20 +149,7 @@ for g in G
 	Qmin[g] = generators[g].Qmin
 	Qmax[g] = generators[g].Qmax
 end
-PminI = zeros(nbuses)
-PmaxI = zeros(nbuses)
-QminI = zeros(nbuses)
-QmaxI = zeros(nbuses)
   
-for i in N
-    for g in BusGeners[i]
-	PminI[i] += Pmin[g]
-	PmaxI[i] += Pmax[g]
-	QminI[i] += Qmin[g]
-	QmaxI[i] += Qmax[g]
-    end
-end
-
 include("BranchAndCutDSP.jl") ### Initialize the defender subproblems with power flow balance enforced
 
 

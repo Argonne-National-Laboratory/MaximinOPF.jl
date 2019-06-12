@@ -24,7 +24,7 @@ MAX_TIME=24*3600
 ζpLB_ctr = zeros(nbuses)
 ζqUB_ctr = zeros(nbuses)
 ζqLB_ctr = zeros(nbuses)
-x_val = zeros(nlines)
+x_val = zeros(Int,nlines)
 W_val = zeros(nbuses)
 Wr_val = zeros(nlines)
 Wi_val = zeros(nlines)
@@ -37,13 +37,20 @@ etaCtr = 0
 nCuts = 0
 new_cut = false
 #MAX_N_CUTS = 10000
-MAX_N_CUTS = 500
+MAX_N_CUTS = 10000
+MAX_N_ITERS = 10000
 maxNSG = 1
-SSC = 0.01
+SSC = 0.05
+m2 = 0.9
+TOL = 1e-4
 sg_α = zeros(nbuses,MAX_N_CUTS+1)
 sg_β = zeros(nbuses,MAX_N_CUTS+1)
 sg_γ = zeros(nbuses,MAX_N_CUTS+1) 
 sg_δ = zeros(nbuses,MAX_N_CUTS+1) 
+cutDuals = zeros(MAX_N_CUTS+1)
+tMAX = 2.0
+tMIN = 0.05
+tVal = tMIN
 
 function solveMP(firstIt=false)
   global α_val, β_val, γ_val, δ_val
@@ -55,33 +62,34 @@ function solveMP(firstIt=false)
 
 # The master problem MP
   mMP = Model(solver=CplexSolver(CPX_PARAM_SCRIND=0,CPX_PARAM_TILIM=MAX_TIME,CPX_PARAM_MIPINTERVAL=50,CPX_PARAM_THREADS=1))
-  @variable(mMP, -1 <= α[i=N] <= 1)
-  @variable(mMP, -1 <= β[i=N] <= 1)
-  @variable(mMP, γp[i=N] >= 0)
-  @variable(mMP, γm[i=N] >= 0)
+  @variable(mMP, -1 <= α[i=N] <= 1, start=0)
+  @variable(mMP, -1 <= β[i=N] <= 1, start=0)
+  @variable(mMP, γp[i=N] >= 0, start=0)
+  @variable(mMP, γm[i=N] >= 0, start=0)
   @constraint(mMP, [i=N], γp[i]+γm[i] <= 1)
-  @variable(mMP, ζpUB[g=G] >= 0)
-  @variable(mMP, ζpLB[g=G] >= 0)
-  @variable(mMP, ζqUB[g=G] >= 0)
-  @variable(mMP, ζqLB[g=G] >= 0)
-  @variable(mMP, 0 <= x[l=L] <= 1)
-  @constraint(mMP, sum(x[l] for l in L) <= K)
-  fixX=zeros(Int,nlines)
-  #fixX[208]=1
-  #fixX[183]=1
-  fixX[41]=1
-  fixX[80]=1
+  @variable(mMP, 0 <= ζpUB[g=G] <= 1, start=0)
+  @variable(mMP, 0 <= ζpLB[g=G] <= 1, start=0)
+  @variable(mMP, 0 <= ζqUB[g=G] <= 1, start=0)
+  @variable(mMP, 0 <= ζqLB[g=G] <= 1, start=0)
+  #@variable(mMP, 0 <= x[l=L] <= 1)
+  #@constraint(mMP, sum(x[l] for l in L) <= K)
+  x_val[208]=1
+  #x_val[183]=1
+  #x_val[60]=1
+  #x_val[65]=1
+  #x_val[66]=1
+  #x_val[72]=1
+#=
   for l in L
     setlowerbound(x[l],fixX[l])
     setupperbound(x[l],fixX[l])
   end
+=#
   
   for i in N
    for g in BusGeners[i]
-    @constraint(mMP, 
-	-α[i] + ζpUB[g] - ζpLB[g] == 0 )
-    @constraint(mMP, 
-	-β[i] + ζqUB[g] - ζqLB[g] == 0 ) 
+    @constraint(mMP, -α[i] + ζpUB[g] - ζpLB[g] == 0 )
+    @constraint(mMP, -β[i] + ζqUB[g] - ζqLB[g] == 0 ) 
    end
   end
 
@@ -92,11 +100,15 @@ function solveMP(firstIt=false)
   else
     @objective(mMP, Max, sum(ζpLB[g]*Pmin[g] - ζpUB[g]*Pmax[g] + ζqLB[g]*Qmin[g] - ζqUB[g]*Qmax[g]  for g in G) 
 	+ sum( γm[i]*Wmin[i]-γp[i]*Wmax[i] + α[i]*PD[i] + β[i]*QD[i] for i in N)
-	- 0.5*(sum( (α_ctr[i] -α[i])^2 + (β_ctr[i]- β[i])^2 + (γ_ctr[i] - γm[i])^2 + (δ_ctr[i] - γp[i])^2 for i in N) 
+	- 0.5*(1/tVal)*(sum( (α_ctr[i] -α[i])^2 + (β_ctr[i]- β[i])^2 + (γ_ctr[i] - γm[i])^2 + (δ_ctr[i] - γp[i])^2 for i in N) 
 	+ sum( (ζpUB_ctr[g] - ζpUB[g])^2 + (ζpLB_ctr[g] - ζpLB[g])^2 for g in G) 
 	+ sum( (ζqUB_ctr[g] - ζqUB[g])^2 + (ζqLB_ctr[g] - ζqLB[g])^2 for g in G) ) 
     )
   end
+
+  @constraint(mMP, apriori[i=N], (acYshR[i] + sum( acYffR[l] for l in fromLines[i]) + sum( acYttR[l] for l in toLines[i])  )*α[i] 
+		- (acYshI[i] + sum(acYffI[l] for l in fromLines[i]) + sum(acYttI[l] for l in toLines[i]  ))*β[i] + γp[i] - γm[i] >= 0  
+	     )
 
   if nCuts > 0
 	@constraint(mMP, cutConstr[s=1:nCuts],  sum( sg_α[i,s] * α[i] for i in N) + sum(sg_β[i,s] * β[i] for i in N )  
@@ -121,11 +133,29 @@ function solveMP(firstIt=false)
 		ζqUB_val[i] = getvalue(ζqUB[i])
 		ζqLB_val[i] = getvalue(ζqLB[i])
 	end
+#=
 	for l in L
     		x_val[l] = round(getvalue(x[l]))
 	end
+=#
         objval=getobjectivevalue(mMP)
         getsolvetime(mMP)
+	if status == :Optimal
+	  nMax=nCuts
+	  for n=nMax:-1:1
+	    cutDuals[n] = -getdual(cutConstr[n])
+	    if abs(getdual(cutConstr[n])) < 1e-6
+		for i in N
+		    sg_α[i,n]=sg_α[i,nCuts]
+		    sg_β[i,n]=sg_β[i,nCuts]
+		    sg_γ[i,n]=sg_γ[i,nCuts]
+		    sg_δ[i,n]=sg_δ[i,nCuts]
+	    	    cutDuals[n] = cutDuals[nCuts]
+		end
+		nCuts -= 1
+	    end
+  	  end
+	end
         #println(" with optimal value ",solninfo[nlines+1])
         if status == :Stall
 	  println("solveNodeAC: Return status $status")
@@ -133,49 +163,34 @@ function solveMP(firstIt=false)
   else
 	println("solveNodeAC: Return status $status")
   end
+  return status
 end #end of function
 
 function testECP()
-   global objval, nCuts, new_cut, SSC
+   global objval, nCuts, new_cut, SSC, m2, tVal, etaCtr
    global α_ctr, β_ctr, γ_ctr, δ_ctr
    global ζpUB_ctr, ζpLB_ctr, ζqUB_ctr, ζqLB_ctr
    global α_val, β_val, γ_val, δ_val
    global ζpUB_val, ζpLB_val, ζqUB_val, ζqLB_val
    start_time = time_ns()
-   solveMP(true)
+   solveMP()
    solveEta0Eigs()
    etaCtr = η0Val
 @show objval
    for kk=1:MAX_N_CUTS
-     if new_cut
-	solveMP()
-        solveEta0Eigs()
-@show -etaCtr,-η0Val 
-	if -(η0Val-etaCtr)/etaCtr >= SSC
-println("Serious step")
-   	  etaCtr = η0Val
-	  for i in N
-	    α_ctr[i] = α_val[i]
-	    β_ctr[i] = β_val[i]
-	    γ_ctr[i] = γ_val[i]
-	    δ_ctr[i] = δ_val[i]
-	  end
-	  for g in G
-	    ζpUB_ctr[g] = ζpUB_val[g]
-	    ζpLB_ctr[g] = ζpLB_val[g]
-	    ζqUB_ctr[g] = ζqUB_val[g]
-	    ζqLB_ctr[g] = ζqLB_val[g]
-	  end
-	else
-println("Null step")
-	end
-@show nCuts
-@show objval,η0Val
-     else
+#println("Iteration ",kk)
+	dNorm = sqrt(norm(α_val-α_ctr)^2 + norm(β_val-β_ctr)^2 + norm(γ_val-γ_ctr)^2 + norm(δ_val-δ_ctr)^2 
+		+ norm(ζpUB_val-ζpUB_ctr)^2 + norm(ζpLB_val-ζpLB_ctr)^2 + norm(ζqUB_val-ζqUB_ctr)^2 + norm(ζqLB_val-ζqLB_ctr)^2)
+     if ( (1.0/tVal)*dNorm <= TOL && -(1.0/tVal)*dNorm^2 - η0Val <= TOL  ) 
 	break
      end
+	status = solveMP()
+        solveEta0Eigs()
+	  #@show objval,-etaCtr,-η0Val 
+#@show nCuts
 
    end
+@show objval,η0Val
    end_time = time_ns()
    runtime = (end_time-start_time)/1e9
 @show runtime
@@ -185,8 +200,11 @@ end
 function solveEta0Eigs()
 
 	global nSG
-	global η0Val
+	global η0Val, etaCtr, tVal, tMAX, objval
 	global α_val, β_val, γ_val, δ_val
+	global ζpUB_val, ζpLB_val, ζqUB_val, ζqLB_val
+	global α_ctr, β_ctr, γ_ctr, δ_ctr
+	global ζpUB_ctr, ζpLB_ctr, ζqUB_ctr, ζqLB_ctr
 	global W_val, Wr_val, Wi_val
 	global sg_α, sg_β, sg_γ, sg_δ, sg_λF, sg_μF, sg_λT, sg_μT
         global nCuts, new_cut
@@ -223,7 +241,7 @@ function solveEta0Eigs()
 	nSG = 0
 	for cc=1:maxNSG
          
-	 if E[1][cc] <= -TOL
+	 #if E[1][cc] <= -TOL
 	  nCuts += 1
 	  new_cut = true
 	  for i in N
@@ -249,9 +267,38 @@ function solveEta0Eigs()
 	      sg_β[to,nCuts] += (-acYttI[l] * W_val[to] - acYtfI[l] * Wr_val[l] - acYtfR[l] * Wi_val[l])
 	    end
 	  end
-	else
-	  break
-	end
+	  if -(η0Val-etaCtr)/etaCtr > SSC
+	      #gTd = sum( sg_α[i,nCuts]*(α_val[i]-α_ctr[i])  for i in N) + sum(sg_β[i,nCuts] * (β_val[i] - β_ctr[i]) for i in N )  
+		#+ sum(sg_γ[i,nCuts] * (γ_val[i]-γ_ctr[i]) for i in N)  + sum(sg_δ[i,nCuts] * (δ_val[i]-δ_ctr[i]) for i in N) 
+	      gTd = sum( sg_α[i,nCuts]*α_val[i]  for i in N) + sum(sg_β[i,nCuts] * β_val[i] for i in N )  
+		+ sum(sg_γ[i,nCuts] * γ_val[i] for i in N)  + sum(sg_δ[i,nCuts] * δ_val[i] for i in N) 
+	      if gTd <= m2*etaCtr || abs(tMAX-tVal) < 1e-3
+	        #println("Serious step")
+   	        etaCtr = η0Val
+	        for i in N
+	         α_ctr[i] = α_val[i]
+	         β_ctr[i] = β_val[i]
+	         γ_ctr[i] = γ_val[i]
+	         δ_ctr[i] = δ_val[i]
+	        end
+	        for g in G
+	         ζpUB_ctr[g] = ζpUB_val[g]
+	         ζpLB_ctr[g] = ζpLB_val[g]
+	         ζqUB_ctr[g] = ζqUB_val[g]
+	         ζqLB_ctr[g] = ζqLB_val[g]
+	        end
+@show objval,etaCtr
+	      else
+		tVal = (tVal+tMAX)/2
+		nCuts -= 1
+		println("Increasing tVal to ", tVal)
+	      end
+	  else
+	   #println("Null step")
+	  end
+	#else
+	#  break
+	#end
        end # s=1:maxNSG
 end
 
