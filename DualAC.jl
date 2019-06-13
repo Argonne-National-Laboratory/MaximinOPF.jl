@@ -7,10 +7,46 @@ Brian Dandurand
 =#
 
 
-function solveNodeAC(ndata,solninfo,xDualVals)
-# The dual problem 
+  # define data
+  lines, buses, generators, baseMVA = opfdata.lines, opfdata.buses, opfdata.generators, opfdata.baseMVA
+  nbuses, nlines, ngens = length(buses), length(lines), length(generators)
+  N = 1:nbuses; L = 1:nlines; G = 1:ngens
+  # build a dictionary between buses ids and their indexes
+  busIdx = mapBusIdToIdx(buses)
+  # set up the fromLines and toLines for each bus
+  fromLines, toLines = mapLinesToBuses(buses, lines, busIdx)
+  fromBus=zeros(Int,nlines); toBus=zeros(Int,nlines)
+  for l in L
+    fromBus[l] = busIdx[lines[l].from]; toBus[l] = busIdx[lines[l].to] 
+  end
+  # generators at each bus
+  BusGeners = mapGenersToBuses(buses, generators, busIdx)
+
+  Y = Dict()  # Admittances
+  Y["ffR"] = opfdata.admittancesAC.YffR; Y["ffI"] = opfdata.admittancesAC.YffI;
+  Y["ttR"] = opfdata.admittancesAC.YttR; Y["ttI"] = opfdata.admittancesAC.YttI;
+  Y["ftR"] = opfdata.admittancesAC.YftR; Y["ftI"] = opfdata.admittancesAC.YftI;
+  Y["tfR"] = opfdata.admittancesAC.YtfR; Y["tfI"] = opfdata.admittancesAC.YtfI;
+  Y["shR"] = opfdata.admittancesAC.YshR; Y["shI"] = opfdata.admittancesAC.YshI;
+
+  PD = zeros(nbuses); QD = zeros(nbuses)
+  Wmin = zeros(nbuses); Wmax = zeros(nbuses)
+  for i in N
+	PD[i] = buses[i].Pd / baseMVA; QD[i] = buses[i].Qd / baseMVA
+	Wmin[i] = (buses[i].Vmin)^2; Wmax[i] = (buses[i].Vmax)^2
+  end
+  Pmin = zeros(ngens); Pmax = zeros(ngens)
+  Qmin = zeros(ngens); Qmax = zeros(ngens)
+  for g in G
+	Pmin[g] = generators[g].Pmin; Pmax[g] = generators[g].Pmax
+	Qmin[g] = generators[g].Qmin; Qmax[g] = generators[g].Qmax
+  end
+
+  println("Done with initial setup.")
+function solveNodeAC(opfdata,ndata,solninfo,xDualVals)
 
   nThreads=1
+# The dual problem 
   mMP = Model(solver=MosekSolver(MSK_IPAR_LOG=0,MSK_IPAR_NUM_THREADS=nThreads))
   println("Using ",nThreads," threads.")
   @variable(mMP, -1 <= α[i=N] <= 1)
@@ -49,27 +85,27 @@ function solveNodeAC(ndata,solninfo,xDualVals)
 
   @expression(mMP, C[i=1:(2*nbuses),j=i:(2*nbuses)], 0)
   for i in N
-	C[i,i] += γp[i] - γm[i] + α[i]*acYshR[i] - β[i]*acYshI[i] 
-        C[nbuses+i,nbuses+i] += γp[i] - γm[i] + α[i]*acYshR[i] - β[i]*acYshI[i] 
+	C[i,i] += γp[i] - γm[i] + α[i]*Y["shR"][i] - β[i]*Y["shI"][i] 
+        C[nbuses+i,nbuses+i] += γp[i] - γm[i] + α[i]*Y["shR"][i] - β[i]*Y["shI"][i] 
     for l in fromLines[i]
-      C[i,i] += λF[l]*acYffR[l] - μF[l]*acYffI[l]  
-      C[nbuses+i,nbuses+i] += λF[l]*acYffR[l] - μF[l]*acYffI[l]  
+      C[i,i] += λF[l]*Y["ffR"][l] - μF[l]*Y["ffI"][l]  
+      C[nbuses+i,nbuses+i] += λF[l]*Y["ffR"][l] - μF[l]*Y["ffI"][l]  
     end
     for l in toLines[i]
-      C[i,i] += λT[l]*acYttR[l] - μT[l]*acYttI[l]  
-      C[nbuses+i,nbuses+i] += λT[l]*acYttR[l] - μT[l]*acYttI[l]  
+      C[i,i] += λT[l]*Y["ttR"][l] - μT[l]*Y["ttI"][l]  
+      C[nbuses+i,nbuses+i] += λT[l]*Y["ttR"][l] - μT[l]*Y["ttI"][l]  
     end
   end
   for l in L
       from=busIdx[lines[l].from]; to=busIdx[lines[l].to]
-      C[from,nbuses+to] -= 0.5*(  λF[l]*acYftI[l] + μF[l]*acYftR[l] - λT[l]*acYtfI[l] - μT[l]*acYtfR[l]  )   
-      C[to,nbuses+from] += 0.5*(  λF[l]*acYftI[l] + μF[l]*acYftR[l] - λT[l]*acYtfI[l] - μT[l]*acYtfR[l]  )   
+      C[from,nbuses+to] -= 0.5*(  λF[l]*Y["ftI"][l] + μF[l]*Y["ftR"][l] - λT[l]*Y["tfI"][l] - μT[l]*Y["tfR"][l]  )   
+      C[to,nbuses+from] += 0.5*(  λF[l]*Y["ftI"][l] + μF[l]*Y["ftR"][l] - λT[l]*Y["tfI"][l] - μT[l]*Y["tfR"][l]  )   
       if from < to
-        C[from,to] += 0.5*(λF[l]*acYftR[l]  - μF[l]*acYftI[l] + λT[l]*acYtfR[l] - μT[l]*acYtfI[l])   
-        C[nbuses+from,nbuses+to] += 0.5*(λF[l]*acYftR[l]  - μF[l]*acYftI[l] + λT[l]*acYtfR[l] - μT[l]*acYtfI[l])   
+        C[from,to] += 0.5*(λF[l]*Y["ftR"][l]  - μF[l]*Y["ftI"][l] + λT[l]*Y["tfR"][l] - μT[l]*Y["tfI"][l])   
+        C[nbuses+from,nbuses+to] += 0.5*(λF[l]*Y["ftR"][l]  - μF[l]*Y["ftI"][l] + λT[l]*Y["tfR"][l] - μT[l]*Y["tfI"][l])   
       else
-        C[to,from] += 0.5*(λF[l]*acYftR[l]  - μF[l]*acYftI[l] + λT[l]*acYtfR[l] - μT[l]*acYtfI[l])   
-        C[nbuses+to,nbuses+from] += 0.5*(λF[l]*acYftR[l]  - μF[l]*acYftI[l] + λT[l]*acYtfR[l] - μT[l]*acYtfI[l])   
+        C[to,from] += 0.5*(λF[l]*Y["ftR"][l]  - μF[l]*Y["ftI"][l] + λT[l]*Y["tfR"][l] - μT[l]*Y["tfI"][l])   
+        C[nbuses+to,nbuses+from] += 0.5*(λF[l]*Y["ftR"][l]  - μF[l]*Y["ftI"][l] + λT[l]*Y["tfR"][l] - μT[l]*Y["tfI"][l])   
       end
   end
   @variable(mMP, H[i=1:(2*nbuses),j=1:(2*nbuses)], SDP)
@@ -100,12 +136,12 @@ function solveNodeAC(ndata,solninfo,xDualVals)
   #These constraints are not quite valid, but their inclusion often results in much faster time to near optimal solution.
 
   if HEUR == 1 
-  	@constraint(mMP, LambdaMuConstr1[l in L], λF[l]*YftI[l] - λT[l]*YtfI[l] + μF[l]*YftR[l] - μT[l]*YtfR[l] == 0.0)
+  	@constraint(mMP, LambdaMuConstr1[l in L], λF[l]*Y["ftI"][l] - λT[l]*Y["tfI"][l] + μF[l]*Y["ftR"][l] - μT[l]*Y["tfR"][l] == 0.0)
   elseif HEUR == 2
 	@constraint(mMP, LambdaFequalsT[l in L], λF[l] - λT[l] == 0) 
 	@constraint(mMP, muFequalsT[l in L], μF[l] - μT[l] == 0)
   elseif HEUR == 3
-	@constraint(mMP, LambdaMuConstr2[l in L], λF[l]*YtfR[l] - λT[l]*YftR[l] - μF[l]*YtfI[l] + μT[l]*YftI[l] == 0.0)
+	@constraint(mMP, LambdaMuConstr2[l in L], λF[l]*Y["tfR"][l] - λT[l]*Y["ftR"][l] - μF[l]*Y["tfI"][l] + μT[l]*Y["ftI"][l] == 0.0)
   end
 
   status=solve(mMP)
@@ -155,16 +191,9 @@ end
 
 absCoeff=zeros(nlines)
 for l in L
-#=
   absCoeff[l] = 
-		  abs(acYffR[l]) + abs(acYffI[l]) 
-	        + abs(acYttR[l]) + abs(acYttI[l]) 
-	  	+ abs(acYftR[l]) + abs(acYftI[l]) + abs(acYtfR[l]) + abs(acYtfI[l]) 
-	  	+ abs(acYftI[l]) + abs(acYtfI[l]) + abs(acYftR[l]) + abs(acYtfR[l])
-=#
-  absCoeff[l] = 
-		  sqrt(acYffR[l]^2 + acYffI[l]^2 + acYttR[l]^2 + acYttI[l]^2
-	  	+ acYftR[l]^2 + acYftI[l]^2 + acYtfR[l]^2 + acYtfI[l]^2)
+		  sqrt(Y["ffR"][l]^2 + Y["ffI"][l]^2 + Y["ttR"][l]^2 + Y["ttI"][l]^2
+	  	+ Y["ftR"][l]^2 + Y["ftI"][l]^2 + Y["tfR"][l]^2 + Y["tfI"][l]^2)
 end
 function findBranchIdx2(x_val)
   global absCoeff
@@ -207,7 +236,7 @@ function testDualAC()
   x_val[41]=1
   x_val[80]=1
   solninfo=zeros(nlines+2)
-  solveNodeAC(x_val,solninfo)
+  solveNodeAC(opfdata,x_val,solninfo)
   dualObjval = solninfo[nlines+1]
   primalObjval = solveFullModelSDP(x_val)
   println("Primal value: ",primalObjval," and dual value: ",dualObjval)
@@ -218,7 +247,7 @@ nIp=zeros(nlines)
 nIm=zeros(nlines)
 pIp=ones(nlines)
 pIm=ones(nlines)
-function solveBnBSDP(incSoln)
+function solveBnBSDP(opfdata,incSoln)
   global nIp,nIm, MAX_TIME
   start_time = time_ns()
   nodedata = Dict()
@@ -242,7 +271,7 @@ function solveBnBSDP(incSoln)
     if objval < incVal
         println("\tFathoming due to initial testing of bound $objval < $incVal")
     else
-      solveNodeAC(currNode,solninfo,xDualVals)
+      solveNodeAC(opfdata,currNode,solninfo,xDualVals)
       x_val = solninfo[1:nlines]
       objval = solninfo[nlines+1]
       soltime = solninfo[nlines+2]
@@ -275,7 +304,7 @@ function solveBnBSDP(incSoln)
           nNodes += 1
           # Apply primal heuristic
           if (nNodes % 10) == 0
-	    incVal,nXs=primHeur(x_val,feasXs,nXs,incSoln,incVal,xDualVals)
+	    incVal,nXs=primHeur(opfdata,x_val,feasXs,nXs,incSoln,incVal,xDualVals)
           end
         end 
       end #not fathomed due to bound after solving node
@@ -299,7 +328,7 @@ function solveBnBSDP(incSoln)
   return bestUBVal,nNodes,incVal,runtime
 end
 
-function primHeur(x_val,feasXs,nXs,incSoln,incVal,xDualVals)
+function primHeur(opfdata,x_val,feasXs,nXs,incSoln,incVal,xDualVals)
   sortIdx = zeros(Int,nlines)
   sortperm!(sortIdx,x_val[1:nlines])
   bestKIdx = sortIdx[(nlines-K+1):nlines] 
@@ -317,7 +346,7 @@ function primHeur(x_val,feasXs,nXs,incSoln,incVal,xDualVals)
     sinfo = zeros(nlines+2)
     nXs += 1
     feasXs[nXs]=pX
-    solveNodeAC(pX,sinfo,xDualVals)
+    solveNodeAC(opfdata,pX,sinfo,xDualVals)
     pVal = sinfo[nlines+1]
     if pVal > incVal
       incVal = pVal
@@ -360,7 +389,7 @@ end
 
 
 finalXSoln = zeros(Int,nlines)
-bestUBVal,nNodes,incVal,runtime = solveBnBSDP(finalXSoln)
+bestUBVal,nNodes,incVal,runtime = solveBnBSDP(opfdata,finalXSoln)
 
 @printf("\n********************FINAL RESULT FOR CASE %s WITH %d LINES CUT H%dR%d*******************\n",CASE_NUM,K, HEUR,FORM)
 

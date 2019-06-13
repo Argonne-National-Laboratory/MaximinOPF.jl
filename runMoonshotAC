@@ -1,8 +1,8 @@
 V=
 #OUTDIR=Output
 #OUTDIR=TestOutAC
-#OUTDIR=TestACBnB
-OUTDIR=TestLECP
+OUTDIR=TestACBnB
+#OUTDIR=TestLECP
 #OUTDIR=TestACBnB2
 #OUTDIR=TestACP
 #OUTDIR=TestOutSDP
@@ -20,14 +20,14 @@ if [ "$#" -eq 4 ]; then
 fi
 
 if [ "$#" -eq 3 ]; then
-    #env OMP_NUM_THREADS=1 JULIA_NUM_THREADS=1 julia --depwarn=no -O3 ${ALG}.jl $1 $2 $3 0 > ${OUTDIR}/case$1K$2H$3R0 &
-    julia --depwarn=no -O3 ${ALG}.jl $1 $2 $3 0 &
+    env OMP_NUM_THREADS=1 JULIA_NUM_THREADS=1 julia --depwarn=no -O3 ${ALG}.jl $1 $2 $3 1 > ${OUTDIR}/case$1K$2H$3R1 &
+    #julia --depwarn=no -O3 ${ALG}.jl $1 $2 $3 1 &
 fi
 
 if [ "$#" -eq 2 ]; then
   for i in `seq 0 2`;
   do
-    env OMP_NUM_THREADS=1 JULIA_NUM_THREADS=1 julia --depwarn=no -O3 ${ALG}.jl $1 $2 $i 0 > ${OUTDIR}/case$1K$2H${i}R0 &
+    env OMP_NUM_THREADS=1 JULIA_NUM_THREADS=1 julia --depwarn=no -O3 ${ALG}.jl $1 $2 $i 1 > ${OUTDIR}/case$1K$2H${i}R1 &
   done    
 fi
 
@@ -36,7 +36,7 @@ if [ "$#" -eq 1 ]; then
   do
     for j in `seq 0 2`;
     do
-      env OMP_NUM_THREADS=1 JULIA_NUM_THREADS=1 julia --depwarn=no -O3 ${ALG}.jl $1 $i $j 0 > ${OUTDIR}/case$1K${i}H${j}R0 &
+      env OMP_NUM_THREADS=1 JULIA_NUM_THREADS=1 julia --depwarn=no -O3 ${ALG}.jl $1 $i $j 1 > ${OUTDIR}/case$1K${i}H${j}R1 &
     done
   done    
 fi
