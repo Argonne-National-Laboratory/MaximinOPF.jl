@@ -52,15 +52,19 @@ new_cut = false
 maxNSG = 1
 SSC = 0.05
 m2 = 0.9
-TOL = 1e-4
+TOL = 1e-6
 sg_α = zeros(nbuses,MAX_N_CUTS)
 sg_β = zeros(nbuses,MAX_N_CUTS)
 sg_γ = zeros(nbuses,MAX_N_CUTS) 
 sg_δ = zeros(nbuses,MAX_N_CUTS) 
+sg_α_ctr = zeros(nbuses,MAX_N_CUTS)
+sg_β_ctr = zeros(nbuses,MAX_N_CUTS)
+sg_γ_ctr = zeros(nbuses,MAX_N_CUTS) 
+sg_δ_ctr = zeros(nbuses,MAX_N_CUTS) 
 cutDuals = zeros(MAX_N_CUTS)
 linErrors = zeros(MAX_N_CUTS)
-tMAX = 5.0
-tMIN = 0.125
+tMAX = 2.5
+tMIN = 0.5
 tUB = tMAX
 tLB = tMIN
 tVal = 1
@@ -122,8 +126,9 @@ function solveMP(firstIt=false)
     @objective(mMP, Max, sum(ζpLB[g]*Pmin[g] - ζpUB[g]*Pmax[g] + ζqLB[g]*Qmin[g] - ζqUB[g]*Qmax[g]  for g in G) 
 	+ sum( γm[i]*Wmin[i]-γp[i]*Wmax[i] + α[i]*PD[i] + β[i]*QD[i] for i in N)
 	- 0.5*(1/tVal)*(sum( (α_ctr[i] -α[i])^2 + (β_ctr[i]- β[i])^2 + (γ_ctr[i] - γm[i])^2 + (δ_ctr[i] - γp[i])^2 for i in N) 
-	+ sum( (ζpUB_ctr[g] - ζpUB[g])^2 + (ζpLB_ctr[g] - ζpLB[g])^2 for g in G) 
-	+ sum( (ζqUB_ctr[g] - ζqUB[g])^2 + (ζqLB_ctr[g] - ζqLB[g])^2 for g in G) ) 
+	#+ sum( (ζpUB_ctr[g] - ζpUB[g])^2 + (ζpLB_ctr[g] - ζpLB[g])^2 for g in G) 
+	#+ sum( (ζqUB_ctr[g] - ζqUB[g])^2 + (ζqLB_ctr[g] - ζqLB[g])^2 for g in G) 
+			) 
     )
 #  end
 
@@ -185,6 +190,7 @@ function solveMP(firstIt=false)
 	    end
   	  end
 	  if nCuts > 0
+#=
 	    sigK[iter] = sum( cutDuals[n]*linErrors[n]  for n in 1:nCuts)
 	    zK[iter] = 0.0
 	    zK[iter] += sum( sum( (cutDuals[n]*sg_α[i,n])  for n in 1:nCuts)^1   for i in N)
@@ -192,6 +198,7 @@ function solveMP(firstIt=false)
 	    zK[iter] += sum( sum( (cutDuals[n]*sg_γ[i,n])  for n in 1:nCuts)^1   for i in N)
 	    zK[iter] += sum( sum( (cutDuals[n]*sg_δ[i,n])  for n in 1:nCuts)^1   for i in N)
 	    zK[iter] = sqrt(zK[iter])
+=#
 	  else
 	    sigK[iter] = 0.0
 	    zK[iter] = 0.0
@@ -232,9 +239,14 @@ function testECP()
 	  #@show objval,-etaCtr,-η0Val 
 #@show nCuts
 	dNorm = sqrt(norm(α_val-α_ctr)^2 + norm(β_val-β_ctr)^2 + norm(γ_val-γ_ctr)^2 + norm(δ_val-δ_ctr)^2 
-		+ norm(ζpUB_val-ζpUB_ctr)^2 + norm(ζpLB_val-ζpLB_ctr)^2 + norm(ζqUB_val-ζqUB_ctr)^2 + norm(ζqLB_val-ζqLB_ctr)^2)
-        if ( (1.0/tVal)*dNorm <= TOL && -(1.0/tVal)*dNorm^2 - η0Val <= TOL  ) 
+		#+ norm(ζpUB_val-ζpUB_ctr)^2 + norm(ζpLB_val-ζpLB_ctr)^2 + norm(ζqUB_val-ζqUB_ctr)^2 + norm(ζqLB_val-ζqLB_ctr)^2
+		    )
+        if ( (1.0/tVal)*dNorm <= TOL && -(1.0/tVal)*dNorm^2 - η0Val <= TOL ) 
+	 if tVal > 0.5*(tMAX+tMIN)
 	   break
+	 else
+	  tVal = 0.5*(tMAX+tMIN)
+	 end
         end
 
    end
@@ -320,12 +332,22 @@ function solveEta0Eigs(firstIt=false)
 	      sg_β[to,nCuts] += (-acYttI[l] * W_val[to] - acYtfI[l] * Wr_val[l] - acYtfR[l] * Wi_val[l])
 	    end
 	  end
+	sgAngle = sum( sg_α_ctr[i]*sg_α[i,nCuts] + sg_β_ctr[i]*sg_β[i,nCuts] + sg_γ_ctr[i]*sg_γ[i,nCuts] + sg_δ_ctr[i]*sg_δ[i,nCuts] for i in N)
+	sgAngleNorm = sqrt(norm(sg_α_ctr)^2+norm(sg_β_ctr)^2+norm(sg_γ_ctr)^2+norm(sg_δ_ctr)^2  )*sqrt( norm(sg_α[N,nCuts])^2 + norm(sg_β[N,nCuts])^2 + norm(sg_γ[N,nCuts])^2 + norm(sg_δ[N,nCuts])^2 )
+	if sgAngleNorm > 1e-4
+	  sgAngle /= sgAngleNorm
+	else
+	  sgAngle = 0
+	end
+#@show sgAngle
 	  if -(η0Val-etaCtr)/etaCtr > SSC || firstIt
 	      #gTd = sum( sg_α[i,nCuts]*(α_val[i]-α_ctr[i])  for i in N) + sum(sg_β[i,nCuts] * (β_val[i] - β_ctr[i]) for i in N )  
 		#+ sum(sg_γ[i,nCuts] * (γ_val[i]-γ_ctr[i]) for i in N)  + sum(sg_δ[i,nCuts] * (δ_val[i]-δ_ctr[i]) for i in N) 
 	      gTd = sum( sg_α[i,nCuts]*α_val[i]  for i in N) + sum(sg_β[i,nCuts] * β_val[i] for i in N )  
 		+ sum(sg_γ[i,nCuts] * γ_val[i] for i in N)  + sum(sg_δ[i,nCuts] * δ_val[i] for i in N) 
-	      if gTd <= m2*etaCtr || abs(tUB-tLB) < 1e-3 || tUB-tVal < 1e-3 || firstIt
+	      #if gTd <= m2*etaCtr || abs(tUB-tLB) < 1e-3 || tUB-tVal < 1e-3 || firstIt
+	      if firstIt || sgAngle < 0.9 || abs(tUB-tLB) < 1e-1 || tUB-tVal < 1e-1
+		#if true
 	        #println("Serious step")
    	        etaCtr = η0Val
 	        for i in N
@@ -333,6 +355,10 @@ function solveEta0Eigs(firstIt=false)
 	         β_ctr[i] = β_val[i]
 	         γ_ctr[i] = γ_val[i]
 	         δ_ctr[i] = δ_val[i]
+		 sg_α_ctr[i] = sg_α[i,nCuts] 
+	 	 sg_β_ctr[i] = sg_β[i,nCuts] 
+		 sg_γ_ctr[i] = sg_γ[i,nCuts] 
+		 sg_δ_ctr[i] = sg_δ[i,nCuts] 
 	        end
 	        for g in G
 	         ζpUB_ctr[g] = ζpUB_val[g]
@@ -340,27 +366,30 @@ function solveEta0Eigs(firstIt=false)
 	         ζqUB_ctr[g] = ζqUB_val[g]
 	         ζqLB_ctr[g] = ζqLB_val[g]
 	        end
-@show objval,etaCtr
+@show objval,etaCtr,sgAngle
 		return true
 	      else
 		tLB=tVal
-		tVal = (tLB+tUB)/2
+	        tVal = (tLB+tUB)/2
 		nCuts -= 1
-		println("Increasing tVal to ", tVal)
+		println("Increasing tVal to ", tVal, " from ", tLB, " the angle was ",sgAngle)
 		return false
 	      end
 	  else
 	    linErrorVal =  etaCtr - (etaTrl[nCuts] + sum( sg_α[i,nCuts]*(α_ctr[i]-α_trl[i,nCuts])  for i in N) + sum(sg_β[i,nCuts] * (β_ctr[i] - β_trl[i,nCuts]) for i in N )  
 			+ sum(sg_γ[i,nCuts] * (γ_ctr[i]-γ_trl[i,nCuts]) for i in N)  + sum(sg_δ[i,nCuts] * (δ_ctr[i]-δ_trl[i,nCuts]) for i in N)   ) 
-	    if -linErrorVal <= -0.5*sigK[iter-1] || abs(etaCtr-etaTrl[nCuts]) <= -sigK[iter-1] + zK[iter-1] || tUB-tLB < 1e-3
+	    #if -linErrorVal <= -0.5*sigK[iter-1] || abs(etaCtr-etaTrl[nCuts]) <= -sigK[iter-1] + zK[iter-1] || tUB-tLB < 1e-3
+	    #if sgAngle > 0 || tUB-tLB < 1e-1 || tVal-tLB < 1e-1 || abs(etaCtr-η0Val) < 0.05
+	     if true
 #@show linErrorVal,sigK[iter-1]
-	      #println("Null step")
+	      #println("Null step with angle ",sgAngle)
+	      #tVal = max(tMIN, tVal*0.99)
 	      return true
 	    else
 	      tUB=tVal
 	      tVal = (tLB+tUB)/2
 	      nCuts -= 1
-	      println("Decreasing tVal to ", tVal)
+	      println("Decreasing tVal to ", tVal, " from ", tUB, " the angle was ",sgAngle, " diff is: ",etaCtr-η0Val)
 	      return false
 	    end
 	  end
