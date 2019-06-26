@@ -57,6 +57,7 @@ function solveLECP(opfdata,K,HEUR)
 
   @variable(mMP, ζpUB[g=G] >=0); @variable(mMP, ζpLB[g=G] >=0); @variable(mMP, ζqUB[g=G] >=0); @variable(mMP, ζqLB[g=G] >=0)
 
+
   for i in N
    for g in BusGeners[i]
     @constraint(mMP, -α[i] + ζpUB[g] - ζpLB[g] == 0 )
@@ -75,7 +76,7 @@ function solveLECP(opfdata,K,HEUR)
   end
 =#
     @objective(mMP, Max, sum(ζpLB[g]*Pmin[g] - ζpUB[g]*Pmax[g] + ζqLB[g]*Qmin[g] - ζqUB[g]*Qmax[g]  for g in G) 
-	+ sum( γ[i]*Wmin[i]-δ[i]*Wmax[i] + α[i]*PD[i] + β[i]*QD[i] for i in N))
+	+ sum( γ[i]*Wmin[i]-δ[i]*Wmax[i] + α[i]*PD[i] + β[i]*QD[i] for i in N) )
 
   @constraint(mMP, sum(x[l] for l in L) <= K)
 
@@ -103,8 +104,12 @@ function solveLECP(opfdata,K,HEUR)
 	@constraint(mMP, muFequalsT[l in L], μF[l] - μT[l]  == 0)
   elseif HEUR == 3
 	#@constraint(mMP, LambdaMuConstr2[l in L], λF[l]*Y["tfR"][l] - λT[l]*Y["ftR"][l] - μF[l]*Y["tfI"][l] + μT[l]*Y["ftI"][l] == 0.0)
+	lRelax=rand(Bool,nlines)
+@show lRelax
 	for l in L
-	 if (l<34 || l>38) && l!=44 && l!=46 && l!=69 && l!=70
+	 #if l!=1 && l!=2 && l!=3 && l!=19 && l!=20 && l!=31 && l!=35 && l!=36 && l!=37 && l!=41 && l!=46 && l!=54 && l!=58 && l!=59 && l!=65 && l!=66 && l!=71 && l!=73 && l!=76 && l!=80
+	 #if !(lines[l].b == 0 && lines[l].ratio == 0 && lines[l].angle == 0)
+	 if lRelax[l]
 	  @constraint(mMP, λF[l] - λT[l]  == 0) 
 	  @constraint(mMP, μF[l] - μT[l]  == 0)
 	 end
@@ -169,7 +174,7 @@ function solveLECP(opfdata,K,HEUR)
   	end
   	if η0Val < -TOL 
 	    computeSG(Y,opfdata,v,sg)
-	    @lazyconstraint(cb, 0.0 <= sum( (sg["α"][i,1])* α[i] for i in N) + sum( (sg["β"][i,1])* β[i] for i in N )  
+	    @lazyconstraint(cb, 0 <= sum( (sg["α"][i,1])* α[i] for i in N) + sum( (sg["β"][i,1])* β[i] for i in N )  
 		+ sum( (sg["γ"][i,1])* γ[i] for i in N)  + sum( (sg["δ"][i,1])* δ[i] for i in N)
 		+ sum( (sg["λF"][l,1])* λF[l] + (sg["λT"][l,1])* λT[l] for l in L) + sum( (sg["μF"][l,1])* μF[l] + (sg["μT"][l,1])* μT[l] for l in L),
 		localcut=useLocalCuts)

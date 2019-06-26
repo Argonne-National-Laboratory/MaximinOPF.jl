@@ -27,7 +27,7 @@ verboseOut = false
 CASE_NUM="30"
 K=4
 HEUR = 0  # 0 no heuristic, 1 heuristic1,  2 lambdaF=lambdaT and muF=muT  3 heuristic2,
-FORM = 0; ECP=0; AC=1; SOCP=2; SOCPBds=3; DC=4; SDP=5; ACSOC=6
+FORM = 0; ECP=0; AC=1; SOCP=2; ProxPtSDP=3; DC=4; SDP=5; ACSOC=6
 
 if length(ARGS) > 0
   CASE_NUM = ARGS[1]
@@ -74,10 +74,9 @@ end
 if FORM == ECP 
   include("lECP.jl")
   solveLECP(opfdata,K,HEUR)
-#=
+elseif FORM == ProxPtSDP
   include("ProxPtSDP.jl")
   testECP()
-=#
 elseif FORM == AC
   include("DualAC.jl")
 elseif FORM == SOCP
