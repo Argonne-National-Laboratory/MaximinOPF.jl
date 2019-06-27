@@ -4,6 +4,42 @@
 
 
 
+  # define data
+  lines, buses, generators, baseMVA = opfdata.lines, opfdata.buses, opfdata.generators, opfdata.baseMVA
+  nbuses, nlines, ngens = length(buses), length(lines), length(generators)
+  N = 1:nbuses; L = 1:nlines; G = 1:ngens
+  # build a dictionary between buses ids and their indexes
+  busIdx = mapBusIdToIdx(buses)
+  # set up the fromLines and toLines for each bus
+  fromLines, toLines = mapLinesToBuses(buses, lines, busIdx)
+  fromBus=zeros(Int,nlines); toBus=zeros(Int,nlines)
+  for l in L
+    fromBus[l] = busIdx[lines[l].from]; toBus[l] = busIdx[lines[l].to] 
+  end
+  # generators at each bus
+  BusGeners = mapGenersToBuses(buses, generators, busIdx)
+
+  Y = Dict()  # Admittances
+  Y["ffR"] = opfdata.admittancesAC.YffR; Y["ffI"] = opfdata.admittancesAC.YffI;
+  Y["ttR"] = opfdata.admittancesAC.YttR; Y["ttI"] = opfdata.admittancesAC.YttI;
+  Y["ftR"] = opfdata.admittancesAC.YftR; Y["ftI"] = opfdata.admittancesAC.YftI;
+  Y["tfR"] = opfdata.admittancesAC.YtfR; Y["tfI"] = opfdata.admittancesAC.YtfI;
+  Y["shR"] = opfdata.admittancesAC.YshR; Y["shI"] = opfdata.admittancesAC.YshI;
+
+  PD = zeros(nbuses); QD = zeros(nbuses)
+  Wmin = zeros(nbuses); Wmax = zeros(nbuses)
+  for i in N
+	PD[i] = buses[i].Pd / baseMVA; QD[i] = buses[i].Qd / baseMVA
+	Wmin[i] = (buses[i].Vmin)^2; Wmax[i] = (buses[i].Vmax)^2
+  end
+  Pmin = zeros(ngens); Pmax = zeros(ngens)
+  Qmin = zeros(ngens); Qmax = zeros(ngens)
+  for g in G
+	Pmin[g] = generators[g].Pmin; Pmax[g] = generators[g].Pmax
+	Qmin[g] = generators[g].Qmin; Qmax[g] = generators[g].Qmax
+  end
+
+  println("Done with initial setup.")
 
 
 
@@ -24,29 +60,29 @@ function solveFullModelAC(x_val)
   @NLconstraint(mFullAC, VoltMagUB[i=N], W[i] - Wmax[i] - VMSlack[i] <= 0)
   @NLconstraint(mFullAC, VoltMagLB[i=N], W[i] - Wmin[i] + VMSlack[i] >= 0)
 
-  @NLexpression(mFullAC, PFlowFrom[l=L], (W[busIdx[lines[l].from]] * acYffR[l] +  acYftR[l]*WR[l] + acYftI[l]*(WI[l]) ) )
-  @NLexpression(mFullAC, PFlowTo[l=L], (W[busIdx[lines[l].to]] * acYttR[l] +  acYtfR[l]*WR[l] - acYtfI[l]*(WI[l]) ) )  
-  @NLexpression(mFullAC, QFlowFrom[l=L], (-acYffI[l]*W[busIdx[lines[l].from]] - acYftI[l]*WR[l] + acYftR[l]*(WI[l]) ) )
-  @NLexpression(mFullAC, QFlowTo[l=L], (-acYttI[l]*W[busIdx[lines[l].to]] - acYtfI[l]*WR[l] - acYtfR[l]*(WI[l]) ) )
+  @NLexpression(mFullAC, PFlowFrom[l=L], (W[busIdx[lines[l].from]] * Y["ffR"][l] +  Y["ftR"][l]*WR[l] + Y["ftI"][l]*(WI[l]) ) )
+  @NLexpression(mFullAC, PFlowTo[l=L], (W[busIdx[lines[l].to]] * Y["ttR"][l] +  Y["tfR"][l]*WR[l] - Y["tfI"][l]*(WI[l]) ) )  
+  @NLexpression(mFullAC, QFlowFrom[l=L], (-Y["ffI"][l]*W[busIdx[lines[l].from]] - Y["ftI"][l]*WR[l] + Y["ftR"][l]*(WI[l]) ) )
+  @NLexpression(mFullAC, QFlowTo[l=L], (-Y["ttI"][l]*W[busIdx[lines[l].to]] - Y["tfI"][l]*WR[l] - Y["tfR"][l]*(WI[l]) ) )
 
    # ... Power flow balance constraints
    # real part
    @NLconstraint( mFullAC, BusPBalanceUB[i=N],
-	acYshR[i] * W[i] - sum(PG[g] for g in BusGeners[i]) + PD[i]       # Sbus part
+	Y["shR"][i] * W[i] - sum(PG[g] for g in BusGeners[i]) + PD[i]       # Sbus part
       + sum( (1-x_val[l])*PFlowFrom[l]   for l in fromLines[i] )  + sum( (1-x_val[l])*PFlowTo[l]   for l in toLines[i] )  
       - PSlack[i] <= 0 )
    @NLconstraint( mFullAC, BusPBalanceLB[i=N],
-	acYshR[i] * W[i] - sum(PG[g] for g in BusGeners[i]) + PD[i]       # Sbus part
+	Y["shR"][i] * W[i] - sum(PG[g] for g in BusGeners[i]) + PD[i]       # Sbus part
       + sum( (1-x_val[l])*PFlowFrom[l]   for l in fromLines[i] )  + sum( (1-x_val[l])*PFlowTo[l]   for l in toLines[i] )  
       + PSlack[i] >= 0 )
 
    #imaginary part
      @NLconstraint( mFullAC, BusQBalanceUB[i=N],
-	-acYshI[i] * W[i] - sum(QG[g] for g in BusGeners[i]) + QD[i]        #Sbus part
+	-Y["shI"][i] * W[i] - sum(QG[g] for g in BusGeners[i]) + QD[i]        #Sbus part
       + sum( (1-x_val[l])*QFlowFrom[l]   for l in fromLines[i] )  + sum( (1-x_val[l])*QFlowTo[l]   for l in toLines[i] )  
       - QSlack[i] <=0 )
      @NLconstraint( mFullAC, BusQBalanceLB[i=N],
-	-acYshI[i] * W[i] - sum(QG[g] for g in BusGeners[i]) + QD[i]        #Sbus part
+	-Y["shI"][i] * W[i] - sum(QG[g] for g in BusGeners[i]) + QD[i]        #Sbus part
       + sum( (1-x_val[l])*QFlowFrom[l]   for l in fromLines[i] )  + sum( (1-x_val[l])*QFlowTo[l]   for l in toLines[i] )  
       + QSlack[i] >=0 )
   @objective(mFullAC, Min, sum(PSlack[i] + QSlack[i] + VMSlack[i] for i in N))
@@ -61,7 +97,8 @@ function solveFullModelAC(x_val)
     setvalue(VMSlack[i],0)
   end
   status = solve(mFullAC)
-  if status == :Optimal
+  if status == :Optimal || status == :UserLimit
+      println("Full AC model solved with status: $status")
       return getobjectivevalue(mFullAC)
   else
       println("Full AC model solved with status: $status")
@@ -90,22 +127,22 @@ function solveFullModelSDP(x_val)
   @expression(mFullSDP, WR[l=L], W[busIdx[lines[l].from],busIdx[lines[l].to]] )
   @expression(mFullSDP, WI[l=L], W[busIdx[lines[l].from],nbuses+busIdx[lines[l].to]] ) 
   @expression(mFullSDP, PFlowFrom[l=L], 
-	acYffR[l]*W[busIdx[lines[l].from],busIdx[lines[l].from]]  +  acYftR[l]*WR[l] + acYftI[l]*WI[l] ) 
+	Y["ffR"][l]*W[busIdx[lines[l].from],busIdx[lines[l].from]]  +  Y["ftR"][l]*WR[l] + Y["ftI"][l]*WI[l] ) 
   @expression(mFullSDP, PFlowTo[l=L], 
-	acYttR[l]*W[busIdx[lines[l].to],busIdx[lines[l].to]] +  acYtfR[l]*WR[l] - acYtfI[l]*WI[l]  )  
-  @expression(mFullSDP, QFlowFrom[l=L], -acYffI[l]*W[busIdx[lines[l].from],busIdx[lines[l].from]] - acYftI[l]*WR[l] + acYftR[l]*WI[l] )
-  @expression(mFullSDP, QFlowTo[l=L], -acYttI[l]*W[busIdx[lines[l].to],busIdx[lines[l].to]] - acYtfI[l]*WR[l] - acYtfR[l]*WI[l] )
+	Y["ttR"][l]*W[busIdx[lines[l].to],busIdx[lines[l].to]] +  Y["tfR"][l]*WR[l] - Y["tfI"][l]*WI[l]  )  
+  @expression(mFullSDP, QFlowFrom[l=L], -Y["ffI"][l]*W[busIdx[lines[l].from],busIdx[lines[l].from]] - Y["ftI"][l]*WR[l] + Y["ftR"][l]*WI[l] )
+  @expression(mFullSDP, QFlowTo[l=L], -Y["ttI"][l]*W[busIdx[lines[l].to],busIdx[lines[l].to]] - Y["tfI"][l]*WR[l] - Y["tfR"][l]*WI[l] )
 
    # ... Power flow balance constraints
    # real part
    @constraint( mFullSDP, BusPBalanceUB[i=N],
-	acYshR[i] * W[i,i] 
+	Y["shR"][i] * W[i,i] 
 - sum(PG[g] for g in BusGeners[i]) 
 + PD[i]        # Sbus part
       + sum( (1-x_val[l])*PFlowFrom[l]   for l in fromLines[i] )  + sum( (1-x_val[l])*PFlowTo[l]   for l in toLines[i] )  
      <= PSlack[i])
    @constraint( mFullSDP, BusPBalanceLB[i=N],
-	acYshR[i] * W[i,i] 
+	Y["shR"][i] * W[i,i] 
 - sum(PG[g] for g in BusGeners[i]) 
 + PD[i]        # Sbus part
       + sum( (1-x_val[l])*PFlowFrom[l]   for l in fromLines[i] )  + sum( (1-x_val[l])*PFlowTo[l]   for l in toLines[i] )  
@@ -113,13 +150,13 @@ function solveFullModelSDP(x_val)
 
    #imaginary part
      @constraint( mFullSDP, BusQBalanceUB[i=N],
-	-acYshI[i] * W[i,i] 
+	-Y["shI"][i] * W[i,i] 
 - sum(QG[g] for g in BusGeners[i]) 
 + QD[i]        #Sbus part
       + sum( (1-x_val[l])*QFlowFrom[l]   for l in fromLines[i] )  + sum( (1-x_val[l])*QFlowTo[l]   for l in toLines[i] )  
       <= QSlack[i] )
      @constraint( mFullSDP, BusQBalanceLB[i=N],
-	-acYshI[i] * W[i,i] 
+	-Y["shI"][i] * W[i,i] 
 - sum(QG[g] for g in BusGeners[i]) 
 + QD[i]        #Sbus part
       + sum( (1-x_val[l])*QFlowFrom[l]   for l in fromLines[i] )  + sum( (1-x_val[l])*QFlowTo[l]   for l in toLines[i] )  
@@ -161,21 +198,21 @@ function solveFullModelSOCP(x_val)
   @NLexpression(mFullSOCP, socp_WR[l=L], WRSOCP[l])
   @NLexpression(mFullSOCP, socp_WI[l=L], WISOCP[l])
   @NLconstraint(mFullSOCP, [l=L],   socp_WR[l]^2 + socp_WI[l]^2 - socp_W[busIdx[lines[l].from]]*socp_W[busIdx[lines[l].to]] <= 0)
-  @NLexpression(mFullSOCP, socp_PFlowFrom[l=L], (socp_W[busIdx[lines[l].from]] * acYffR[l] +  acYftR[l]*socp_WR[l] + acYftI[l]*(socp_WI[l]) ) )
-  @NLexpression(mFullSOCP, socp_PFlowTo[l=L], (socp_W[busIdx[lines[l].to]] * acYttR[l] +  acYtfR[l]*socp_WR[l] - acYtfI[l]*(socp_WI[l]) ) )  
-  @NLexpression(mFullSOCP, socp_QFlowFrom[l=L], (-acYffI[l]*socp_W[busIdx[lines[l].from]] - acYftI[l]*socp_WR[l] + acYftR[l]*(socp_WI[l]) ) )
-  @NLexpression(mFullSOCP, socp_QFlowTo[l=L], (-acYttI[l]*socp_W[busIdx[lines[l].to]] - acYtfI[l]*socp_WR[l] - acYtfR[l]*(socp_WI[l]) ) )
+  @NLexpression(mFullSOCP, socp_PFlowFrom[l=L], (socp_W[busIdx[lines[l].from]] * Y["ffR"][l] +  Y["ftR"][l]*socp_WR[l] + Y["ftI"][l]*(socp_WI[l]) ) )
+  @NLexpression(mFullSOCP, socp_PFlowTo[l=L], (socp_W[busIdx[lines[l].to]] * Y["ttR"][l] +  Y["tfR"][l]*socp_WR[l] - Y["tfI"][l]*(socp_WI[l]) ) )  
+  @NLexpression(mFullSOCP, socp_QFlowFrom[l=L], (-Y["ffI"][l]*socp_W[busIdx[lines[l].from]] - Y["ftI"][l]*socp_WR[l] + Y["ftR"][l]*(socp_WI[l]) ) )
+  @NLexpression(mFullSOCP, socp_QFlowTo[l=L], (-Y["ttI"][l]*socp_W[busIdx[lines[l].to]] - Y["tfI"][l]*socp_WR[l] - Y["tfR"][l]*(socp_WI[l]) ) )
 
    # ... Power flow balance constraints
    # real part
    @NLconstraint( mFullSOCP, socp_BusPBalance[i=N],
-	acYshR[i] * socp_W[i] - sum(socp_PG[g] for g in BusGeners[i]) + socp_PgSlack[i] + (PD[i] - socp_PdSlack[i] )       # Sbus part
+	Y["shR"][i] * socp_W[i] - sum(socp_PG[g] for g in BusGeners[i]) + socp_PgSlack[i] + (PD[i] - socp_PdSlack[i] )       # Sbus part
       + sum( (1-x_val[l])*socp_PFlowFrom[l]   for l in fromLines[i] )  + sum( (1-x_val[l])*socp_PFlowTo[l]   for l in toLines[i] )  
      ==0)
 
    #imaginary part
    @NLconstraint( mFullSOCP, socp_BusQBalance[i=N],
-	-acYshI[i] * socp_W[i] - sum(socp_QG[g] for g in BusGeners[i]) + socp_QgSlack[i] + (QD[i] - socp_QdSlack[i])       #Sbus part
+	-Y["shI"][i] * socp_W[i] - sum(socp_QG[g] for g in BusGeners[i]) + socp_QgSlack[i] + (QD[i] - socp_QdSlack[i])       #Sbus part
       + sum( (1-x_val[l])*socp_QFlowFrom[l]   for l in fromLines[i] )  + sum( (1-x_val[l])*socp_QFlowTo[l]   for l in toLines[i] )  
      ==0)
   @objective(mFullSOCP, Min, sum(socp_PgSlack[i] + socp_PdSlack[i] + socp_QgSlack[i] + socp_QdSlack[i] for i in N))

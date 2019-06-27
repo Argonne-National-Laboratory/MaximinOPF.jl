@@ -81,5 +81,9 @@ elseif FORM == AC
   include("DualAC.jl")
 elseif FORM == SOCP
   include("DualSOCP.jl")
+else
+   x_val = zeros(nlines)
+   x_val[208]=1
+   @show solveFullModelSDP(x_val)
 end
 
