@@ -43,18 +43,15 @@ include("utils.jl")
 	Qmin[g] = generators[g].Qmin; Qmax[g] = generators[g].Qmax
   end
 
-chordal_decomposition = true
-	if chordal_decomposition
-		chordal = get_chordal_extension_complex(N, L, lines, busIdx)
-		max_cliques = maximal_cliques(get_graph(chordal))
-	end
+	# indicate to enable chordal decomposition
+	chordal_decomposition = true
 
   println("Done with initial setup.")
 function solveNodeAC(opfdata,ndata,solninfo,xDualVals)
 
   nThreads=1
 # The dual problem
-  mMP = Model(solver=MosekSolver(MSK_IPAR_LOG=1,MSK_IPAR_NUM_THREADS=nThreads))
+  mMP = Model(solver=MosekSolver(MSK_IPAR_LOG=0,MSK_IPAR_NUM_THREADS=nThreads))
   println("Using ",nThreads," threads.")
   @variable(mMP, -1 <= α[i=N] <= 1)
   @variable(mMP, -1 <= β[i=N] <= 1)
@@ -116,27 +113,38 @@ function solveNodeAC(opfdata,ndata,solninfo,xDualVals)
       end
   end
 
-  if chordal_decomposition
-	  # @variable(mMP, H[i=1:(2*nbuses),j=1:(2*nbuses)], Symmetric)
-	  # @constraint(mMP, SetH[i=1:(2*nbuses),j=i:(2*nbuses)], C[i,j] - H[i,j] == 0)
-	  subH = Dict{Int64,Any}()
+	if chordal_decomposition
+		# Compute new topology for each node subproblem
+		nodeL = Int64[]
+		for l=L
+			if ndata[l] != 1
+				push!(nodeL,l)
+			end
+		end
+
+		# Get maximal cliques from the chordal extension of the network topology
+		chordal = get_chordal_extension_complex(N, nodeL, lines, busIdx)
+		max_cliques = maximal_cliques(get_graph(chordal))
+
+		# Applying Agler's theorem (matrix decomposition)
+		subH = Dict{Int64,Any}()
 	    @expression(mMP, sumH[i=1:(2*nbuses),j=i:(2*nbuses)], 0)
 		@show length(max_cliques)
-	  for k in 1:length(max_cliques)
-		  clique = sort(max_cliques[k])
-		  num_nodes = length(clique)
-		  # @show (k,clique)
-		  subH[k] = @variable(mMP, [i=1:num_nodes,j=1:num_nodes], SDP)
-		  for i=1:num_nodes, j=i:num_nodes
-			  sumH[clique[i],clique[j]] += subH[k][i,j]
-		  end
-	  end
-	  # @constraint(mMP, [i=1:(2*nbuses),j=i:(2*nbuses)], H[i,j] - sumH[i,j] == 0)
-	  @constraint(mMP, [i=1:(2*nbuses),j=i:(2*nbuses)], C[i,j] - sumH[i,j] == 0)
-  else
-	  @variable(mMP, H[i=1:(2*nbuses),j=1:(2*nbuses)], SDP)
-	  @constraint(mMP, SetH[i=1:(2*nbuses),j=i:(2*nbuses)], C[i,j] - H[i,j] == 0)
-  end
+		for k in 1:length(max_cliques)
+			clique = sort(max_cliques[k])
+			num_nodes = length(clique)
+			# @show (k,clique)
+			subH[k] = @variable(mMP, [i=1:num_nodes,j=1:num_nodes], SDP)
+			for i=1:num_nodes, j=i:num_nodes
+				sumH[clique[i],clique[j]] += subH[k][i,j]
+		 	end
+		end
+		@constraint(mMP, [i=1:(2*nbuses),j=i:(2*nbuses)], C[i,j] - sumH[i,j] == 0)
+	else
+		# SDP matrix
+		@variable(mMP, H[i=1:(2*nbuses),j=1:(2*nbuses)], SDP)
+		@constraint(mMP, SetH[i=1:(2*nbuses),j=i:(2*nbuses)], C[i,j] - H[i,j] == 0)
+	end
 
   @objective(mMP, Max, sum(ζpLB[g]*Pmin[g] - ζpUB[g]*Pmax[g] + ζqLB[g]*Qmin[g] - ζqUB[g]*Qmax[g]  for g in G)
 	+ sum( γm[i]*Wmin[i]-γp[i]*Wmax[i] + α[i]*PD[i] + β[i]*QD[i] for i in N))
