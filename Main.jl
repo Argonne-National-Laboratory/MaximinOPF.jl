@@ -83,7 +83,10 @@ elseif FORM == SOCP
   include("DualSOCP.jl")
 else
    x_val = zeros(nlines)
-   x_val[208]=1
-   @show solveFullModelSDP(x_val)
+   x_val[1482]=1
+   x_val[2760]=1
+   x_val[4522]=1
+   x_val[4525]=1
+   @show solveFullModelSOCP(x_val)
 end
 

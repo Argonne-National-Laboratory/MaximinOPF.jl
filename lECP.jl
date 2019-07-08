@@ -50,6 +50,10 @@ function solveLECP(opfdata,K,HEUR)
   #mMP = Model(solver=CplexSolver(CPX_PARAM_SCRIND=1,CPX_PARAM_TILIM=MAX_TIME,CPX_PARAM_MIPINTERVAL=50,CPX_PARAM_LPMETHOD=4,CPX_PARAM_SOLUTIONTYPE=2,CPX_PARAM_STARTALG=4))
   # Define the model here
   @variable(mMP, x[l=L], Bin, start=0)
+  setlowerbound(x[177],1)
+  setlowerbound(x[181],1)
+  setlowerbound(x[182],1)
+  setlowerbound(x[208],1)
   @variable(mMP, -1 <= α[i=N] <= 1, start=0); @variable(mMP, -1 <= β[i=N] <= 1, start=0)
   @variable(mMP, δ[i=N] >= 0); @variable(mMP, γ[i=N] >= 0); @constraint(mMP, [i=N], δ[i]+γ[i] <= 1)
 
