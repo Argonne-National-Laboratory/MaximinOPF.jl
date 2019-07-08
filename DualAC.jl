@@ -6,6 +6,7 @@ Kibaek Kim
 Brian Dandurand
 =#
 
+include("utils.jl")
 
   # define data
   lines, buses, generators, baseMVA = opfdata.lines, opfdata.buses, opfdata.generators, opfdata.baseMVA
@@ -17,7 +18,7 @@ Brian Dandurand
   fromLines, toLines = mapLinesToBuses(buses, lines, busIdx)
   fromBus=zeros(Int,nlines); toBus=zeros(Int,nlines)
   for l in L
-    fromBus[l] = busIdx[lines[l].from]; toBus[l] = busIdx[lines[l].to] 
+    fromBus[l] = busIdx[lines[l].from]; toBus[l] = busIdx[lines[l].to]
   end
   # generators at each bus
   BusGeners = mapGenersToBuses(buses, generators, busIdx)
@@ -42,12 +43,18 @@ Brian Dandurand
 	Qmin[g] = generators[g].Qmin; Qmax[g] = generators[g].Qmax
   end
 
+chordal_decomposition = true
+	if chordal_decomposition
+		chordal = get_chordal_extension_complex(N, L, lines, busIdx)
+		max_cliques = maximal_cliques(get_graph(chordal))
+	end
+
   println("Done with initial setup.")
 function solveNodeAC(opfdata,ndata,solninfo,xDualVals)
 
   nThreads=1
-# The dual problem 
-  mMP = Model(solver=MosekSolver(MSK_IPAR_LOG=0,MSK_IPAR_NUM_THREADS=nThreads))
+# The dual problem
+  mMP = Model(solver=MosekSolver(MSK_IPAR_LOG=1,MSK_IPAR_NUM_THREADS=nThreads))
   println("Using ",nThreads," threads.")
   @variable(mMP, -1 <= α[i=N] <= 1)
   @variable(mMP, -1 <= β[i=N] <= 1)
@@ -71,47 +78,67 @@ function solveNodeAC(opfdata,ndata,solninfo,xDualVals)
        setupperbound(x[l],ndata[l])
        print(" x[$l]=",ndata[l])
     end
-  end 
+  end
   print("\n")
-  
+
   for i in N
    for g in BusGeners[i]
-    @constraint(mMP, 
+    @constraint(mMP,
 	-α[i] + ζpUB[g] - ζpLB[g] == 0 )
-    @constraint(mMP, 
-	-β[i] + ζqUB[g] - ζqLB[g] == 0 ) 
+    @constraint(mMP,
+	-β[i] + ζqUB[g] - ζqLB[g] == 0 )
    end
   end
 
   @expression(mMP, C[i=1:(2*nbuses),j=i:(2*nbuses)], 0)
   for i in N
-	C[i,i] += γp[i] - γm[i] + α[i]*Y["shR"][i] - β[i]*Y["shI"][i] 
-        C[nbuses+i,nbuses+i] += γp[i] - γm[i] + α[i]*Y["shR"][i] - β[i]*Y["shI"][i] 
+	C[i,i] += γp[i] - γm[i] + α[i]*Y["shR"][i] - β[i]*Y["shI"][i]
+        C[nbuses+i,nbuses+i] += γp[i] - γm[i] + α[i]*Y["shR"][i] - β[i]*Y["shI"][i]
     for l in fromLines[i]
-      C[i,i] += λF[l]*Y["ffR"][l] - μF[l]*Y["ffI"][l]  
-      C[nbuses+i,nbuses+i] += λF[l]*Y["ffR"][l] - μF[l]*Y["ffI"][l]  
+      C[i,i] += λF[l]*Y["ffR"][l] - μF[l]*Y["ffI"][l]
+      C[nbuses+i,nbuses+i] += λF[l]*Y["ffR"][l] - μF[l]*Y["ffI"][l]
     end
     for l in toLines[i]
-      C[i,i] += λT[l]*Y["ttR"][l] - μT[l]*Y["ttI"][l]  
-      C[nbuses+i,nbuses+i] += λT[l]*Y["ttR"][l] - μT[l]*Y["ttI"][l]  
+      C[i,i] += λT[l]*Y["ttR"][l] - μT[l]*Y["ttI"][l]
+      C[nbuses+i,nbuses+i] += λT[l]*Y["ttR"][l] - μT[l]*Y["ttI"][l]
     end
   end
   for l in L
       from=busIdx[lines[l].from]; to=busIdx[lines[l].to]
-      C[from,nbuses+to] -= 0.5*(  λF[l]*Y["ftI"][l] + μF[l]*Y["ftR"][l] - λT[l]*Y["tfI"][l] - μT[l]*Y["tfR"][l]  )   
-      C[to,nbuses+from] += 0.5*(  λF[l]*Y["ftI"][l] + μF[l]*Y["ftR"][l] - λT[l]*Y["tfI"][l] - μT[l]*Y["tfR"][l]  )   
+      C[from,nbuses+to] -= 0.5*(  λF[l]*Y["ftI"][l] + μF[l]*Y["ftR"][l] - λT[l]*Y["tfI"][l] - μT[l]*Y["tfR"][l]  )
+      C[to,nbuses+from] += 0.5*(  λF[l]*Y["ftI"][l] + μF[l]*Y["ftR"][l] - λT[l]*Y["tfI"][l] - μT[l]*Y["tfR"][l]  )
       if from < to
-        C[from,to] += 0.5*(λF[l]*Y["ftR"][l]  - μF[l]*Y["ftI"][l] + λT[l]*Y["tfR"][l] - μT[l]*Y["tfI"][l])   
-        C[nbuses+from,nbuses+to] += 0.5*(λF[l]*Y["ftR"][l]  - μF[l]*Y["ftI"][l] + λT[l]*Y["tfR"][l] - μT[l]*Y["tfI"][l])   
+        C[from,to] += 0.5*(λF[l]*Y["ftR"][l]  - μF[l]*Y["ftI"][l] + λT[l]*Y["tfR"][l] - μT[l]*Y["tfI"][l])
+        C[nbuses+from,nbuses+to] += 0.5*(λF[l]*Y["ftR"][l]  - μF[l]*Y["ftI"][l] + λT[l]*Y["tfR"][l] - μT[l]*Y["tfI"][l])
       else
-        C[to,from] += 0.5*(λF[l]*Y["ftR"][l]  - μF[l]*Y["ftI"][l] + λT[l]*Y["tfR"][l] - μT[l]*Y["tfI"][l])   
-        C[nbuses+to,nbuses+from] += 0.5*(λF[l]*Y["ftR"][l]  - μF[l]*Y["ftI"][l] + λT[l]*Y["tfR"][l] - μT[l]*Y["tfI"][l])   
+        C[to,from] += 0.5*(λF[l]*Y["ftR"][l]  - μF[l]*Y["ftI"][l] + λT[l]*Y["tfR"][l] - μT[l]*Y["tfI"][l])
+        C[nbuses+to,nbuses+from] += 0.5*(λF[l]*Y["ftR"][l]  - μF[l]*Y["ftI"][l] + λT[l]*Y["tfR"][l] - μT[l]*Y["tfI"][l])
       end
   end
-  @variable(mMP, H[i=1:(2*nbuses),j=1:(2*nbuses)], SDP)
-  @constraint(mMP, SetH[i=1:(2*nbuses),j=i:(2*nbuses)], C[i,j] - H[i,j] == 0)
 
-  @objective(mMP, Max, sum(ζpLB[g]*Pmin[g] - ζpUB[g]*Pmax[g] + ζqLB[g]*Qmin[g] - ζqUB[g]*Qmax[g]  for g in G) 
+  if chordal_decomposition
+	  # @variable(mMP, H[i=1:(2*nbuses),j=1:(2*nbuses)], Symmetric)
+	  # @constraint(mMP, SetH[i=1:(2*nbuses),j=i:(2*nbuses)], C[i,j] - H[i,j] == 0)
+	  subH = Dict{Int64,Any}()
+	    @expression(mMP, sumH[i=1:(2*nbuses),j=i:(2*nbuses)], 0)
+		@show length(max_cliques)
+	  for k in 1:length(max_cliques)
+		  clique = sort(max_cliques[k])
+		  num_nodes = length(clique)
+		  # @show (k,clique)
+		  subH[k] = @variable(mMP, [i=1:num_nodes,j=1:num_nodes], SDP)
+		  for i=1:num_nodes, j=i:num_nodes
+			  sumH[clique[i],clique[j]] += subH[k][i,j]
+		  end
+	  end
+	  # @constraint(mMP, [i=1:(2*nbuses),j=i:(2*nbuses)], H[i,j] - sumH[i,j] == 0)
+	  @constraint(mMP, [i=1:(2*nbuses),j=i:(2*nbuses)], C[i,j] - sumH[i,j] == 0)
+  else
+	  @variable(mMP, H[i=1:(2*nbuses),j=1:(2*nbuses)], SDP)
+	  @constraint(mMP, SetH[i=1:(2*nbuses),j=i:(2*nbuses)], C[i,j] - H[i,j] == 0)
+  end
+
+  @objective(mMP, Max, sum(ζpLB[g]*Pmin[g] - ζpUB[g]*Pmax[g] + ζqLB[g]*Qmin[g] - ζqUB[g]*Qmax[g]  for g in G)
 	+ sum( γm[i]*Wmin[i]-γp[i]*Wmax[i] + α[i]*PD[i] + β[i]*QD[i] for i in N))
 
 
@@ -135,10 +162,10 @@ function solveNodeAC(opfdata,ndata,solninfo,xDualVals)
 
   #These constraints are not quite valid, but their inclusion often results in much faster time to near optimal solution.
 
-  if HEUR == 1 
+  if HEUR == 1
   	@constraint(mMP, LambdaMuConstr1[l in L], λF[l]*Y["ftI"][l] - λT[l]*Y["tfI"][l] + μF[l]*Y["ftR"][l] - μT[l]*Y["tfR"][l] == 0.0)
   elseif HEUR == 2
-	@constraint(mMP, LambdaFequalsT[l in L], λF[l] - λT[l] == 0) 
+	@constraint(mMP, LambdaFequalsT[l in L], λF[l] - λT[l] == 0)
 	@constraint(mMP, muFequalsT[l in L], μF[l] - μT[l] == 0)
   elseif HEUR == 3
 	@constraint(mMP, LambdaMuConstr2[l in L], λF[l]*Y["tfR"][l] - λT[l]*Y["ftR"][l] - μF[l]*Y["tfI"][l] + μT[l]*Y["ftI"][l] == 0.0)
@@ -158,7 +185,7 @@ function solveNodeAC(opfdata,ndata,solninfo,xDualVals)
       #println(" with optimal value ",solninfo[nlines+1])
       if status == :Stall
 	println("solveNodeAC: Return status $status")
-      end	
+      end
   else
 	println("solveNodeAC: Return status $status")
   end
@@ -191,7 +218,7 @@ end
 
 absCoeff=zeros(nlines)
 for l in L
-  absCoeff[l] = 
+  absCoeff[l] =
 		  sqrt(Y["ffR"][l]^2 + Y["ffI"][l]^2 + Y["ttR"][l]^2 + Y["ttI"][l]^2
 	  	+ Y["ftR"][l]^2 + Y["ftI"][l]^2 + Y["tfR"][l]^2 + Y["tfI"][l]^2)
 end
@@ -306,11 +333,11 @@ function solveBnBSDP(opfdata,incSoln)
           if (nNodes % 10) == 0
 	    incVal,nXs=primHeur(opfdata,x_val,feasXs,nXs,incSoln,incVal,xDualVals)
           end
-        end 
+        end
       end #not fathomed due to bound after solving node
     end # no intial fathoming
     E=enumerate(nodedata)
-    println("There are ",length(E)," nodes left.") 
+    println("There are ",length(E)," nodes left.")
     if length(E) > 0
       nodekey,bestUBVal=findNextNode(E)
     else
@@ -331,7 +358,7 @@ end
 function primHeur(opfdata,x_val,feasXs,nXs,incSoln,incVal,xDualVals)
   sortIdx = zeros(Int,nlines)
   sortperm!(sortIdx,x_val[1:nlines])
-  bestKIdx = sortIdx[(nlines-K+1):nlines] 
+  bestKIdx = sortIdx[(nlines-K+1):nlines]
   pX = zeros(Int,nlines)
   pX[bestKIdx]= 1
   Xs = enumerate(feasXs)
@@ -409,13 +436,13 @@ printResults=true
 if printResults
 if FORM == AC
     @printf("AC &    ")
-elseif FORM == SDP  
+elseif FORM == SDP
     @printf("SDP &    ")
-elseif FORM == SOCP || FORM == SOCPBds 
+elseif FORM == SOCP || FORM == SOCPBds
     @printf("SOCP &    ")
-elseif FORM == DC 
+elseif FORM == DC
     @printf("DC &    ")
-elseif FORM == ACSOC 
+elseif FORM == ACSOC
     @printf("ACSOC &    ")
 else
     println("Not implemented")
@@ -448,5 +475,5 @@ println("No. Nodes: ", nNodes)
 println("Best bound:  ", bestUBVal)
 @printf("Objective value: %.3f\n", incVal)
 @show runtime
-@show finalXSoln 
+@show finalXSoln
 end
