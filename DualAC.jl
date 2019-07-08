@@ -33,18 +33,18 @@ include("utils.jl")
   PD = zeros(nbuses); QD = zeros(nbuses)
   Wmin = zeros(nbuses); Wmax = zeros(nbuses)
   for i in N
-	PD[i] = buses[i].Pd / baseMVA; QD[i] = buses[i].Qd / baseMVA
-	Wmin[i] = (buses[i].Vmin)^2; Wmax[i] = (buses[i].Vmax)^2
+    PD[i] = buses[i].Pd / baseMVA; QD[i] = buses[i].Qd / baseMVA
+    Wmin[i] = (buses[i].Vmin)^2; Wmax[i] = (buses[i].Vmax)^2
   end
   Pmin = zeros(ngens); Pmax = zeros(ngens)
   Qmin = zeros(ngens); Qmax = zeros(ngens)
   for g in G
-	Pmin[g] = generators[g].Pmin; Pmax[g] = generators[g].Pmax
-	Qmin[g] = generators[g].Qmin; Qmax[g] = generators[g].Qmax
+    Pmin[g] = generators[g].Pmin; Pmax[g] = generators[g].Pmax
+    Qmin[g] = generators[g].Qmin; Qmax[g] = generators[g].Qmax
   end
 
-	# indicate to enable chordal decomposition
-	chordal_decomposition = true
+    # indicate to enable chordal decomposition
+    chordal_decomposition = true
 
   println("Done with initial setup.")
 function solveNodeAC(opfdata,ndata,solninfo,xDualVals)
@@ -81,15 +81,15 @@ function solveNodeAC(opfdata,ndata,solninfo,xDualVals)
   for i in N
    for g in BusGeners[i]
     @constraint(mMP,
-	-α[i] + ζpUB[g] - ζpLB[g] == 0 )
+    -α[i] + ζpUB[g] - ζpLB[g] == 0 )
     @constraint(mMP,
-	-β[i] + ζqUB[g] - ζqLB[g] == 0 )
+    -β[i] + ζqUB[g] - ζqLB[g] == 0 )
    end
   end
 
   @expression(mMP, C[i=1:(2*nbuses),j=i:(2*nbuses)], 0)
   for i in N
-	C[i,i] += γp[i] - γm[i] + α[i]*Y["shR"][i] - β[i]*Y["shI"][i]
+    C[i,i] += γp[i] - γm[i] + α[i]*Y["shR"][i] - β[i]*Y["shI"][i]
         C[nbuses+i,nbuses+i] += γp[i] - γm[i] + α[i]*Y["shR"][i] - β[i]*Y["shI"][i]
     for l in fromLines[i]
       C[i,i] += λF[l]*Y["ffR"][l] - μF[l]*Y["ffI"][l]
@@ -113,41 +113,41 @@ function solveNodeAC(opfdata,ndata,solninfo,xDualVals)
       end
   end
 
-	if chordal_decomposition
-		# Compute new topology for each node subproblem
-		nodeL = Int64[]
-		for l=L
-			if ndata[l] != 1
-				push!(nodeL,l)
-			end
-		end
+    if chordal_decomposition
+        # Compute new topology for each node subproblem
+        nodeL = Int64[]
+        for l=L
+            if ndata[l] != 1
+                push!(nodeL,l)
+            end
+        end
 
-		# Get maximal cliques from the chordal extension of the network topology
-		chordal = get_chordal_extension_complex(N, nodeL, lines, busIdx)
-		max_cliques = maximal_cliques(get_graph(chordal))
+        # Get maximal cliques from the chordal extension of the network topology
+        chordal = get_chordal_extension_complex(N, nodeL, lines, busIdx)
+        max_cliques = maximal_cliques(get_graph(chordal))
 
-		# Applying Agler's theorem (matrix decomposition)
-		subH = Dict{Int64,Any}()
-	    @expression(mMP, sumH[i=1:(2*nbuses),j=i:(2*nbuses)], 0)
-		@show length(max_cliques)
-		for k in 1:length(max_cliques)
-			clique = sort(max_cliques[k])
-			num_nodes = length(clique)
-			# @show (k,clique)
-			subH[k] = @variable(mMP, [i=1:num_nodes,j=1:num_nodes], SDP)
-			for i=1:num_nodes, j=i:num_nodes
-				sumH[clique[i],clique[j]] += subH[k][i,j]
-		 	end
-		end
-		@constraint(mMP, [i=1:(2*nbuses),j=i:(2*nbuses)], C[i,j] - sumH[i,j] == 0)
-	else
-		# SDP matrix
-		@variable(mMP, H[i=1:(2*nbuses),j=1:(2*nbuses)], SDP)
-		@constraint(mMP, SetH[i=1:(2*nbuses),j=i:(2*nbuses)], C[i,j] - H[i,j] == 0)
-	end
+        # Applying Agler's theorem (matrix decomposition)
+        subH = Dict{Int64,Any}()
+        @expression(mMP, sumH[i=1:(2*nbuses),j=i:(2*nbuses)], 0)
+        @show length(max_cliques)
+        for k in 1:length(max_cliques)
+            clique = sort(max_cliques[k])
+            num_nodes = length(clique)
+            # @show (k,clique)
+            subH[k] = @variable(mMP, [i=1:num_nodes,j=1:num_nodes], SDP)
+            for i=1:num_nodes, j=i:num_nodes
+                sumH[clique[i],clique[j]] += subH[k][i,j]
+             end
+        end
+        @constraint(mMP, [i=1:(2*nbuses),j=i:(2*nbuses)], C[i,j] - sumH[i,j] == 0)
+    else
+        # SDP matrix
+        @variable(mMP, H[i=1:(2*nbuses),j=1:(2*nbuses)], SDP)
+        @constraint(mMP, SetH[i=1:(2*nbuses),j=i:(2*nbuses)], C[i,j] - H[i,j] == 0)
+    end
 
   @objective(mMP, Max, sum(ζpLB[g]*Pmin[g] - ζpUB[g]*Pmax[g] + ζqLB[g]*Qmin[g] - ζqUB[g]*Qmax[g]  for g in G)
-	+ sum( γm[i]*Wmin[i]-γp[i]*Wmax[i] + α[i]*PD[i] + β[i]*QD[i] for i in N))
+    + sum( γm[i]*Wmin[i]-γp[i]*Wmax[i] + α[i]*PD[i] + β[i]*QD[i] for i in N))
 
 
   @constraint(mMP, [l in L], α[busIdx[lines[l].from]] - x[l] - λF[l] <= 0)
@@ -171,12 +171,12 @@ function solveNodeAC(opfdata,ndata,solninfo,xDualVals)
   #These constraints are not quite valid, but their inclusion often results in much faster time to near optimal solution.
 
   if HEUR == 1
-  	@constraint(mMP, LambdaMuConstr1[l in L], λF[l]*Y["ftI"][l] - λT[l]*Y["tfI"][l] + μF[l]*Y["ftR"][l] - μT[l]*Y["tfR"][l] == 0.0)
+      @constraint(mMP, LambdaMuConstr1[l in L], λF[l]*Y["ftI"][l] - λT[l]*Y["tfI"][l] + μF[l]*Y["ftR"][l] - μT[l]*Y["tfR"][l] == 0.0)
   elseif HEUR == 2
-	@constraint(mMP, LambdaFequalsT[l in L], λF[l] - λT[l] == 0)
-	@constraint(mMP, muFequalsT[l in L], μF[l] - μT[l] == 0)
+    @constraint(mMP, LambdaFequalsT[l in L], λF[l] - λT[l] == 0)
+    @constraint(mMP, muFequalsT[l in L], μF[l] - μT[l] == 0)
   elseif HEUR == 3
-	@constraint(mMP, LambdaMuConstr2[l in L], λF[l]*Y["tfR"][l] - λT[l]*Y["ftR"][l] - μF[l]*Y["tfI"][l] + μT[l]*Y["ftI"][l] == 0.0)
+    @constraint(mMP, LambdaMuConstr2[l in L], λF[l]*Y["tfR"][l] - λT[l]*Y["ftR"][l] - μF[l]*Y["tfI"][l] + μT[l]*Y["ftI"][l] == 0.0)
   end
 
   status=solve(mMP)
@@ -184,7 +184,7 @@ function solveNodeAC(opfdata,ndata,solninfo,xDualVals)
       for l in L
         solninfo[l] = getvalue(x[l])
         from=busIdx[lines[l].from]; to=busIdx[lines[l].to]
-	xDualVals[l] = 1 + abs(getvalue(α[from]))+abs(getvalue(α[to]))+abs(getvalue(β[from]))+abs(getvalue(β[to]))
+    xDualVals[l] = 1 + abs(getvalue(α[from]))+abs(getvalue(α[to]))+abs(getvalue(β[from]))+abs(getvalue(β[to]))
         #print(" d[$l]=",getdual(x[l]))
       end
       #print("\n")
@@ -192,10 +192,10 @@ function solveNodeAC(opfdata,ndata,solninfo,xDualVals)
       solninfo[nlines+2] = getsolvetime(mMP)
       #println(" with optimal value ",solninfo[nlines+1])
       if status == :Stall
-	println("solveNodeAC: Return status $status")
+    println("solveNodeAC: Return status $status")
       end
   else
-	println("solveNodeAC: Return status $status")
+    println("solveNodeAC: Return status $status")
   end
 end #end of function
 
@@ -203,12 +203,12 @@ function xIntTol(x_val)
     tol = 1e-6
     for l in L
       if min(abs(x_val[l]),abs(1-x_val[l])) > tol
-	return false
+    return false
       end
     end
     # at this point, x_val is verified to be binary within tolerance
     for l in L
-	x_val[l] = round(x_val[l])
+    x_val[l] = round(x_val[l])
     end
     return true
 end
@@ -217,8 +217,8 @@ function findBranchIdx(x_val)
   maxval=min(x_val[1], 1-x_val[1])
   for l in L
     if min(x_val[l], 1-x_val[l]) > maxval
-	maxidx=l
-	maxval = min(x_val[l],1-x_val[l])
+    maxidx=l
+    maxval = min(x_val[l],1-x_val[l])
     end
   end
   return maxidx,maxval
@@ -227,8 +227,8 @@ end
 absCoeff=zeros(nlines)
 for l in L
   absCoeff[l] =
-		  sqrt(Y["ffR"][l]^2 + Y["ffI"][l]^2 + Y["ttR"][l]^2 + Y["ttI"][l]^2
-	  	+ Y["ftR"][l]^2 + Y["ftI"][l]^2 + Y["tfR"][l]^2 + Y["tfI"][l]^2)
+          sqrt(Y["ffR"][l]^2 + Y["ffI"][l]^2 + Y["ttR"][l]^2 + Y["ttI"][l]^2
+          + Y["ftR"][l]^2 + Y["ftI"][l]^2 + Y["tfR"][l]^2 + Y["tfI"][l]^2)
 end
 function findBranchIdx2(x_val)
   global absCoeff
@@ -236,8 +236,8 @@ function findBranchIdx2(x_val)
   maxval=absCoeff[1]*min(x_val[1], 1-x_val[1])
   for l in L
     if absCoeff[l]*min(x_val[l], 1-x_val[l]) > maxval
-	maxidx=l
-	maxval = absCoeff[l]*min(x_val[l],1-x_val[l])
+    maxidx=l
+    maxval = absCoeff[l]*min(x_val[l],1-x_val[l])
     end
   end
   return maxidx,maxval
@@ -247,8 +247,8 @@ function findBranchIdx3(x_val,xDualVals)
   maxval=xDualVals[1]*min(x_val[1], 1-x_val[1])
   for l in L
     if xDualVals[l]*min(x_val[l], 1-x_val[l]) > maxval
-	maxidx=l
-	maxval = xDualVals[l]*min(x_val[l],1-x_val[l])
+    maxidx=l
+    maxval = xDualVals[l]*min(x_val[l],1-x_val[l])
     end
   end
   return maxidx,maxval
@@ -259,7 +259,7 @@ function findNextNode(E)
   weakestUBVal = -1
   for (k,n) in E
     if n[2][nlines+1] > weakestUBVal
-	nodekey = n[1]
+    nodekey = n[1]
         weakestUBVal = n[2][nlines+1]
     end
   end
@@ -313,11 +313,11 @@ function solveBnBSDP(opfdata,incSoln)
       if objval < incVal
         println("\tFathoming due to bound $objval < $incVal")
       else
-	# Apply primal heuristic
+    # Apply primal heuristic
         if xIntTol(x_val)
           println("\tFathoming due to optimality")
           # Apply primal heuristic
-	  incVal,nXs=primHeurXInt(x_val,objval,feasXs,nXs,incSoln,incVal)
+      incVal,nXs=primHeurXInt(x_val,objval,feasXs,nXs,incSoln,incVal)
         else
           #maxidx,maxval=findBranchIdx(x_val)
           maxidx,maxval=findBranchIdx2(x_val)
@@ -339,7 +339,7 @@ function solveBnBSDP(opfdata,incSoln)
           nNodes += 1
           # Apply primal heuristic
           if (nNodes % 10) == 0
-	    incVal,nXs=primHeur(opfdata,x_val,feasXs,nXs,incSoln,incVal,xDualVals)
+        incVal,nXs=primHeur(opfdata,x_val,feasXs,nXs,incSoln,incVal,xDualVals)
           end
         end
       end #not fathomed due to bound after solving node
@@ -353,7 +353,7 @@ function solveBnBSDP(opfdata,incSoln)
       break
     end
     if (time_ns()-start_time)/1e9 > MAX_TIME
-	break
+    break
     end
   end # while
   println("Best UB $bestUBVal versus incumbent value $incVal")
@@ -373,8 +373,8 @@ function primHeur(opfdata,x_val,feasXs,nXs,incSoln,incVal,xDualVals)
   isNewX = true
   for (k,feasx) in Xs
     if sum( abs(pX[l]-feasx[2][l]) for l=1:nlines ) < 1e-6
-	isNewX=false
-	break
+    isNewX=false
+    break
     end
   end
   if isNewX
@@ -403,8 +403,8 @@ function primHeurXInt(x_val,opt_val,feasXs,nXs,incSoln,incVal)
   isNewX = true
   for (k,feasx) in Xs
     if sum( abs(x_val[l]-feasx[2][l]) for l=1:nlines ) < 1e-6
-	isNewX=false
-	break
+    isNewX=false
+    break
     end
   end
   if isNewX
