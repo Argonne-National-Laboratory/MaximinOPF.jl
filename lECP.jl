@@ -45,23 +45,22 @@ function solveLECP(opfdata,K,HEUR)
 	Qmin[g] = generators[g].Qmin; Qmax[g] = generators[g].Qmax
   end
 
+	# indicate to enable chordal decomposition
 	chordal_decomposition = false
+
 	if chordal_decomposition
+		# Constrcut a chordal extension of the network topology
 		chordal = get_chordal_extension_complex(N, L, lines, busIdx)
+
+		# Get the maximal cliques from the chordal extension
 		max_cliques = maximal_cliques(get_graph(chordal))
 		@show length(max_cliques)
 
+		# Precalculate the number of nodes in each clique
 		num_nodes = Dict{Int64,Int64}()
-		Ek = Dict{Int64,SparseMatrixCSC{Float64,Int64}}()
 		for k in 1:length(max_cliques)
 			clique = sort(max_cliques[k])
 			num_nodes[k] = length(clique)
-
-			Is = Int64[]; Js = Int64[]; Vs = Float64[];
-			for i = 1:num_nodes[k]
-				push!(Is, i); push!(Js, clique[i]); push!(Vs, 1)
-			end
-			Ek[k] = sparse(Is,Js,Vs,2*nbuses,2*nbuses)
 		end
 	end
 
@@ -71,7 +70,7 @@ function solveLECP(opfdata,K,HEUR)
   mMP = Model(solver=CplexSolver(
   	CPX_PARAM_SCRIND=1,
 	CPX_PARAM_TILIM=MAX_TIME,
-	CPX_PARAM_MIPDISPLAY=5,
+	CPX_PARAM_MIPDISPLAY=4,
 	CPX_PARAM_MIPINTERVAL=1,
 	# CPX_PARAM_NODELIM=1,
 	# CPX_PARAM_HEURFREQ=-1,
@@ -80,10 +79,6 @@ function solveLECP(opfdata,K,HEUR)
   #mMP = Model(solver=CplexSolver(CPX_PARAM_SCRIND=1,CPX_PARAM_TILIM=MAX_TIME,CPX_PARAM_MIPINTERVAL=50,CPX_PARAM_LPMETHOD=4,CPX_PARAM_SOLUTIONTYPE=2,CPX_PARAM_STARTALG=4))
   # Define the model here
   @variable(mMP, x[l=L], Bin, start=0)
-  setlowerbound(x[177],1)
-  setlowerbound(x[181],1)
-  setlowerbound(x[182],1)
-  setlowerbound(x[208],1)
   @variable(mMP, -1 <= α[i=N] <= 1, start=0); @variable(mMP, -1 <= β[i=N] <= 1, start=0)
   @variable(mMP, δ[i=N] >= 0); @variable(mMP, γ[i=N] >= 0); @constraint(mMP, [i=N], δ[i]+γ[i] <= 1)
 
@@ -177,6 +172,8 @@ function solveLECP(opfdata,K,HEUR)
 	end
 
 	if chordal_decomposition
+		# Smaller PSD matrices to apply Agler's theorem
+		# Each matrix will be approximated by linear inequalities.
 		@variable(mMP, subH[k=1:length(max_cliques),i=1:num_nodes[k],j=i:num_nodes[k]])
 		@expression(mMP, sumH[i=1:(2*nbuses),j=i:(2*nbuses)], 0)
 		for k in 1:length(max_cliques)
@@ -186,10 +183,8 @@ function solveLECP(opfdata,K,HEUR)
 				sumH[clique[i],clique[j]] += subH[k,i,j]
 			end
 		end
+		# Map each smaller PSD matrix to the corresponding element
 		@constraint(mMP, [i=1:(2*nbuses),j=i:(2*nbuses)], C[i,j] - sumH[i,j] == 0)
-	else
-		# @variable(mMP, H[i=1:(2*nbuses),j=1:(2*nbuses)], SDP)
-		# @constraint(mMP, SetH[i=1:(2*nbuses),j=i:(2*nbuses)], C[i,j] - H[i,j] == 0)
 	end
 
   maxNSG = 1
@@ -262,78 +257,7 @@ function solveLECP(opfdata,K,HEUR)
 					localcut=useLocalCuts)
 				ncuts += 1
 			end
-
-			#=
-			Hk = Ek[k]*H*transpose(Ek[k])
-
-			E = eigs(Hk, which=:SR, maxiter=100000, tol=1e-8)
-			η0Val = E[1][1]
-			if η0Val < -TOL
-			    sg["α"] = zeros(nbuses,maxNSG)
-			    sg["β"] = zeros(nbuses,maxNSG)
-			    sg["γ"] = zeros(nbuses,maxNSG)
-			    sg["δ"] = zeros(nbuses,maxNSG)
-			    sg["λF"] = zeros(nlines,maxNSG)
-			    sg["μF"] = zeros(nlines,maxNSG)
-			    sg["λT"] = zeros(nlines,maxNSG)
-			    sg["μT"] = zeros(nlines,maxNSG)
-				for i in 1:num_nodes
-					if clique[i] <= nbuses
-						v["R"][clique[i]] = E[2][i,1]
-					else
-						v["I"][clique[i]-nbuses] = E[2][i,1]
-					end
-				end
-				for i in N
-					W_val = v["R"][i]^2 + v["I"][i]^2
-					sg["α"][i,1] = Y["shR"][i] * W_val; sg["β"][i,1] = -Y["shI"][i] * W_val
-					sg["δ"][i,1] = W_val; sg["γ"][i,1] = -W_val
-				end
-				subL = []
-				for l in L
-					from = fromBus[l]; to = toBus[l]
-					if from in clique && to in clique
-						push!(subL,l)
-					 	e_valF = v["R"][from]; f_valF = v["I"][from]; W_valF = e_valF^2 + f_valF^2
-					 	e_valT = v["R"][to]; f_valT = v["I"][to]; W_valT = e_valT^2 + f_valT^2
-						Wr_val = e_valF*e_valT + f_valF*f_valT; Wi_val = e_valT*f_valF - e_valF*f_valT
-						sg["λF"][l,1] = (Y["ffR"][l] * W_valF + Y["ftR"][l] * Wr_val + Y["ftI"][l] * Wi_val)
-						sg["λT"][l,1] = (Y["ttR"][l] * W_valT + Y["tfR"][l] * Wr_val - Y["tfI"][l] * Wi_val)
-						sg["μF"][l,1] = (-Y["ffI"][l] * W_valF - Y["ftI"][l] * Wr_val + Y["ftR"][l] * Wi_val)
-						sg["μT"][l,1] = (-Y["ttI"][l] * W_valT - Y["tfI"][l] * Wr_val - Y["tfR"][l] * Wi_val)
-					end
-				end
-				@lazyconstraint(cb,
-					  sum((sg["α"][i,1])*α[i] for i in N)
-					+ sum((sg["β"][i,1])*β[i] for i in N)
-					+ sum((sg["γ"][i,1])*γ[i] for i in N)
-					+ sum((sg["δ"][i,1])*δ[i] for i in N)
-					+ sum((sg["λF"][l,1])*λF[l] + (sg["λT"][l,1])*λT[l] for l in L)
-					+ sum((sg["μF"][l,1])*μF[l] + (sg["μT"][l,1])*μT[l] for l in L)
-					>= 0,
-					localcut=useLocalCuts)
-			    ncuts += 1
-			end
-			=#
 		end
-
-		# try
-		# 	η0Val = solveEta0Eigs(H,opfdata,v)
-		# catch exc
-		# 	println("Exception caught with eigs(), solving η0Val subproblem with Ipopt as recourse.")
-		# 	println(exc)
-		# 	η0Val = solveEta0SDP(H,opfdata,v)
-		# end
-		# if η0Val < -TOL
-		# 	computeSG(Y,opfdata,v,sg)
-		# 	@lazyconstraint(cb, 0 <= sum( (sg["α"][i,1])* α[i] for i in N) + sum( (sg["β"][i,1])* β[i] for i in N )
-		# 	+ sum( (sg["γ"][i,1])* γ[i] for i in N)  + sum( (sg["δ"][i,1])* δ[i] for i in N)
-		# 	+ sum( (sg["λF"][l,1])* λF[l] + (sg["λT"][l,1])* λT[l] for l in L) + sum( (sg["μF"][l,1])* μF[l] + (sg["μT"][l,1])* μT[l] for l in L),
-		# 	localcut=useLocalCuts)
-		# 	ncuts += 1
-		# else
-		# 	println("Tolerance met for not generating a new lazy cut.")
-		# end
 	else
 	#  generate cut(s)
         for i in N
