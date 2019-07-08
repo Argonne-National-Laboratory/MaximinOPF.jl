@@ -231,19 +231,26 @@ function solveLECP(opfdata,K,HEUR)
 
 			Is = Int64[]; Js = Int64[]; Vs = Float64[]
 			for i=1:num_nodes[k], j=i:num_nodes[k]
-				if getvalue(subH[k,i,j]) > 1e-10
+				# @show (k,i,j,getvalue(subH[k,i,j]))
+				if abs(getvalue(subH[k,i,j])) > 1e-10
 					push!(Is, i)
 					push!(Js, j)
 					push!(Vs, getvalue(subH[k,i,j]))
+					# Make it symmetric for off-diagonal elements
+					if i != j
+						push!(Is, j)
+						push!(Js, i)
+						push!(Vs, getvalue(subH[k,i,j]))
+					end
 				end
 			end
 			Hk = sparse(Is,Js,Vs,num_nodes[k],num_nodes[k])
-			@show Hk
+			# @show (typeof(Hk),num_nodes[k],Hk)
 
-			E = eigs(Hk, which=:SR, maxiter=100000, tol=1e-8)
-			@show E
+			E = eigs(Hk, which=:SR, nev=1)
+			# @show E
 			η0Val = E[1][1]
-			@show η0Val
+			# @show η0Val
 			if η0Val < -TOL
 				@lazyconstraint(cb,
 					  sum(E[2][i,1]*E[2][i,1]*subH[k,i,i] for i=1:num_nodes[k])
