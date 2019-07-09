@@ -16,12 +16,13 @@ function get_graph(mat::SparseMatrixCSC{Float64,Int64})
 end
 
 # Get the n-by-n chordal extension
-function get_chordal_extension(N, L, lines, busIdx)
+function get_chordal_extension(opfdata)
+    N, L, fromBus, toBus = opfdata.N, opfdata.L, opfdata.fromBus, opfdata.toBus  
     # Laplacian graph
     I = Int64[]; J = Int64[]; V = Float64[]
     for l in L
-        fid = busIdx[lines[l].from]
-        tid = busIdx[lines[l].to]
+        fid = fromBus[l]
+        tid = toBus[l]
         push!(I,fid); push!(J,tid); push!(V,-1)
         push!(I,tid); push!(J,fid); push!(V,-1)
     end
@@ -36,13 +37,14 @@ function get_chordal_extension(N, L, lines, busIdx)
 end
 
 # Get the 2n-by-2n chordal extension
-function get_chordal_extension_complex(N, L, lines, busIdx)
+function get_chordal_extension_complex(opfdata)
+    N, L, fromBus, toBus = opfdata.N, opfdata.L, opfdata.fromBus, opfdata.toBus  
     # Laplacian graph
     num = length(N)
     I = Int64[]; J = Int64[]; V = Float64[]
     for l in L
-        fid = busIdx[lines[l].from]
-        tid = busIdx[lines[l].to]
+        fid = fromBus[l]
+        tid = toBus[l]
         push!(I,fid); push!(J,tid); push!(V,-1)
         push!(I,tid); push!(J,fid); push!(V,-1)
         push!(I,fid); push!(J,num+tid); push!(V,-1)

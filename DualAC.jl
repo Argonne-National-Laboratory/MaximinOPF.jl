@@ -8,40 +8,11 @@ Brian Dandurand
 
 include("utils.jl")
 
-  # define data
-  lines, buses, generators, baseMVA = opfdata.lines, opfdata.buses, opfdata.generators, opfdata.baseMVA
-  nbuses, nlines, ngens = length(buses), length(lines), length(generators)
-  N = 1:nbuses; L = 1:nlines; G = 1:ngens
-  # build a dictionary between buses ids and their indexes
-  busIdx = mapBusIdToIdx(buses)
-  # set up the fromLines and toLines for each bus
-  fromLines, toLines = mapLinesToBuses(buses, lines, busIdx)
-  fromBus=zeros(Int,nlines); toBus=zeros(Int,nlines)
-  for l in L
-    fromBus[l] = busIdx[lines[l].from]; toBus[l] = busIdx[lines[l].to]
-  end
-  # generators at each bus
-  BusGeners = mapGenersToBuses(buses, generators, busIdx)
-
-  Y = Dict()  # Admittances
-  Y["ffR"] = opfdata.admittancesAC.YffR; Y["ffI"] = opfdata.admittancesAC.YffI;
-  Y["ttR"] = opfdata.admittancesAC.YttR; Y["ttI"] = opfdata.admittancesAC.YttI;
-  Y["ftR"] = opfdata.admittancesAC.YftR; Y["ftI"] = opfdata.admittancesAC.YftI;
-  Y["tfR"] = opfdata.admittancesAC.YtfR; Y["tfI"] = opfdata.admittancesAC.YtfI;
-  Y["shR"] = opfdata.admittancesAC.YshR; Y["shI"] = opfdata.admittancesAC.YshI;
-
-  PD = zeros(nbuses); QD = zeros(nbuses)
-  Wmin = zeros(nbuses); Wmax = zeros(nbuses)
-  for i in N
-    PD[i] = buses[i].Pd / baseMVA; QD[i] = buses[i].Qd / baseMVA
-    Wmin[i] = (buses[i].Vmin)^2; Wmax[i] = (buses[i].Vmax)^2
-  end
-  Pmin = zeros(ngens); Pmax = zeros(ngens)
-  Qmin = zeros(ngens); Qmax = zeros(ngens)
-  for g in G
-    Pmin[g] = generators[g].Pmin; Pmax[g] = generators[g].Pmax
-    Qmin[g] = generators[g].Qmin; Qmax[g] = generators[g].Qmax
-  end
+  # OBTAIN PROBLEM INFORMATION FROM opfdata
+    nbuses, nlines, ngens = opfdata.nbuses, opfdata.nlines, opfdata.ngens
+    N, L, G = opfdata.N, opfdata.L, opfdata.G 
+    fromLines,toLines,fromBus,toBus = opfdata.fromLines, opfdata.toLines, opfdata.fromBus, opfdata.toBus
+    BusGeners, Y = opfdata.BusGeners, opfdata.Y
 
     # indicate to enable chordal decomposition
     chordal_decomposition = true
@@ -62,10 +33,6 @@ function solveNodeAC(opfdata,ndata,solninfo,xDualVals)
   @variable(mMP, ζpLB[g=G] >= 0)
   @variable(mMP, ζqUB[g=G] >= 0)
   @variable(mMP, ζqLB[g=G] >= 0)
-  @variable(mMP, λF[l=L])
-  @variable(mMP, λT[l=L])
-  @variable(mMP, μF[l=L])
-  @variable(mMP, μT[l=L])
   @variable(mMP, 0.0 <= x[l=L] <= 1.0)
   @constraint(mMP, sum(x[l] for l in L) <= K)
   print("Fixing the following x: ")
@@ -86,6 +53,18 @@ function solveNodeAC(opfdata,ndata,solninfo,xDualVals)
     -β[i] + ζqUB[g] - ζqLB[g] == 0 )
    end
   end
+  # McCormick inequalities enforcing bilinear equalities
+    # auxiliary dual variables due to McCormick reformulation of cross terms appearing in the Lagrangian
+      @variable(mMP, λF[l=L], start=0); @variable(mMP, λT[l=L], start=0); @variable(mMP, μF[l=L], start=0); @variable(mMP, μT[l=L], start=0)
+    @constraint(mMP, AMcf1[l in L], α[fromBus[l]] - x[l] <= λF[l]); @constraint(mMP, AMcf2[l in L], α[fromBus[l]] + x[l] >= λF[l])
+    @constraint(mMP, AMcf3[l in L], -(1 - x[l]) <= λF[l]); @constraint(mMP, AMcf4[l in L], (1 - x[l]) >= λF[l])
+    @constraint(mMP, AMct1[l in L], α[toBus[l]] - x[l] <= λT[l]); @constraint(mMP, AMct2[l in L], α[toBus[l]] + x[l] >= λT[l])
+    @constraint(mMP, AMct3[l in L], -(1 - x[l]) <= λT[l]); @constraint(mMP, AMct4[l in L], (1 - x[l]) >= λT[l])
+
+    @constraint(mMP, BMcf1[l in L], β[fromBus[l]] - x[l] <= μF[l]); @constraint(mMP, BMcf2[l in L], β[fromBus[l]] + x[l] >= μF[l])
+    @constraint(mMP, BMcf3[l in L], -(1 - x[l]) <= μF[l]); @constraint(mMP, BMcf4[l in L], (1 - x[l]) >= μF[l])
+    @constraint(mMP, BMct1[l in L], β[toBus[l]] - x[l] <= μT[l]); @constraint(mMP, BMct2[l in L], β[toBus[l]] + x[l] >= μT[l])
+    @constraint(mMP, BMct3[l in L], -(1 - x[l]) <= μT[l]); @constraint(mMP, BMct4[l in L], (1 - x[l]) >= μT[l])
 
   @expression(mMP, C[i=1:(2*nbuses),j=i:(2*nbuses)], 0)
   for i in N
@@ -101,7 +80,7 @@ function solveNodeAC(opfdata,ndata,solninfo,xDualVals)
     end
   end
   for l in L
-      from=busIdx[lines[l].from]; to=busIdx[lines[l].to]
+      from=fromBus[l]; to=toBus[l]
       C[from,nbuses+to] -= 0.5*(  λF[l]*Y["ftI"][l] + μF[l]*Y["ftR"][l] - λT[l]*Y["tfI"][l] - μT[l]*Y["tfR"][l]  )
       C[to,nbuses+from] += 0.5*(  λF[l]*Y["ftI"][l] + μF[l]*Y["ftR"][l] - λT[l]*Y["tfI"][l] - μT[l]*Y["tfR"][l]  )
       if from < to
@@ -123,7 +102,7 @@ function solveNodeAC(opfdata,ndata,solninfo,xDualVals)
         end
 
         # Get maximal cliques from the chordal extension of the network topology
-        chordal = get_chordal_extension_complex(N, nodeL, lines, busIdx)
+        chordal = get_chordal_extension_complex(opfdata)
         max_cliques = maximal_cliques(get_graph(chordal))
 
         # Applying Agler's theorem (matrix decomposition)
@@ -146,27 +125,10 @@ function solveNodeAC(opfdata,ndata,solninfo,xDualVals)
         @constraint(mMP, SetH[i=1:(2*nbuses),j=i:(2*nbuses)], C[i,j] - H[i,j] == 0)
     end
 
-  @objective(mMP, Max, sum(ζpLB[g]*Pmin[g] - ζpUB[g]*Pmax[g] + ζqLB[g]*Qmin[g] - ζqUB[g]*Qmax[g]  for g in G)
-    + sum( γm[i]*Wmin[i]-γp[i]*Wmax[i] + α[i]*PD[i] + β[i]*QD[i] for i in N))
+  @objective(mMP, Max, sum(ζpLB[g]*opfdata.Pmin[g] - ζpUB[g]*opfdata.Pmax[g] + ζqLB[g]*opfdata.Qmin[g] - ζqUB[g]*opfdata.Qmax[g]  for g in G)
+    + sum( γm[i]*opfdata.Wmin[i]-γp[i]*opfdata.Wmax[i] + α[i]*opfdata.PD[i] + β[i]*opfdata.QD[i] for i in N))
 
 
-  @constraint(mMP, [l in L], α[busIdx[lines[l].from]] - x[l] - λF[l] <= 0)
-  @constraint(mMP, [l in L], α[busIdx[lines[l].from]] + x[l] - λF[l] >= 0)
-  @constraint(mMP, [l in L], -(1 - x[l]) - λF[l] <= 0)
-  @constraint(mMP, [l in L], (1 - x[l]) - λF[l] >= 0)
-  @constraint(mMP, [l in L], α[busIdx[lines[l].to]] - x[l] - λT[l] <= 0)
-  @constraint(mMP, [l in L], α[busIdx[lines[l].to]] + x[l] - λT[l] >= 0)
-  @constraint(mMP, [l in L], -(1 - x[l]) - λT[l] <= 0)
-  @constraint(mMP, [l in L], (1 - x[l]) - λT[l] >= 0)
-
-  @constraint(mMP, [l in L], β[busIdx[lines[l].from]] - x[l] - μF[l] <= 0)
-  @constraint(mMP, [l in L], β[busIdx[lines[l].from]] + x[l] - μF[l] >= 0)
-  @constraint(mMP, [l in L], -(1 - x[l]) - μF[l] <= 0)
-  @constraint(mMP, [l in L], (1 - x[l]) - μF[l] >= 0)
-  @constraint(mMP, [l in L], β[busIdx[lines[l].to]] - x[l] - μT[l] <= 0)
-  @constraint(mMP, [l in L], β[busIdx[lines[l].to]] + x[l] - μT[l] >= 0)
-  @constraint(mMP, [l in L], -(1 - x[l]) - μT[l] <= 0)
-  @constraint(mMP, [l in L], (1 - x[l]) - μT[l] >= 0)
 
   #These constraints are not quite valid, but their inclusion often results in much faster time to near optimal solution.
 
@@ -183,7 +145,7 @@ function solveNodeAC(opfdata,ndata,solninfo,xDualVals)
   if status == :Optimal || status == :Stall
       for l in L
         solninfo[l] = getvalue(x[l])
-        from=busIdx[lines[l].from]; to=busIdx[lines[l].to]
+        from=fromBus[l]; to=toBus[l]
     xDualVals[l] = 1 + abs(getvalue(α[from]))+abs(getvalue(α[to]))+abs(getvalue(β[from]))+abs(getvalue(β[to]))
         #print(" d[$l]=",getdual(x[l]))
       end

@@ -10,55 +10,21 @@ include("utils.jl")
 
 function solveLECP(opfdata,K,HEUR)
 
-  # OBTAIN PROBLEM INFORMATION FROM opfdata
-    lines, buses, generators, baseMVA = opfdata.lines, opfdata.buses, opfdata.generators, opfdata.baseMVA
-    nbuses, nlines, ngens = length(buses), length(lines), length(generators)
-    N = 1:nbuses; L = 1:nlines; G = 1:ngens
-    # build a dictionary between buses ids and their indexes
-      busIdx = mapBusIdToIdx(buses)
-    # set up the fromLines and toLines for each bus
-      fromLines, toLines = mapLinesToBuses(buses, lines, busIdx)
-      fromBus=zeros(Int,nlines); toBus=zeros(Int,nlines)
-      for l in L
-        fromBus[l] = busIdx[lines[l].from]; toBus[l] = busIdx[lines[l].to]
-      end
-    # generators at each bus
-      BusGeners = mapGenersToBuses(buses, generators, busIdx)
+  # OBTAIN SHORTHAND PROBLEM INFORMATION FROM opfdata
+    nbuses, nlines, ngens = opfdata.nbuses, opfdata.nlines, opfdata.ngens
+    N, L, G = opfdata.N, opfdata.L, opfdata.G 
+    fromLines,toLines,fromBus,toBus = opfdata.fromLines, opfdata.toLines, opfdata.fromBus, opfdata.toBus
+    BusGeners, Y = opfdata.BusGeners, opfdata.Y
 
-    # obtain entries of the admittance matrix
-      Y = Dict()  # Admittances
-      Y["ffR"] = opfdata.admittancesAC.YffR; Y["ffI"] = opfdata.admittancesAC.YffI;
-      Y["ttR"] = opfdata.admittancesAC.YttR; Y["ttI"] = opfdata.admittancesAC.YttI;
-      Y["ftR"] = opfdata.admittancesAC.YftR; Y["ftI"] = opfdata.admittancesAC.YftI;
-      Y["tfR"] = opfdata.admittancesAC.YtfR; Y["tfI"] = opfdata.admittancesAC.YtfI;
-      Y["shR"] = opfdata.admittancesAC.YshR; Y["shI"] = opfdata.admittancesAC.YshI;
 
-    # set bus demands
-      PD = zeros(nbuses); QD = zeros(nbuses)
-      for i in N
-        PD[i] = buses[i].Pd / baseMVA; QD[i] = buses[i].Qd / baseMVA
-      end
-    # set squared bounds for bus voltage magnitude
-      Wmin = zeros(nbuses); Wmax = zeros(nbuses)
-      for i in N
-        Wmin[i] = (buses[i].Vmin)^2; Wmax[i] = (buses[i].Vmax)^2
-      end
-    # set bounds for generator power generation
-      Pmin = zeros(ngens); Pmax = zeros(ngens)
-      Qmin = zeros(ngens); Qmax = zeros(ngens)
-      for g in G
-        Pmin[g] = generators[g].Pmin; Pmax[g] = generators[g].Pmax
-        Qmin[g] = generators[g].Qmin; Qmax[g] = generators[g].Qmax
-      end
-    println("Done with initial setup.")
   # DONE OBTAINING PROBLEM INFORMATION FROM opfdata
 
   # indicate to enable chordal decomposition
-    chordal_decomposition = false
+    chordal_decomposition = true
 
     if chordal_decomposition
         # Constrcut a chordal extension of the network topology
-        chordal = get_chordal_extension_complex(N, L, lines, busIdx)
+        chordal = get_chordal_extension_complex(opfdata)
 
         # Get the maximal cliques from the chordal extension
         max_cliques = maximal_cliques(get_graph(chordal))
@@ -119,8 +85,8 @@ function solveLECP(opfdata,K,HEUR)
     @constraint(mMP, BMct3[l in L], -(1 - x[l]) <= μT[l]); @constraint(mMP, BMct4[l in L], (1 - x[l]) >= μT[l])
 
   # Lagrangian objective, after vanishing terms are removed under the assumption of dual feasibility
-    @objective(mMP, Max, sum(ζpLB[g]*Pmin[g] - ζpUB[g]*Pmax[g] + ζqLB[g]*Qmin[g] - ζqUB[g]*Qmax[g]  for g in G)
-    	+ sum( γ[i]*Wmin[i]-δ[i]*Wmax[i] + α[i]*PD[i] + β[i]*QD[i] for i in N) )
+    @objective(mMP, Max, sum(ζpLB[g]*opfdata.Pmin[g] - ζpUB[g]*opfdata.Pmax[g] + ζqLB[g]*opfdata.Qmin[g] - ζqUB[g]*opfdata.Qmax[g]  for g in G)
+    	+ sum( γ[i]*opfdata.Wmin[i]-δ[i]*opfdata.Wmax[i] + α[i]*opfdata.PD[i] + β[i]*opfdata.QD[i] for i in N) )
   ### END DEFINING THE LaGRANGIAN DUAL PROBLEM
 
   #These constraints are not quite valid, but their inclusion often results in much faster time to near optimal solution.
@@ -154,7 +120,7 @@ function solveLECP(opfdata,K,HEUR)
         end
     end
     for l in L
-        from=busIdx[lines[l].from]; to=busIdx[lines[l].to]
+        from=fromBus[l]; to=toBus[l]
         C[from,nbuses+to] -= 0.5*(  λF[l]*Y["ftI"][l] + μF[l]*Y["ftR"][l] - λT[l]*Y["tfI"][l] - μT[l]*Y["tfR"][l]  )
         C[to,nbuses+from] += 0.5*(  λF[l]*Y["ftI"][l] + μF[l]*Y["ftR"][l] - λT[l]*Y["tfI"][l] - μT[l]*Y["tfR"][l]  )
         if from < to
@@ -270,7 +236,7 @@ function solveLECP(opfdata,K,HEUR)
           pi_val["μT"][l] = getvalue(μT[l])
         end
         H=spzeros(2*nbuses,2*nbuses)
-        updateHess(Y,opfdata,pi_val,H)
+        updateHess(opfdata,pi_val,H)
 
         try
           η0Val = solveEta0Eigs(H,opfdata,v)
@@ -280,7 +246,7 @@ function solveLECP(opfdata,K,HEUR)
           η0Val = solveEta0SDP(H,opfdata,v)
         end
         if η0Val < -TOL
-          computeSG(Y,opfdata,v,sg)
+          computeSG(opfdata,v,sg)
           @lazyconstraint(cb, 0 <= sum( (sg["α"][i,1])* α[i] for i in N) + sum( (sg["β"][i,1])* β[i] for i in N )
             + sum( (sg["γ"][i,1])* γ[i] for i in N)  + sum( (sg["δ"][i,1])* δ[i] for i in N)
             + sum( (sg["λF"][l,1])* λF[l] + (sg["λT"][l,1])* λT[l] for l in L) + sum( (sg["μF"][l,1])* μF[l] + (sg["μT"][l,1])* μT[l] for l in L),
@@ -358,15 +324,11 @@ function solveLECP(opfdata,K,HEUR)
 
   #USEFUL SUBROUTINES
   # Update Hessian
-    function updateHess(Y,opfdata,pi_val,H)
-      lines, buses, generators, baseMVA = opfdata.lines, opfdata.buses, opfdata.generators, opfdata.baseMVA
-      nbuses, nlines, ngens = length(buses), length(lines), length(generators)
-      N = 1:nbuses; L = 1:nlines; G = 1:ngens
-      busIdx = mapBusIdToIdx(buses)
-      fromBus=zeros(Int,nlines); toBus=zeros(Int,nlines)
-      for l in L
-        fromBus[l] = busIdx[lines[l].from]; toBus[l] = busIdx[lines[l].to]
-      end
+    function updateHess(opfdata,pi_val,H)
+      #lines, buses, generators, baseMVA = opfdata.lines, opfdata.buses, opfdata.generators, opfdata.baseMVA
+      nbuses, nlines, ngens, N, L, G = opfdata.nbuses, opfdata.nlines, opfdata.ngens, opfdata.N, opfdata.L, opfdata.G 
+      fromBus,toBus = opfdata.fromBus, opfdata.toBus  
+      Y = opfdata.Y
       for i in N
         H[i,i] +=  pi_val["α"][i] * Y["shR"][i] - pi_val["β"][i] * Y["shI"][i]  + pi_val["δ"][i] - pi_val["γ"][i]
         H[nbuses+i,nbuses+i] += pi_val["α"][i] * Y["shR"][i] - pi_val["β"][i] * Y["shI"][i] + pi_val["δ"][i] - pi_val["γ"][i]
@@ -390,9 +352,8 @@ function solveLECP(opfdata,K,HEUR)
 
   # SUBROUTINE FOR COMPUTING THE MINIMUM EIGENVALUE OF H WITH A CORRESPONDING EIGENVECTOR
     function solveEta0Eigs(H,optdata,v)
-      lines, buses, generators, baseMVA = opfdata.lines, opfdata.buses, opfdata.generators, opfdata.baseMVA
-      nbuses, nlines, ngens = length(buses), length(lines), length(generators)
-      N = 1:nbuses; L = 1:nlines; G = 1:ngens
+      nbuses, nlines, ngens, N, L, G = opfdata.nbuses, opfdata.nlines, opfdata.ngens, opfdata.N, opfdata.L, opfdata.G 
+      fromBus,toBus = opfdata.fromBus, opfdata.toBus
 
       E=eigs(H,nev=6,which=:SR, maxiter=100000, tol=1e-8)
       η0Val = E[1][1]
@@ -405,9 +366,8 @@ function solveLECP(opfdata,K,HEUR)
   # SUBROUTINE FOR COMPUTING THE MINIMUM EIGENVALUE OF H WITH A CORRESPONDING EIGENVECTOR
     # VIA AN OPTIMIZATION PROBLEM
     function solveEta0SDP(H,opfdata,v)
-      lines, buses, generators, baseMVA = opfdata.lines, opfdata.buses, opfdata.generators, opfdata.baseMVA
-      nbuses, nlines, ngens = length(buses), length(lines), length(generators)
-      N = 1:nbuses; L = 1:nlines; G = 1:ngens
+      nbuses, nlines, ngens, N, L, G = opfdata.nbuses, opfdata.nlines, opfdata.ngens, opfdata.N, opfdata.L, opfdata.G 
+      fromBus,toBus = opfdata.fromBus, opfdata.toBus
 
       #The QP subproblem
       mSDP = Model(solver=IpoptSolver())
@@ -440,14 +400,10 @@ function solveLECP(opfdata,K,HEUR)
     end
 
   # SUBROUTINE FOR COMPUTING A SUBGRADIENT OF ETA(PI), WHICH IS THE FUNCTION TAKING THE VALUE OF THE MINIMUM EIGENVALUE OF H(PI)
-    function computeSG(Y,opfdata,v,sg)
-      lines, buses, generators, baseMVA = opfdata.lines, opfdata.buses, opfdata.generators, opfdata.baseMVA
-      nbuses, nlines, ngens = length(buses), length(lines), length(generators)
-      N = 1:nbuses; L = 1:nlines; G = 1:ngens; busIdx = mapBusIdToIdx(buses)
-      fromBus=zeros(Int,nlines); toBus=zeros(Int,nlines)
-      for l in L
-        fromBus[l] = busIdx[lines[l].from]; toBus[l] = busIdx[lines[l].to]
-      end
+    function computeSG(opfdata,v,sg)
+      nbuses, nlines, ngens, N, L, G = opfdata.nbuses, opfdata.nlines, opfdata.ngens, opfdata.N, opfdata.L, opfdata.G 
+      fromBus,toBus,Y = opfdata.fromBus, opfdata.toBus, opfdata.Y
+
       for i in N
         W_val = v["R"][i]^2 + v["I"][i]^2
         sg["α"][i,1] = Y["shR"][i] * W_val; sg["β"][i,1] = -Y["shI"][i] * W_val

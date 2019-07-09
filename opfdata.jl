@@ -73,16 +73,35 @@ end
 
 type OPFData
   buses::Array{Bus}
+  nbuses::Int
+  N
+  PD::Array
+  QD::Array
+  Wmin::Array
+  Wmax::Array
   lines::Array{Line}
+  nlines::Int
+  L
+  fromLines::Array         #From lines for each bus (Array of Array)
+  toLines::Array           #To lines for each bus (Array of Array)
+  fromBus::Array
+  toBus::Array
   generators::Array{Gener}
+  ngens::Int
+  G
+  Pmin::Array{Float64}
+  Pmax::Array{Float64}
+  Qmin::Array{Float64}
+  Qmax::Array{Float64}
+  BusGeners
   bus_ref::Int
-  baseMVA::Float64
+  Y
+  # baseMVA::Float64
 #  BusIdx::Dict{Int,Int}    #map from bus ID to bus index
-#  FromLines::Array         #From lines for each bus (Array of Array)
-#  ToLines::Array           #To lines for each bus (Array of Array)
 #  BusGenerators::Array     #list of generators for each bus (Array of Array)
-  admittancesAC::Admittances   # admittances
-  admittancesDC::Admittances   # admittances
+  #admittancesAC::Admittances   # admittances
+  #admittancesDC::Admittances   # admittances
+  
 end
 
 
@@ -204,7 +223,47 @@ function opf_loaddata(case_name, lineOff=Line())
   admittancesDC = computeAdmittances(lines, buses, baseMVA, 2)
   #println(generators)
   #println(bus_ref)
-  return OPFData(buses, lines, generators, bus_ref, baseMVA, admittancesAC, admittancesDC)
+  nbuses, nlines, ngens = length(buses), length(lines), length(generators)
+  N = 1:nbuses; L = 1:nlines; G = 1:ngens
+  # set bus demands
+      PD = zeros(nbuses); QD = zeros(nbuses)
+      for i in N
+        PD[i] = buses[i].Pd / baseMVA; QD[i] = buses[i].Qd / baseMVA
+      end
+  # set squared bounds for bus voltage magnitude
+      Wmin = zeros(nbuses); Wmax = zeros(nbuses)
+      for i in N
+        Wmin[i] = (buses[i].Vmin)^2; Wmax[i] = (buses[i].Vmax)^2
+      end
+  # set bounds for generator power generation
+      Pmin = zeros(ngens); Pmax = zeros(ngens)
+      Qmin = zeros(ngens); Qmax = zeros(ngens)
+      for g in G
+        Pmin[g] = generators[g].Pmin; Pmax[g] = generators[g].Pmax
+        Qmin[g] = generators[g].Qmin; Qmax[g] = generators[g].Qmax
+      end
+    println("Done with initial setup.")
+  # build a dictionary between buses ids and their indexes
+    busIdx = mapBusIdToIdx(buses)
+  # set up the fromLines and toLines for each bus
+      fromLines, toLines = mapLinesToBuses(buses, lines, busIdx)
+      fromBus=zeros(Int,nlines); toBus=zeros(Int,nlines)
+      for l in L
+        fromBus[l] = busIdx[lines[l].from]; toBus[l] = busIdx[lines[l].to]
+      end
+    # generators at each bus
+      BusGeners = mapGenersToBuses(buses, generators, busIdx)
+    # obtain entries of the admittance matrix
+      Y = Dict()  # Admittances
+      Y["ffR"] = admittancesAC.YffR; Y["ffI"] = admittancesAC.YffI;
+      Y["ttR"] = admittancesAC.YttR; Y["ttI"] = admittancesAC.YttI;
+      Y["ftR"] = admittancesAC.YftR; Y["ftI"] = admittancesAC.YftI;
+      Y["tfR"] = admittancesAC.YtfR; Y["tfI"] = admittancesAC.YtfI;
+      Y["shR"] = admittancesAC.YshR; Y["shI"] = admittancesAC.YshI;
+  return OPFData(buses, nbuses, N, PD, QD, Wmin, Wmax, 
+	lines, nlines, L, fromLines, toLines, fromBus, toBus, 
+	generators, ngens, G, Pmin, Pmax, Qmin, Qmax, BusGeners,
+	bus_ref, Y)
 end
 
 function  computeAdmittances(lines, buses, baseMVA, relaxType=0)
