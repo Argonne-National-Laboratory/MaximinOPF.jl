@@ -57,7 +57,6 @@ print("Loading data ... "); start_load = time_ns()
 
 
 
-#include("BranchAndCutDSP.jl") ### Initialize the defender subproblems with power flow balance enforced
 
 
 
@@ -82,11 +81,42 @@ elseif FORM == AC
 elseif FORM == SOCP
   include("DualSOCP.jl")
 else
-   x_val = zeros(nlines)
-   x_val[1482]=1
-   x_val[2760]=1
-   x_val[4522]=1
-   x_val[4525]=1
-   @show solveFullModelSOCP(x_val)
+   include("EvalDSP.jl") ### Initialize the defender subproblems with power flow balance enforced
+   x_val = zeros(opfdata.nlines)
+   x_val .= 0; x_val[45]=1
+   @show solveFullModelSDP(opfdata,x_val,true)
+   x_val .= 0; x_val[63]=1; x_val[65]=1
+   @show solveFullModelSDP(opfdata,x_val,true)
+   x_val .= 0; x_val[38]=1; x_val[41]=1; x_val[80]=1
+   @show solveFullModelSDP(opfdata,x_val,true)
+   x_val .= 0; x_val[33]=1; x_val[41]=1; x_val[48]=1; x_val[80]=1
+   @show solveFullModelSDP(opfdata,x_val,true)
+
+   x_val .= 0; x_val[45]=1
+   @show solveFullModelSOCP(opfdata,x_val)
+   x_val .= 0; x_val[63]=1; x_val[65]=1
+   @show solveFullModelSOCP(opfdata,x_val)
+   x_val .= 0; x_val[38]=1; x_val[41]=1; x_val[80]=1
+   @show solveFullModelSOCP(opfdata,x_val)
+   x_val .= 0; x_val[33]=1; x_val[41]=1; x_val[48]=1; x_val[80]=1
+   @show solveFullModelSOCP(opfdata,x_val)
+
+   x_val .= 0; x_val[41]=1
+   @show solveFullModelSDP(opfdata,x_val,false)
+   x_val .= 0; x_val[41]=1; x_val[80]=1
+   @show solveFullModelSDP(opfdata,x_val,false)
+   x_val .= 0; x_val[33]=1; x_val[41]=1; x_val[80]=1
+   @show solveFullModelSDP(opfdata,x_val,false)
+   x_val .= 0; x_val[60]=1; x_val[65]=1; x_val[66]=1; x_val[72]=1
+   @show solveFullModelSDP(opfdata,x_val,false)
+
+   x_val .= 0; x_val[41]=1
+   @show solveFullModelSDP(opfdata,x_val,true)
+   x_val .= 0; x_val[41]=1; x_val[80]=1
+   @show solveFullModelSDP(opfdata,x_val,true)
+   x_val .= 0; x_val[33]=1; x_val[41]=1; x_val[80]=1
+   @show solveFullModelSDP(opfdata,x_val,true)
+   x_val .= 0; x_val[60]=1; x_val[65]=1; x_val[66]=1; x_val[72]=1
+   @show solveFullModelSDP(opfdata,x_val,true)
 end
 

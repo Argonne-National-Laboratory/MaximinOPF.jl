@@ -95,7 +95,8 @@ type OPFData
   Qmax::Array{Float64}
   BusGeners
   bus_ref::Int
-  Y
+  Y_AC
+  Y_DC
   # baseMVA::Float64
 #  BusIdx::Dict{Int,Int}    #map from bus ID to bus index
 #  BusGenerators::Array     #list of generators for each bus (Array of Array)
@@ -254,16 +255,22 @@ function opf_loaddata(case_name, lineOff=Line())
     # generators at each bus
       BusGeners = mapGenersToBuses(buses, generators, busIdx)
     # obtain entries of the admittance matrix
-      Y = Dict()  # Admittances
-      Y["ffR"] = admittancesAC.YffR; Y["ffI"] = admittancesAC.YffI;
-      Y["ttR"] = admittancesAC.YttR; Y["ttI"] = admittancesAC.YttI;
-      Y["ftR"] = admittancesAC.YftR; Y["ftI"] = admittancesAC.YftI;
-      Y["tfR"] = admittancesAC.YtfR; Y["tfI"] = admittancesAC.YtfI;
-      Y["shR"] = admittancesAC.YshR; Y["shI"] = admittancesAC.YshI;
+      Y_AC = Dict()  # AC Admittances
+      Y_AC["ffR"] = admittancesAC.YffR; Y_AC["ffI"] = admittancesAC.YffI;
+      Y_AC["ttR"] = admittancesAC.YttR; Y_AC["ttI"] = admittancesAC.YttI;
+      Y_AC["ftR"] = admittancesAC.YftR; Y_AC["ftI"] = admittancesAC.YftI;
+      Y_AC["tfR"] = admittancesAC.YtfR; Y_AC["tfI"] = admittancesAC.YtfI;
+      Y_AC["shR"] = admittancesAC.YshR; Y_AC["shI"] = admittancesAC.YshI;
+      Y_DC = Dict()  # AC Admittances
+      Y_DC["ffR"] = admittancesDC.YffR; Y_DC["ffI"] = admittancesDC.YffI;
+      Y_DC["ttR"] = admittancesDC.YttR; Y_DC["ttI"] = admittancesDC.YttI;
+      Y_DC["ftR"] = admittancesDC.YftR; Y_DC["ftI"] = admittancesDC.YftI;
+      Y_DC["tfR"] = admittancesDC.YtfR; Y_DC["tfI"] = admittancesDC.YtfI;
+      Y_DC["shR"] = admittancesDC.YshR; Y_DC["shI"] = admittancesDC.YshI;
   return OPFData(buses, nbuses, N, PD, QD, Wmin, Wmax, 
 	lines, nlines, L, fromLines, toLines, fromBus, toBus, 
 	generators, ngens, G, Pmin, Pmax, Qmin, Qmax, BusGeners,
-	bus_ref, Y)
+	bus_ref, Y_AC, Y_DC)
 end
 
 function  computeAdmittances(lines, buses, baseMVA, relaxType=0)

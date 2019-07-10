@@ -14,7 +14,7 @@ function solveLECP(opfdata,K,HEUR)
     nbuses, nlines, ngens = opfdata.nbuses, opfdata.nlines, opfdata.ngens
     N, L, G = opfdata.N, opfdata.L, opfdata.G 
     fromLines,toLines,fromBus,toBus = opfdata.fromLines, opfdata.toLines, opfdata.fromBus, opfdata.toBus
-    BusGeners, Y = opfdata.BusGeners, opfdata.Y
+    BusGeners, Y = opfdata.BusGeners, opfdata.Y_AC
 
 
   # DONE OBTAINING PROBLEM INFORMATION FROM opfdata
@@ -328,7 +328,7 @@ function solveLECP(opfdata,K,HEUR)
       #lines, buses, generators, baseMVA = opfdata.lines, opfdata.buses, opfdata.generators, opfdata.baseMVA
       nbuses, nlines, ngens, N, L, G = opfdata.nbuses, opfdata.nlines, opfdata.ngens, opfdata.N, opfdata.L, opfdata.G 
       fromBus,toBus = opfdata.fromBus, opfdata.toBus  
-      Y = opfdata.Y
+      Y = opfdata.Y_AC
       for i in N
         H[i,i] +=  pi_val["α"][i] * Y["shR"][i] - pi_val["β"][i] * Y["shI"][i]  + pi_val["δ"][i] - pi_val["γ"][i]
         H[nbuses+i,nbuses+i] += pi_val["α"][i] * Y["shR"][i] - pi_val["β"][i] * Y["shI"][i] + pi_val["δ"][i] - pi_val["γ"][i]
@@ -402,7 +402,7 @@ function solveLECP(opfdata,K,HEUR)
   # SUBROUTINE FOR COMPUTING A SUBGRADIENT OF ETA(PI), WHICH IS THE FUNCTION TAKING THE VALUE OF THE MINIMUM EIGENVALUE OF H(PI)
     function computeSG(opfdata,v,sg)
       nbuses, nlines, ngens, N, L, G = opfdata.nbuses, opfdata.nlines, opfdata.ngens, opfdata.N, opfdata.L, opfdata.G 
-      fromBus,toBus,Y = opfdata.fromBus, opfdata.toBus, opfdata.Y
+      fromBus,toBus,Y = opfdata.fromBus, opfdata.toBus, opfdata.Y_AC
 
       for i in N
         W_val = v["R"][i]^2 + v["I"][i]^2

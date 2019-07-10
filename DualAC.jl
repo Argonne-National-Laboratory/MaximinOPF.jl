@@ -12,7 +12,7 @@ include("utils.jl")
     nbuses, nlines, ngens = opfdata.nbuses, opfdata.nlines, opfdata.ngens
     N, L, G = opfdata.N, opfdata.L, opfdata.G 
     fromLines,toLines,fromBus,toBus = opfdata.fromLines, opfdata.toLines, opfdata.fromBus, opfdata.toBus
-    BusGeners, Y = opfdata.BusGeners, opfdata.Y
+    BusGeners, Y = opfdata.BusGeners, opfdata.Y_AC
 
     # indicate to enable chordal decomposition
     chordal_decomposition = true
