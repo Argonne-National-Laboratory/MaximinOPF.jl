@@ -54,15 +54,12 @@ print("Loading data ... "); start_load = time_ns()
     opfdata = opf_loaddata(CASE_NUM)
 @printf("%.2f seconds\n", (time_ns()-start_load)/1e9)
 
+include("EvalDSP.jl") ### Initialize the defender subproblems with power flow balance enforced
 
 
 
-
-
-
-
-function printX(finalXSoln)
-  for l in L
+function printX(opfdata,finalXSoln)
+  for l in opfdata.L
    if finalXSoln[l] > 0.5 
 	@printf(" %d",l)
    end
@@ -81,7 +78,6 @@ elseif FORM == AC
 elseif FORM == SOCP
   include("DualSOCP.jl")
 else
-   include("EvalDSP.jl") ### Initialize the defender subproblems with power flow balance enforced
    x_val = zeros(opfdata.nlines)
    x_val .= 0; x_val[45]=1
    @show solveFullModelSDP(opfdata,x_val,true)
