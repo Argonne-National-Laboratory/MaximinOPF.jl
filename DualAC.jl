@@ -8,11 +8,17 @@ Brian Dandurand
 
 include("utils.jl")
 
-type MPSolnInfo
-  x_soln::Array
-  x_dualsoln::Array
+type SolnInfo
+  x_soln::Array{Float64}
+  x_dualsoln::Array{Float64}
   optval::Float64
   solvetime::Float64
+end
+
+type NodeInfo
+  x_lbs::Array{Float64}
+  x_ubs::Array{Float64}
+  nodeBd::Float64
 end
 
 function solveNodeAC(opfdata,ndata,mpsoln)
@@ -28,7 +34,6 @@ function solveNodeAC(opfdata,ndata,mpsoln)
   # Instantiating the model and solver for the dual problem
     nThreads=1
     mMP = Model(solver=MosekSolver(MSK_IPAR_LOG=0,MSK_IPAR_NUM_THREADS=nThreads))
-    println("Using ",nThreads," threads.")
     @variable(mMP, -1 <= α[i=N] <= 1)
     @variable(mMP, -1 <= β[i=N] <= 1)
     @variable(mMP, γp[i=N] >= 0)
@@ -40,16 +45,10 @@ function solveNodeAC(opfdata,ndata,mpsoln)
     @variable(mMP, ζqLB[g=G] >= 0)
     @variable(mMP, 0.0 <= x[l=L] <= 1.0)
     @constraint(mMP, sum(x[l] for l in L) <= K)
-  # Print out the specification of this node specific subproblem
-    print("Fixing the following x: ")
     for l in L
-      if ndata[l]!=-1
-        setlowerbound(x[l],ndata[l])
-        setupperbound(x[l],ndata[l])
-        print(" x[$l]=",ndata[l])
-      end
+        setlowerbound(x[l],ndata.x_lbs[l])
+        setupperbound(x[l],ndata.x_ubs[l])
     end
-    print("\n")
 
   for i in N
    for g in BusGeners[i]
@@ -102,7 +101,8 @@ function solveNodeAC(opfdata,ndata,mpsoln)
         # Compute new topology for each node subproblem
         nodeL = Int64[]
         for l=L
-            if ndata[l] != 1
+            #if ndata[l] != 1
+	    if abs(ndata.x_ubs[l] - ndata.x_lbs[l]) < 1e-6 
                 push!(nodeL,l)
             end
         end
@@ -153,13 +153,11 @@ function solveNodeAC(opfdata,ndata,mpsoln)
         mpsoln.x_soln[l] = getvalue(x[l])
         from=fromBus[l]; to=toBus[l]
         mpsoln.x_dualsoln[l] = getdual(x[l])  
-        #print(" d[$l]=",getdual(x[l]))
       end
-      #print("\n")
       mpsoln.optval = getobjectivevalue(mMP)
       mpsoln.solvetime = getsolvetime(mMP)
       if status == :Stall
-    println("solveNodeAC: Return status $status")
+        println("solveNodeAC: Return status $status")
       end
   else
     println("solveNodeAC: Return status $status")
@@ -221,13 +219,14 @@ function findBranchIdx3(opfdata,x_val,xDualVals)
   end
   return maxidx,maxval
 end
+
 function findNextNode(opfdata,E)
-  nodekey=-1
-  weakestUBVal = -1
+  nodekey=-1e20
+  weakestUBVal = -1e20
   for (k,n) in E
-    if n[2][opfdata.nlines+1] > weakestUBVal
+    if n[2].nodeBd > weakestUBVal
     nodekey = n[1]
-        weakestUBVal = n[2][opfdata.nlines+1]
+        weakestUBVal = n[2].nodeBd
     end
   end
   return nodekey,weakestUBVal
@@ -237,10 +236,11 @@ function testDualAC(opfdata)
   x_val=zeros(opfdata.nlines)
   x_val[41]=1
   x_val[80]=1
-  x_soln = zeros(nlines)
-  xDualVals = ones(nlines)
-  mpsoln = MPSolnInfo(x_soln,xDualVals,1e20,0)
-  solveNodeAC(opfdata,x_val,mpsoln)
+  fixedNode=NodeInfo(x_val,x_val,1e20)
+
+  mpsoln = SolnInfo(zeros(nlines),ones(nlines),1e20,0)
+
+  solveNodeAC(opfdata,fixedNode,mpsoln)
   dualObjval = mpsoln.optval
   primalObjval = solveFullModelSDP(opfdata,x_val)
   println("Primal value: ",primalObjval," and dual value: ",dualObjval)
@@ -251,147 +251,155 @@ function solveBnBSDP(opfdata,incSoln)
   global MAX_TIME
   nlines,L = opfdata.nlines, opfdata.L
 
-  x_soln = zeros(nlines); x_dualsoln = ones(nlines)
-  mpsoln = MPSolnInfo(x_soln,x_dualsoln,1e20,0)
+  mpsoln = SolnInfo(zeros(nlines),ones(nlines),1e20,0)
+
 
   start_time = time_ns()
-  nodedata = Dict()
-  nodedata[0] = -1*ones(nlines+1)
-  nodedata[0][nlines+1]=1e20
+  BnBTree = Dict()
+  #nodedata = Dict()
+  BnBTree[0] = NodeInfo(zeros(nlines),ones(nlines),1e20)
+  #nodedata[0] = -1*ones(nlines+1)
+  #nodedata[0][nlines+1]=1e20
   nodekey=0
+
   feasXs = Dict()
-  nXs = 0
-  incVal= 0
+  incsoln = SolnInfo(zeros(nlines),ones(nlines),0.0,0.0)
+
   bestUBVal=1e20
+
   nNodes=1
   maxidx=1
   maxval=-1
-  E=enumerate(nodedata)
+  E=enumerate(BnBTree)
   while true
-    println("Best UB $bestUBVal versus incumbent value $incVal")
-    currNode = pop!(nodedata,nodekey)
-    objval=currNode[nlines+1]
-    if objval < incVal
-        println("\tFathoming due to initial testing of bound $objval < $incVal")
+    println("There are ",length(E)," nodes left out of a total of ", nNodes," generated.")
+    currNode = pop!(BnBTree,nodekey)
+    objval=currNode.nodeBd
+    if objval <= incSoln.optval
+        println("\tFathoming due to initial testing of bound $objval < ",incSoln.optval)
     else
+      print("\t Fixing the following x: ")
+      for l in L
+        if abs(currNode.x_lbs[l] - currNode.x_ubs[l]) < 1e-6
+          print(" x[$l]=",round(0.5*(currNode.x_lbs[l]+currNode.x_ubs[l])) )
+        end
+      end
+      print("\n")
       solveNodeAC(opfdata,currNode,mpsoln)
       x_val = mpsoln.x_soln
       objval = mpsoln.optval
       soltime = mpsoln.solvetime
-      if objval < incVal
-        println("\tFathoming due to bound $objval < $incVal")
+      if objval < incSoln.optval
+        println("\t\tFathoming due to bound $objval < ",incSoln.optval)
       else
     # Apply primal heuristic
         if xIntTol(opfdata,mpsoln)
-          println("\tFathoming due to optimality")
+          println("\t\tFathoming due to optimality")
           # Apply primal heuristic
-      incVal,nXs=primHeurXInt(opfdata,x_val,objval,feasXs,nXs,incSoln,incVal)
+          primHeurXInt(opfdata,mpsoln,feasXs,incSoln)
         else
           maxidx,maxval=findBranchIdx2(opfdata,x_val)
-          println("\tBranching on index $maxidx with value $maxval")
-          nodedata[nNodes]=-1*ones(nlines+1)
-          for l in L
-            nodedata[nNodes][l]=currNode[l]
-          end
-          nodedata[nNodes][maxidx]=0
-          nodedata[nNodes][nlines+1]=objval
+          println("\t\tBranching on index $maxidx with value $maxval")
+          upNLBs = zeros(nlines); upNLBs .= currNode.x_lbs
+          upNUBs = zeros(nlines); upNUBs .= currNode.x_ubs
+	  upNLBs[maxidx]=1
+	  upNUBs[maxidx]=1
+          BnBTree[nNodes]=NodeInfo(upNLBs,upNUBs,objval)
           nNodes += 1
-          nodedata[nNodes]=-1*ones(nlines+1)
-          for l in L
-            nodedata[nNodes][l]=currNode[l]
-          end
-          nodedata[nNodes][maxidx]=1
-          nodedata[nNodes][nlines+1]=objval
+
+          downNLBs = zeros(nlines); downNLBs .= currNode.x_lbs
+          downNUBs = zeros(nlines); downNUBs .= currNode.x_ubs
+	  downNLBs[maxidx]=0
+	  downNUBs[maxidx]=0
+          BnBTree[nNodes]=NodeInfo(downNLBs,downNUBs,objval)
           nNodes += 1
+
           # Apply primal heuristic
-            #incVal,nXs=primHeur(opfdata,x_val,feasXs,nXs,incSoln,incVal,xDualVals)
+            primHeur(opfdata,mpsoln,feasXs,incSoln)
         end
       end #not fathomed due to bound after solving node
     end # no intial fathoming
-    E=enumerate(nodedata)
-    println("There are ",length(E)," nodes left.")
+    E=enumerate(BnBTree)
     if length(E) > 0
       nodekey,bestUBVal=findNextNode(opfdata,E)
     else
-      bestUBVal = incVal
+      bestUBVal = incSoln.optval
       break
     end
     if (time_ns()-start_time)/1e9 > MAX_TIME
     break
     end
+    println("\t\t\tBest UB $bestUBVal versus incumbent value ",incSoln.optval)
   end # while
-  println("Best UB $bestUBVal versus incumbent value $incVal")
   end_time = time_ns()
 
   runtime = (end_time-start_time)/1e9
-  return bestUBVal,nNodes,incVal,runtime
+  return bestUBVal,nNodes,runtime
 end
 
-function primHeur(opfdata,x_val,feasXs,nXs,incSoln,incVal,xDualVals)
+function primHeur(opfdata,mpsoln,feasXs,incSoln)
   nlines=opfdata.nlines
   sortIdx = zeros(Int,nlines)
-  sortperm!(sortIdx,x_val[1:nlines])
+  sortperm!(sortIdx,mpsoln.x_soln[1:nlines])
   bestKIdx = sortIdx[(nlines-K+1):nlines]
-  pX = zeros(Int,nlines)
-  pX[bestKIdx]= 1
+  pX = SolnInfo(zeros(nlines),ones(nlines),0.0,0.0)
+  pX.x_soln[bestKIdx] = 1
   Xs = enumerate(feasXs)
   isNewX = true
   for (k,feasx) in Xs
-    if sum( abs(pX[l]-feasx[2][l]) for l=1:nlines ) < 1e-6
+    if sum( abs(pX.x_soln[l]-feasx[2].x_soln[l]) for l=1:nlines ) < 1e-6
     isNewX=false
     break
     end
   end
   if isNewX
-    sinfo = zeros(nlines+2)
-    nXs += 1
+    nXs = length(feasXs)+1
     feasXs[nXs]=pX
-    solveNodeAC(opfdata,pX,sinfo,xDualVals)
-    pVal = sinfo[nlines+1]
-    if pVal > incVal
-      incVal = pVal
-      incSoln[1:nlines]=pX[1:nlines]
-      incSoln[nlines+1]=incVal
-      print("New incumbent solution: ")
-      printX(opfdata,pX)
-      println("with value: $pVal")
+    solveNodeAC(opfdata,NodeInfo(pX.x_soln,pX.x_soln,1e20),pX)
+    if pX.optval > incSoln.optval
+      incSoln.optval = pX.optval
+      incSoln.x_soln .= pX.x_soln
+      print("\t\t\tNew incumbent solution: ")
+      printX(opfdata,pX.x_soln)
+      println(" with value: ", pX.optval)
     end
   end
-  return incVal,nXs
 end
 
-function primHeurXInt(opfdata,x_val,opt_val,feasXs,nXs,incSoln,incVal)
+function primHeurXInt(opfdata,mpsoln,feasXs,incSoln)
   nlines,L=opfdata.nlines,opfdata.L
   for l in L
-    x_val[l] = round(x_val[l])
+    mpsoln.x_soln[l] = round(mpsoln.x_soln[l])
   end
   Xs = enumerate(feasXs)
   isNewX = true
   for (k,feasx) in Xs
-    if sum( abs(x_val[l]-feasx[2][l]) for l=1:nlines ) < 1e-6
-    isNewX=false
-    break
+    if sum( abs(mpsoln.x_soln[l]-feasx[2].x_soln[l]) for l=1:nlines ) < 1e-6
+      isNewX=false
+      break
     end
   end
   if isNewX
-    nXs += 1
-    pX = x_val
-    pVal = opt_val
-    if pVal > incVal
-      incVal = pVal
-      incSoln[1:nlines]=pX[1:nlines]
-      print("New incumbent solution: ")
-      printX(opfdata,x_val)
-      print("with value: $pVal")
+    pX = SolnInfo(zeros(nlines),ones(nlines),0.0,0.0)
+    pX.x_soln .= mpsoln.x_soln
+    pX.x_dualsoln .= mpsoln.x_dualsoln
+    pX.optval = mpsoln.optval
+    nXs = length(feasXs)+1
+    feasXs[nXs]=pX
+    if pX.optval > incSoln.optval
+      incSoln.optval = pX.optval
+      incSoln.x_soln .= pX.x_soln
+      print("\t\t\tNew incumbent solution: ")
+      printX(opfdata,incSoln.x_soln)
+      print(" with value: $pVal")
     end
   end
-  return incVal,nXs
 end
 
 #testDualAC(opfdata)
 
-finalXSoln = zeros(Int,opfdata.nlines)
-bestUBVal,nNodes,incVal,runtime = solveBnBSDP(opfdata,finalXSoln)
+finalXSoln = SolnInfo(zeros(opfdata.nlines),ones(opfdata.nlines),0.0,0.0)
+bestUBVal,nNodes,runtime = solveBnBSDP(opfdata,finalXSoln)
 
 @printf("\n********************FINAL RESULT FOR CASE %s WITH %d LINES CUT H%dR%d*******************\n",CASE_NUM,K, HEUR,FORM)
 
@@ -433,12 +441,12 @@ end
 #@printf("%d &  ", round(time_Eta0SP))
 #@printf("%d &  ", round(total_TimeMP))
 @printf("%d &  ", runtime)
-printX(opfdata,finalXSoln)
-@printf(" & %.3f &  ", incVal)
-if abs(bestUBVal-incVal) < 1e-3
+printX(opfdata,finalXSoln.x_soln)
+@printf(" & %.3f &  ", finalXSoln.optval)
+if abs(bestUBVal-finalXSoln.optval) < 1e-3
   @printf("0.0\\%% &")
-elseif incVal > 1e-3
-  percentGap= 100*(bestUBVal-incVal)/incVal
+elseif finalXSoln.optval > 1e-3
+  percentGap= 100*(bestUBVal-finalXSoln.optval)/finalXSoln.optval
   @printf("%.1f\\%% &",percentGap)
 else
   print("---    & ")
@@ -448,7 +456,7 @@ end
 
 println("No. Nodes: ", nNodes)
 println("Best bound:  ", bestUBVal)
-@printf("Objective value: %.3f\n", incVal)
+@printf("Objective value: %.3f\n", finalXSoln.optval)
 @show runtime
 @show finalXSoln
 end

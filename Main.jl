@@ -58,9 +58,9 @@ include("EvalDSP.jl") ### Initialize the defender subproblems with power flow ba
 
 
 
-function printX(opfdata,finalXSoln)
+function printX(opfdata,x_soln)
   for l in opfdata.L
-   if finalXSoln[l] > 0.5 
+   if x_soln[l] > 0.5 
 	@printf(" %d",l)
    end
   end
