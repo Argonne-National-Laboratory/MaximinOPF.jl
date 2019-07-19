@@ -18,7 +18,7 @@ include("opfdata.jl")
 MAX_TIME = 24*3600 # in seconds
 
 
-TOL = 1e-4  #feasibility tolerance for lazy constraints
+TOL = 1e-8  #feasibility tolerance for lazy constraints
 useLocalCuts = false
 verboseOut = false
 
@@ -72,7 +72,7 @@ if FORM == ECP
   solveLECP(opfdata,K,HEUR)
 elseif FORM == ProxPtSDP
   include("ProxPtSDP.jl")
-  testECP()
+  testProxPt(opfdata,K,HEUR)
 elseif FORM == AC
   include("DualAC.jl")
 elseif FORM == SOCP

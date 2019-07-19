@@ -15,12 +15,10 @@ function solveLECP(opfdata,K,HEUR)
     N, L, G = opfdata.N, opfdata.L, opfdata.G 
     fromLines,toLines,fromBus,toBus = opfdata.fromLines, opfdata.toLines, opfdata.fromBus, opfdata.toBus
     BusGeners, Y = opfdata.BusGeners, opfdata.Y_AC
-
-
   # DONE OBTAINING PROBLEM INFORMATION FROM opfdata
 
   # indicate to enable chordal decomposition
-    chordal_decomposition = true
+    chordal_decomposition = false
 
     if chordal_decomposition
         # Constrcut a chordal extension of the network topology
@@ -105,6 +103,8 @@ function solveLECP(opfdata,K,HEUR)
         end
       end
     end
+
+
   # CONTINUING WITH CHORDAL DECOMPOSITION
     @expression(mMP, C[i=1:(2*nbuses),j=i:(2*nbuses)], 0)
     for i in N
