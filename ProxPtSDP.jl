@@ -14,20 +14,21 @@ type NodeInfo
   nodeBd::Float64
 end
 type SolnInfo
-  α_val::Array{Float64}
-  β_val::Array{Float64}
-  γ_val::Array{Float64}
-  δ_val::Array{Float64}
-  ζpLB_val::Array{Float64}
-  ζpUB_val::Array{Float64}
-  ζqLB_val::Array{Float64}
-  ζqUB_val::Array{Float64}
-  x_val::Array{Float64}
-  λF_val::Array{Float64}
-  λT_val::Array{Float64}
-  μF_val::Array{Float64}
-  μT_val::Array{Float64}
+  α::Array{Float64}
+  β::Array{Float64}
+  γ::Array{Float64}
+  δ::Array{Float64}
+  ζpLB::Array{Float64}
+  ζpUB::Array{Float64}
+  ζqLB::Array{Float64}
+  ζqUB::Array{Float64}
+  x::Array{Float64}
+  λF::Array{Float64}
+  λT::Array{Float64}
+  μF::Array{Float64}
+  μT::Array{Float64}
   objval::Float64
+  eta::Float64
   solvetime::Float64
 end
 type EtaSGs
@@ -40,12 +41,23 @@ type EtaSGs
   λT::Array{Float64,2}
   μF::Array{Float64,2}
   μT::Array{Float64,2}
+  α_new::Array{Float64}
+  β_new::Array{Float64}
+  γ_new::Array{Float64}
+  δ_new::Array{Float64}
+  λF_new::Array{Float64}
+  λT_new::Array{Float64}
+  μF_new::Array{Float64}
+  μT_new::Array{Float64}
   cut_duals::Array{Float64}
 end
 
 maxNSG = 3000
+CP,PROX,LVL=0,1,2
+tVal = 0.25
 
-function solveNodeProxPt(opfdata,nodeinfo,sg,K,HEUR,mpsoln, ctr)
+function solveNodeProxPt(opfdata,nodeinfo,sg,K,HEUR,ctr,CTR_PARAM,
+			mpsoln)
 
   # OBTAIN SHORTHAND PROBLEM INFORMATION FROM opfdata
     nbuses, nlines, ngens = opfdata.nbuses, opfdata.nlines, opfdata.ngens
@@ -107,10 +119,19 @@ function solveNodeProxPt(opfdata,nodeinfo,sg,K,HEUR,mpsoln, ctr)
     @constraint(mMP, BMct3[l in L], -(1 - x[l]) <= μT[l]); @constraint(mMP, BMct4[l in L], (1 - x[l]) >= μT[l])
 
   # Lagrangian objective, after vanishing terms are removed under the assumption of dual feasibility
-    @objective(mMP, Max, sum(ζpLB[g]*opfdata.Pmin[g] - ζpUB[g]*opfdata.Pmax[g] + ζqLB[g]*opfdata.Qmin[g] - ζqUB[g]*opfdata.Qmax[g]  for g in G)
-    	+ sum( γ[i]*opfdata.Wmin[i]-δ[i]*opfdata.Wmax[i] + α[i]*opfdata.PD[i] + β[i]*opfdata.QD[i] for i in N) 
-	- 0.5*sum( ( ctr.α_val[i] - α[i])^2 + (ctr.β_val[i] - β[i])^2 + (ctr.γ_val[i] - γ[i])^2 + (ctr.δ_val[i] - δ[i])^2 for i in N)
+    @expression(mMP, linobj, sum(ζpLB[g]*opfdata.Pmin[g] - ζpUB[g]*opfdata.Pmax[g] + ζqLB[g]*opfdata.Qmin[g] - ζqUB[g]*opfdata.Qmax[g]  for g in G)
+    			+ sum( γ[i]*opfdata.Wmin[i]-δ[i]*opfdata.Wmax[i] + α[i]*opfdata.PD[i] + β[i]*opfdata.QD[i] for i in N) 
     )
+    if CTR_PARAM == PROX 
+      @objective(mMP, Max, linobj - 0.5*tVal*sum( ( ctr.α[i] - α[i])^2 + (ctr.β[i] - β[i])^2 + (ctr.γ[i] - γ[i])^2 + (ctr.δ[i] - δ[i])^2 for i in N)
+      )
+    elseif CTR_PARAM == LVL
+      @constraint(mMP, LVLConstr, linobj >= nodeinfo.nodeBd)
+      @objective(mMP, Min, sum( ( ctr.α[i] - α[i])^2 + (ctr.β[i] - β[i])^2 + (ctr.γ[i] - γ[i])^2 + (ctr.δ[i] - δ[i])^2 for i in N)
+      )
+    else
+      @objective(mMP, Max, linobj)
+    end
 
   # Adding the extra cuts
     if sg.nSGs > 0
@@ -140,22 +161,24 @@ function solveNodeProxPt(opfdata,nodeinfo,sg,K,HEUR,mpsoln, ctr)
   status=solve(mMP)
   if status == :Optimal 
       for i in N
-          mpsoln.α_val[i],mpsoln.β_val[i],mpsoln.γ_val[i],mpsoln.δ_val[i] = getvalue(α[i]), getvalue(β[i]), getvalue(γ[i]), getvalue(δ[i])
+          mpsoln.α[i],mpsoln.β[i],mpsoln.γ[i],mpsoln.δ[i] = getvalue(α[i]), getvalue(β[i]), getvalue(γ[i]), getvalue(δ[i])
       end
       for g in G
-          mpsoln.ζpLB_val[g],mpsoln.ζpUB_val[g],mpsoln.ζqLB_val[g],mpsoln.ζqUB_val[g] = getvalue(ζpLB[g]), getvalue(ζpUB[g]), getvalue(ζqLB[g]), getvalue(ζqUB[g])
+          mpsoln.ζpLB[g],mpsoln.ζpUB[g],mpsoln.ζqLB[g],mpsoln.ζqUB[g] = getvalue(ζpLB[g]), getvalue(ζpUB[g]), getvalue(ζqLB[g]), getvalue(ζqUB[g])
       end
       for l in L
-        mpsoln.x_val[l] = getvalue(x[l])
-        mpsoln.λF_val[l], mpsoln.λT_val[l], mpsoln.μF_val[l], mpsoln.μT_val[l] = getvalue(λF[l]), getvalue(λT[l]), getvalue(μF[l]), getvalue(μT[l])
+        mpsoln.x[l] = getvalue(x[l])
+        mpsoln.λF[l], mpsoln.λT[l], mpsoln.μF[l], mpsoln.μT[l] = getvalue(λF[l]), getvalue(λT[l]), getvalue(μF[l]), getvalue(μT[l])
       end
       mpsoln.objval,mpsoln.solvetime = getobjectivevalue(mMP), getsolvetime(mMP)
+      mpsoln.eta=0
       for n=1:sg.nSGs
 	sg.cut_duals[n] = getdual(CP[n])
       end
   else
     println("solveNodeAC: Return status $status")
   end
+  return status
 end
 
 
@@ -171,54 +194,130 @@ function testProxPt(opfdata,K,HEUR)
   # DATA RELATED TO SUBGRADIENT INFORMATION
     sg = EtaSGs(0,
       zeros(nbuses,maxNSG),zeros(nbuses,maxNSG),zeros(nbuses,maxNSG),zeros(nbuses,maxNSG),
-      zeros(nlines,maxNSG),zeros(nlines,maxNSG),zeros(nlines,maxNSG),zeros(nlines,maxNSG), zeros(maxNSG)
+      zeros(nlines,maxNSG),zeros(nlines,maxNSG),zeros(nlines,maxNSG),zeros(nlines,maxNSG), 
+      zeros(nbuses),zeros(nbuses),zeros(nbuses),zeros(nbuses),
+      zeros(nlines),zeros(nlines),zeros(nlines),zeros(nlines), 
+      zeros(maxNSG)
     )
-  # DATA RELATED TO THE STORAGE OF DUAL VARIABLE VALUES FOR THE MP
-    mpsoln=SolnInfo(zeros(nbuses),zeros(nbuses),zeros(nbuses),zeros(nbuses),
-			zeros(ngens),zeros(ngens),zeros(ngens),zeros(ngens),
-			zeros(nlines),zeros(nlines),zeros(nlines),zeros(nlines),zeros(nlines),0.0,0.0)
+  # INITIAL ITERATION
+    trl_soln=Dict()
+    optUB=1e20
     ctr=SolnInfo(zeros(nbuses),zeros(nbuses),zeros(nbuses),zeros(nbuses),
 			zeros(ngens),zeros(ngens),zeros(ngens),zeros(ngens),
-			zeros(nlines),zeros(nlines),zeros(nlines),zeros(nlines),zeros(nlines),0.0,0.0)
+			zeros(nlines),zeros(nlines),zeros(nlines),zeros(nlines),zeros(nlines),0.0,0.0,0.0)
     x_val=zeros(opfdata.nlines)
     x_val[41],x_val[80]=1,1
-    fixedNode=NodeInfo(x_val,x_val,1e20)
-  # DATA RELATED TO THE STORAGE OF VOLTAGE VARIABLE VALUES
-    v = Dict()
-    v["R"] = zeros(nbuses)
-    v["I"] = zeros(nbuses)
+    fixedNode=NodeInfo(x_val,x_val,optUB)
+    mpsoln=SolnInfo(zeros(nbuses),zeros(nbuses),zeros(nbuses),zeros(nbuses),
+	zeros(ngens),zeros(ngens),zeros(ngens),zeros(ngens),
+	zeros(nlines),zeros(nlines),zeros(nlines),zeros(nlines),zeros(nlines),0.0,0.0,0.0)
+    status = solveNodeProxPt(opfdata,fixedNode,sg,K,HEUR,ctr,CP,mpsoln)
+    hkval = 0
+    if status == :Optimal
+        trl_soln[0]=mpsoln
+	updateCenter(opfdata,mpsoln,ctr)
+        η_val = computeSG(opfdata,mpsoln,sg)
+        trl_soln[0].eta = η_val
+	hkval = η_val
+        if η_val < 0
+          updateSG(opfdata,sg)
+        else
+	  optUB = mpsoln.objval
+	end
+    end
+    fixedNode.nodeBd=optUB
+  # MAIN LOOP
     for kk=1:maxNSG
-      solveNodeProxPt(opfdata,fixedNode,sg,K,HEUR,mpsoln,ctr)
-@show mpsoln.objval
-      H=spzeros(2*nbuses,2*nbuses)
-      updateHess(opfdata,mpsoln,H)
-      η_val = solveEta0Eigs(H,opfdata,v)
-      if η_val < -TOL
-        updateSG(opfdata,v,sg)
+      mpsoln=SolnInfo(zeros(nbuses),zeros(nbuses),zeros(nbuses),zeros(nbuses),
+			zeros(ngens),zeros(ngens),zeros(ngens),zeros(ngens),
+			zeros(nlines),zeros(nlines),zeros(nlines),zeros(nlines),zeros(nlines),0.0,0.0,0.0)
+      status = solveNodeProxPt(opfdata,fixedNode,sg,K,HEUR,ctr,PROX,mpsoln)
+      if status == :Optimal
+        trl_soln[kk]=mpsoln
+        η_val = computeSG(opfdata,mpsoln,sg)
+        trl_soln[kk].eta = η_val
+        hkval = max(optUB - trl_soln[kk].objval,-trl_soln[kk].eta)
+        for pp=(kk-1):-1:1
+	  if max(optUB - trl_soln[pp].objval,-trl_soln[pp].eta) < hkval
+	    hkval = max(optUB - trl_soln[pp].objval,-trl_soln[pp].eta) 
+	  end
+        end
+        fixedNode.nodeBd = optUB - 0.5*hkval
+        if (kk==1 || (ctr.eta-η_val)/(ctr.eta) >= 0.01)
+        # UPDATE CENTER VALUES
+	  updateCenter(opfdata,mpsoln,ctr)
+	  ctr.eta = η_val
+	  purgeSG(opfdata,sg)
+	  @show mpsoln.objval,optUB,-ctr.eta,hkval,sg.nSGs
+	end
+        if η_val < 0
+          updateSG(opfdata,sg)
+        else
+          println("Tolerance met for not generating a new lazy cut.")
+	end
       else
-        println("Tolerance met for not generating a new lazy cut.")
-      end
-
-  # UPDATE CENTER VALUES
-      if kk==1 || (ctr.objval-η_val)/(ctr.objval) >= 0.1
-        for i in N
-          ctr.α_val[i],ctr.β_val[i],ctr.γ_val[i],ctr.δ_val[i] = mpsoln.α_val[i],mpsoln.β_val[i],mpsoln.γ_val[i],mpsoln.δ_val[i]
-        end 
-        for g in G
-          ctr.ζpLB_val[g],ctr.ζpUB_val[g],ctr.ζqLB_val[g],ctr.ζqUB_val[g] = mpsoln.ζpLB_val[g],mpsoln.ζpUB_val[g],mpsoln.ζqLB_val[g],mpsoln.ζqUB_val[g]
-        end
-        for l in L
-          ctr.x_val[l] =  mpsoln.x_val[l] 
-          ctr.λF_val[l], ctr.λT_val[l], ctr.μF_val[l], ctr.μT_val[l] = mpsoln.λF_val[l], mpsoln.λT_val[l], mpsoln.μF_val[l], mpsoln.μT_val[l] 
-        end
-        ctr.objval = η_val
+	optUB = fixedNode.nodeBd 
       end
     end
+    println("Done")
 end
 
 
 
   #USEFUL SUBROUTINES
+    function updateCenter(opfdata,mpsoln,ctr)
+      nbuses, nlines, ngens, N, L, G = opfdata.nbuses, opfdata.nlines, opfdata.ngens, opfdata.N, opfdata.L, opfdata.G 
+      fromBus,toBus,Y = opfdata.fromBus, opfdata.toBus, opfdata.Y_AC
+        for i in N
+          ctr.α[i],ctr.β[i],ctr.γ[i],ctr.δ[i] = mpsoln.α[i],mpsoln.β[i],mpsoln.γ[i],mpsoln.δ[i]
+        end 
+        for g in G
+          ctr.ζpLB[g],ctr.ζpUB[g],ctr.ζqLB[g],ctr.ζqUB[g] = mpsoln.ζpLB[g],mpsoln.ζpUB[g],mpsoln.ζqLB[g],mpsoln.ζqUB[g]
+        end
+        for l in L
+          ctr.x[l] =  mpsoln.x[l] 
+          ctr.λF[l], ctr.λT[l], ctr.μF[l], ctr.μT[l] = mpsoln.λF[l], mpsoln.λT[l], mpsoln.μF[l], mpsoln.μT[l] 
+        end
+        ctr.objval = mpsoln.objval
+    end
+    function computeSG(opfdata,mpsoln,sg)
+      nbuses, nlines, ngens, N, L, G = opfdata.nbuses, opfdata.nlines, opfdata.ngens, opfdata.N, opfdata.L, opfdata.G 
+      fromBus,toBus,Y = opfdata.fromBus, opfdata.toBus, opfdata.Y_AC
+      vR = zeros(nbuses)
+      vI = zeros(nbuses)
+      eta_val = solveEta0Eigs(opfdata,mpsoln,vR,vI)
+      for i in N
+        W_val = vR[i]^2 + vI[i]^2
+        sg.α_new[i] = Y["shR"][i] * W_val
+	sg.β_new[i] = -Y["shI"][i] * W_val
+        sg.δ_new[i] = W_val
+	sg.γ_new[i] = -W_val
+      end
+      for l in L
+        from = fromBus[l]; to = toBus[l]
+        e_valF = vR[from]; f_valF = vI[from]; W_valF = e_valF^2 + f_valF^2
+        e_valT = vR[to]; f_valT = vI[to]; W_valT = e_valT^2 + f_valT^2
+        Wr_val = e_valF*e_valT + f_valF*f_valT; Wi_val = e_valT*f_valF - e_valF*f_valT
+        sg.λF_new[l] = (Y["ffR"][l] * W_valF + Y["ftR"][l] * Wr_val + Y["ftI"][l] * Wi_val)
+        sg.λT_new[l] = (Y["ttR"][l] * W_valT + Y["tfR"][l] * Wr_val - Y["tfI"][l] * Wi_val)
+        sg.μF_new[l] = (-Y["ffI"][l] * W_valF - Y["ftI"][l] * Wr_val + Y["ftR"][l] * Wi_val)
+        sg.μT_new[l] = (-Y["ttI"][l] * W_valT - Y["tfI"][l] * Wr_val - Y["tfR"][l] * Wi_val)
+      end
+      return eta_val
+    end
+  # SUBROUTINE FOR COMPUTING THE MINIMUM EIGENVALUE OF H WITH A CORRESPONDING EIGENVECTOR
+    function solveEta0Eigs(opfdata,mpsoln,vR,vI)
+      nbuses, nlines, ngens, N, L, G = opfdata.nbuses, opfdata.nlines, opfdata.ngens, opfdata.N, opfdata.L, opfdata.G 
+      fromBus,toBus = opfdata.fromBus, opfdata.toBus
+      H=spzeros(2*nbuses,2*nbuses)
+      updateHess(opfdata,mpsoln,H)
+      E=eigs(H,nev=6,which=:SR, maxiter=100000, tol=1e-8)
+      η0Val = E[1][1]
+      for i in N
+        vR[i] = E[2][i,1]; vI[i] = E[2][nbuses+i,1]
+      end
+      return η0Val
+    end
   # Update Hessian
     function updateHess(opfdata,pi_val,H)
       #lines, buses, generators, baseMVA = opfdata.lines, opfdata.buses, opfdata.generators, opfdata.baseMVA
@@ -226,44 +325,35 @@ end
       fromBus,toBus = opfdata.fromBus, opfdata.toBus  
       Y = opfdata.Y_AC
       for i in N
-        H[i,i] +=  pi_val.α_val[i] * Y["shR"][i] - pi_val.β_val[i] * Y["shI"][i]  + pi_val.δ_val[i] - pi_val.γ_val[i]
-        H[nbuses+i,nbuses+i] += pi_val.α_val[i] * Y["shR"][i] - pi_val.β_val[i] * Y["shI"][i] + pi_val.δ_val[i] - pi_val.γ_val[i]
+        H[i,i] +=  pi_val.α[i] * Y["shR"][i] - pi_val.β[i] * Y["shI"][i]  + pi_val.δ[i] - pi_val.γ[i]
+        H[nbuses+i,nbuses+i] += pi_val.α[i] * Y["shR"][i] - pi_val.β[i] * Y["shI"][i] + pi_val.δ[i] - pi_val.γ[i]
       end
       for l in L
         from = fromBus[l]; to = toBus[l]
-        H[from,from] += pi_val.λF_val[l] * Y["ffR"][l] - pi_val.μF_val[l] * Y["ffI"][l]
-        H[nbuses+from,nbuses+from] += pi_val.λF_val[l] * Y["ffR"][l] - pi_val.μF_val[l] * Y["ffI"][l]
-        H[to,to] += pi_val.λT_val[l] * Y["ttR"][l] - pi_val.μT_val[l] * Y["ttI"][l]
-        H[nbuses+to,nbuses+to] += pi_val.λT_val[l] * Y["ttR"][l] - pi_val.μT_val[l] * Y["ttI"][l]
-        H[from,to] += 0.5*( pi_val.λF_val[l] * Y["ftR"][l] - pi_val.μF_val[l] * Y["ftI"][l] + pi_val.λT_val[l] * Y["tfR"][l] - pi_val.μT_val[l] * Y["tfI"][l] )
-        H[to,from] += 0.5*( pi_val.λF_val[l] * Y["ftR"][l] - pi_val.μF_val[l] * Y["ftI"][l] + pi_val.λT_val[l] * Y["tfR"][l] - pi_val.μT_val[l] * Y["tfI"][l] )
-        H[nbuses+from, nbuses+to] += 0.5*( pi_val.λF_val[l] * Y["ftR"][l] - pi_val.μF_val[l] * Y["ftI"][l] + pi_val.λT_val[l] * Y["tfR"][l] - pi_val.μT_val[l] * Y["tfI"][l] )
-        H[nbuses+to, nbuses+from] += 0.5*( pi_val.λF_val[l] * Y["ftR"][l] - pi_val.μF_val[l] * Y["ftI"][l] + pi_val.λT_val[l] * Y["tfR"][l] - pi_val.μT_val[l] * Y["tfI"][l] )
-        H[to, nbuses+from] += 0.5*( pi_val.λF_val[l] * Y["ftI"][l] - pi_val.λT_val[l] * Y["tfI"][l] + pi_val.μF_val[l] * Y["ftR"][l] - pi_val.μT_val[l] * Y["tfR"][l] )
-        H[nbuses+from, to] += 0.5*( pi_val.λF_val[l] * Y["ftI"][l] - pi_val.λT_val[l] * Y["tfI"][l] + pi_val.μF_val[l] * Y["ftR"][l] - pi_val.μT_val[l] * Y["tfR"][l] )
-        H[from,nbuses+to] -= 0.5*( pi_val.λF_val[l] * Y["ftI"][l] - pi_val.λT_val[l] * Y["tfI"][l] + pi_val.μF_val[l] * Y["ftR"][l] - pi_val.μT_val[l] * Y["tfR"][l] )
-        H[nbuses+to,from] -= 0.5*( pi_val.λF_val[l] * Y["ftI"][l] - pi_val.λT_val[l] * Y["tfI"][l] + pi_val.μF_val[l] * Y["ftR"][l] - pi_val.μT_val[l] * Y["tfR"][l] )
+        H[from,from] += pi_val.λF[l] * Y["ffR"][l] - pi_val.μF[l] * Y["ffI"][l]
+        H[nbuses+from,nbuses+from] += pi_val.λF[l] * Y["ffR"][l] - pi_val.μF[l] * Y["ffI"][l]
+        H[to,to] += pi_val.λT[l] * Y["ttR"][l] - pi_val.μT[l] * Y["ttI"][l]
+        H[nbuses+to,nbuses+to] += pi_val.λT[l] * Y["ttR"][l] - pi_val.μT[l] * Y["ttI"][l]
+        H[from,to] += 0.5*( pi_val.λF[l] * Y["ftR"][l] - pi_val.μF[l] * Y["ftI"][l] + pi_val.λT[l] * Y["tfR"][l] - pi_val.μT[l] * Y["tfI"][l] )
+        H[to,from] += 0.5*( pi_val.λF[l] * Y["ftR"][l] - pi_val.μF[l] * Y["ftI"][l] + pi_val.λT[l] * Y["tfR"][l] - pi_val.μT[l] * Y["tfI"][l] )
+        H[nbuses+from, nbuses+to] += 0.5*( pi_val.λF[l] * Y["ftR"][l] - pi_val.μF[l] * Y["ftI"][l] + pi_val.λT[l] * Y["tfR"][l] - pi_val.μT[l] * Y["tfI"][l] )
+        H[nbuses+to, nbuses+from] += 0.5*( pi_val.λF[l] * Y["ftR"][l] - pi_val.μF[l] * Y["ftI"][l] + pi_val.λT[l] * Y["tfR"][l] - pi_val.μT[l] * Y["tfI"][l] )
+        H[to, nbuses+from] += 0.5*( pi_val.λF[l] * Y["ftI"][l] - pi_val.λT[l] * Y["tfI"][l] + pi_val.μF[l] * Y["ftR"][l] - pi_val.μT[l] * Y["tfR"][l] )
+        H[nbuses+from, to] += 0.5*( pi_val.λF[l] * Y["ftI"][l] - pi_val.λT[l] * Y["tfI"][l] + pi_val.μF[l] * Y["ftR"][l] - pi_val.μT[l] * Y["tfR"][l] )
+        H[from,nbuses+to] -= 0.5*( pi_val.λF[l] * Y["ftI"][l] - pi_val.λT[l] * Y["tfI"][l] + pi_val.μF[l] * Y["ftR"][l] - pi_val.μT[l] * Y["tfR"][l] )
+        H[nbuses+to,from] -= 0.5*( pi_val.λF[l] * Y["ftI"][l] - pi_val.λT[l] * Y["tfI"][l] + pi_val.μF[l] * Y["ftR"][l] - pi_val.μT[l] * Y["tfR"][l] )
       end
     end
 
-  # SUBROUTINE FOR COMPUTING THE MINIMUM EIGENVALUE OF H WITH A CORRESPONDING EIGENVECTOR
-    function solveEta0Eigs(H,optdata,v)
-      nbuses, nlines, ngens, N, L, G = opfdata.nbuses, opfdata.nlines, opfdata.ngens, opfdata.N, opfdata.L, opfdata.G 
-      fromBus,toBus = opfdata.fromBus, opfdata.toBus
-
-      E=eigs(H,nev=6,which=:SR, maxiter=100000, tol=1e-8)
-      η0Val = E[1][1]
-      for i in N
-        v["R"][i] = E[2][i,1]; v["I"][i] = E[2][nbuses+i,1]
-      end
-      return η0Val
-    end
 
   # SUBROUTINE FOR COMPUTING THE MINIMUM EIGENVALUE OF H WITH A CORRESPONDING EIGENVECTOR
     # VIA AN OPTIMIZATION PROBLEM
     function solveEta0SDP(H,opfdata,v)
       nbuses, nlines, ngens, N, L, G = opfdata.nbuses, opfdata.nlines, opfdata.ngens, opfdata.N, opfdata.L, opfdata.G 
       fromBus,toBus = opfdata.fromBus, opfdata.toBus
+    # DATA RELATED TO THE STORAGE OF VOLTAGE VARIABLE VALUES
+      vR = zeros(nbuses)
+      vI = zeros(nbuses)
 
       #The QP subproblem
       mSDP = Model(solver=IpoptSolver())
@@ -283,7 +373,7 @@ end
       if status == :Optimal || status == :UserLimit
         η0Val = getobjectivevalue(mSDP)
         for i in N
-          v["R"][i]=getvalue(e[i]); v["I"][i]=getvalue(f[i])
+          vR[i]=getvalue(e[i]); vI[i]=getvalue(f[i])
         end
         if(status == :UserLimit)
           println("solveEta0SDP solve status $status")
@@ -296,12 +386,12 @@ end
     end
 
   # SUBROUTINE FOR COMPUTING A SUBGRADIENT OF ETA(PI), WHICH IS THE FUNCTION TAKING THE VALUE OF THE MINIMUM EIGENVALUE OF H(PI)
-    function updateSG(opfdata,v,sg)
+    function purgeSG(opfdata,sg)
       nbuses, nlines, ngens, N, L, G = opfdata.nbuses, opfdata.nlines, opfdata.ngens, opfdata.N, opfdata.L, opfdata.G 
       fromBus,toBus,Y = opfdata.fromBus, opfdata.toBus, opfdata.Y_AC
       ncuts = sg.nSGs
       for n=ncuts:-1:1
-	if sg.cut_duals[n] < 1e-6
+	if abs(sg.cut_duals[n]) < 1e-6
 	  sg.α[N,n].=sg.α[N,sg.nSGs]
 	  sg.β[N,n].=sg.β[N,sg.nSGs]
 	  sg.γ[N,n].=sg.γ[N,sg.nSGs]
@@ -313,21 +403,22 @@ end
 	  sg.nSGs -= 1
 	end
       end
+    end
+    function updateSG(opfdata,sg)
+      nbuses, nlines, ngens, N, L, G = opfdata.nbuses, opfdata.nlines, opfdata.ngens, opfdata.N, opfdata.L, opfdata.G 
+      fromBus,toBus,Y = opfdata.fromBus, opfdata.toBus, opfdata.Y_AC
       sg.nSGs += 1
       newcut = sg.nSGs
       for i in N
-        W_val = v["R"][i]^2 + v["I"][i]^2
-        sg.α[i,newcut] = Y["shR"][i] * W_val; sg.β[i,newcut] = -Y["shI"][i] * W_val
-        sg.δ[i,newcut] = W_val; sg.γ[i,newcut] = -W_val
+        sg.α[i,newcut] = sg.α_new[i]
+	sg.β[i,newcut] = sg.β_new[i]
+	sg.γ[i,newcut] = sg.γ_new[i]
+        sg.δ[i,newcut] = sg.δ_new[i]
       end
       for l in L
-        from = fromBus[l]; to = toBus[l]
-        e_valF = v["R"][from]; f_valF = v["I"][from]; W_valF = e_valF^2 + f_valF^2
-        e_valT = v["R"][to]; f_valT = v["I"][to]; W_valT = e_valT^2 + f_valT^2
-        Wr_val = e_valF*e_valT + f_valF*f_valT; Wi_val = e_valT*f_valF - e_valF*f_valT
-        sg.λF[l,newcut] = (Y["ffR"][l] * W_valF + Y["ftR"][l] * Wr_val + Y["ftI"][l] * Wi_val)
-        sg.λT[l,newcut] = (Y["ttR"][l] * W_valT + Y["tfR"][l] * Wr_val - Y["tfI"][l] * Wi_val)
-        sg.μF[l,newcut] = (-Y["ffI"][l] * W_valF - Y["ftI"][l] * Wr_val + Y["ftR"][l] * Wi_val)
-        sg.μT[l,newcut] = (-Y["ttI"][l] * W_valT - Y["tfI"][l] * Wr_val - Y["tfR"][l] * Wi_val)
+        sg.λF[l,newcut] = sg.λF_new[l]
+        sg.λT[l,newcut] = sg.λT_new[l]
+        sg.μF[l,newcut] = sg.μF_new[l]
+        sg.μT[l,newcut] = sg.μT_new[l]
       end
     end
