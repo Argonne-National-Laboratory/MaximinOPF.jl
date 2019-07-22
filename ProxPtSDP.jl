@@ -28,6 +28,7 @@ type SolnInfo
   μF::Array{Float64}
   μT::Array{Float64}
   objval::Float64
+  linobjval::Float64
   eta::Float64
   solvetime::Float64
 end
@@ -52,9 +53,10 @@ type EtaSGs
   cut_duals::Array{Float64}
 end
 
-maxNSG = 3000
+maxNSG = 10000
 CP,PROX,LVL=0,1,2
 tVal = 0.25
+ssc=0.8
 
 function solveNodeProxPt(opfdata,nodeinfo,sg,K,HEUR,ctr,CTR_PARAM,
 			mpsoln)
@@ -159,7 +161,7 @@ function solveNodeProxPt(opfdata,nodeinfo,sg,K,HEUR,ctr,CTR_PARAM,
     end
 
   status=solve(mMP)
-  if status == :Optimal 
+  if status == :Optimal || status == :CPX_STAT_NUM_BEST
       for i in N
           mpsoln.α[i],mpsoln.β[i],mpsoln.γ[i],mpsoln.δ[i] = getvalue(α[i]), getvalue(β[i]), getvalue(γ[i]), getvalue(δ[i])
       end
@@ -171,12 +173,15 @@ function solveNodeProxPt(opfdata,nodeinfo,sg,K,HEUR,ctr,CTR_PARAM,
         mpsoln.λF[l], mpsoln.λT[l], mpsoln.μF[l], mpsoln.μT[l] = getvalue(λF[l]), getvalue(λT[l]), getvalue(μF[l]), getvalue(μT[l])
       end
       mpsoln.objval,mpsoln.solvetime = getobjectivevalue(mMP), getsolvetime(mMP)
+      mpsoln.linobjval = getvalue(linobj)
       mpsoln.eta=0
-      for n=1:sg.nSGs
-	sg.cut_duals[n] = getdual(CP[n])
+      if status == :Optimal
+        for n=1:sg.nSGs
+	  sg.cut_duals[n] = getdual(CP[n])
+        end
       end
   else
-    println("solveNodeAC: Return status $status")
+    #println("solveNodeAC: Return status $status")
   end
   return status
 end
@@ -204,59 +209,90 @@ function testProxPt(opfdata,K,HEUR)
     optUB=1e20
     ctr=SolnInfo(zeros(nbuses),zeros(nbuses),zeros(nbuses),zeros(nbuses),
 			zeros(ngens),zeros(ngens),zeros(ngens),zeros(ngens),
-			zeros(nlines),zeros(nlines),zeros(nlines),zeros(nlines),zeros(nlines),0.0,0.0,0.0)
+			zeros(nlines),zeros(nlines),zeros(nlines),zeros(nlines),zeros(nlines),0.0,0.0,0.0,0.0)
     x_val=zeros(opfdata.nlines)
     x_val[41],x_val[80]=1,1
     fixedNode=NodeInfo(x_val,x_val,optUB)
     mpsoln=SolnInfo(zeros(nbuses),zeros(nbuses),zeros(nbuses),zeros(nbuses),
 	zeros(ngens),zeros(ngens),zeros(ngens),zeros(ngens),
-	zeros(nlines),zeros(nlines),zeros(nlines),zeros(nlines),zeros(nlines),0.0,0.0,0.0)
+	zeros(nlines),zeros(nlines),zeros(nlines),zeros(nlines),zeros(nlines),0.0,0.0,0.0,0.0)
+    bestsoln = mpsoln
     status = solveNodeProxPt(opfdata,fixedNode,sg,K,HEUR,ctr,CP,mpsoln)
     hkval = 0
-    if status == :Optimal
+    hkctr = hkval
+    if status == :Optimal || status == :CPX_STAT_NUM_BEST
         trl_soln[0]=mpsoln
 	updateCenter(opfdata,mpsoln,ctr)
         η_val = computeSG(opfdata,mpsoln,sg)
+	ctr.eta = η_val
         trl_soln[0].eta = η_val
-	hkval = η_val
+	hkval = -η_val
+        hkctr = hkval
+	optUB = mpsoln.objval
         if η_val < 0
           updateSG(opfdata,sg)
-        else
-	  optUB = mpsoln.objval
 	end
+	@show mpsoln.objval,optUB,-ctr.eta,hkval,sg.nSGs
     end
-    fixedNode.nodeBd=optUB
+    fixedNode.nodeBd=optUB - ssc*hkval
   # MAIN LOOP
+    ii=0
     for kk=1:maxNSG
+      purgecuts=false
+     # STEP 1
+      hkval = max(optUB - trl_soln[ii].linobjval,-trl_soln[ii].eta)
+      bestsoln = trl_soln[ii]
+      objval = trl_soln[ii].objval
+      linobjval = trl_soln[ii].linobjval
+      etaval = -trl_soln[ii].eta
+      for pp=(ii-1):-1:0
+	if max(optUB - trl_soln[pp].linobjval,-trl_soln[pp].eta) < hkval
+	  hkval = max(optUB - trl_soln[pp].objval,-trl_soln[pp].eta) 
+          bestsoln = trl_soln[pp]
+          objval = trl_soln[pp].objval
+          linobjval = trl_soln[pp].linobjval
+          etaval = -trl_soln[pp].eta
+	end
+      end
+      fixedNode.nodeBd = optUB - ssc*hkval
+      if hkval < 1e-4
+	println("Convergence to within tolerance.")
+	break
+      end
+
+     # STEP 2
+      if hkval <= (1-ssc)*hkctr
+        hkctr = hkval
+        # UPDATE CENTER VALUES
+	  updateCenter(opfdata,bestsoln,ctr)
+	  ctr.eta = η_val
+	  #purgeSG(opfdata,sg)
+	  @show optUB,linobjval,etaval,hkval,sg.nSGs
+	  purgecuts=true
+      end
+     # STEP 3
       mpsoln=SolnInfo(zeros(nbuses),zeros(nbuses),zeros(nbuses),zeros(nbuses),
 			zeros(ngens),zeros(ngens),zeros(ngens),zeros(ngens),
-			zeros(nlines),zeros(nlines),zeros(nlines),zeros(nlines),zeros(nlines),0.0,0.0,0.0)
-      status = solveNodeProxPt(opfdata,fixedNode,sg,K,HEUR,ctr,PROX,mpsoln)
-      if status == :Optimal
-        trl_soln[kk]=mpsoln
-        η_val = computeSG(opfdata,mpsoln,sg)
-        trl_soln[kk].eta = η_val
-        hkval = max(optUB - trl_soln[kk].objval,-trl_soln[kk].eta)
-        for pp=(kk-1):-1:1
-	  if max(optUB - trl_soln[pp].objval,-trl_soln[pp].eta) < hkval
-	    hkval = max(optUB - trl_soln[pp].objval,-trl_soln[pp].eta) 
-	  end
-        end
-        fixedNode.nodeBd = optUB - 0.5*hkval
-        if (kk==1 || (ctr.eta-η_val)/(ctr.eta) >= 0.01)
-        # UPDATE CENTER VALUES
-	  updateCenter(opfdata,mpsoln,ctr)
-	  ctr.eta = η_val
+			zeros(nlines),zeros(nlines),zeros(nlines),zeros(nlines),zeros(nlines),0.0,0.0,0.0,0.0)
+      status = solveNodeProxPt(opfdata,fixedNode,sg,K,HEUR,ctr,LVL,mpsoln)
+      if status == :Optimal || status == :CPX_STAT_NUM_BEST
+	ii += 1
+	if status == :Optimal 
 	  purgeSG(opfdata,sg)
-	  @show mpsoln.objval,optUB,-ctr.eta,hkval,sg.nSGs
 	end
+        trl_soln[ii]=mpsoln
+        η_val = computeSG(opfdata,mpsoln,sg)
+        trl_soln[ii].eta = η_val
         if η_val < 0
           updateSG(opfdata,sg)
         else
           println("Tolerance met for not generating a new lazy cut.")
 	end
+	#@show optUB,linobjval,etaval,hkval,η_val,sg.nSGs
+	#@show kk,mpsoln.objval,mpsoln.linobjval,optUB,η_val,hkctr
       else
 	optUB = fixedNode.nodeBd 
+	@show kk,optUB,linobjval,etaval,hkval,sg.nSGs
       end
     end
     println("Done")
