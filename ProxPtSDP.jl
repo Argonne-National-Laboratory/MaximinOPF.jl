@@ -50,13 +50,14 @@ type EtaSGs
   λT_new::Array{Float64}
   μF_new::Array{Float64}
   μT_new::Array{Float64}
+  trl_soln::Dict
   cut_duals::Array{Float64}
 end
 
-maxNSG = 10000
+maxNSG = 100000
 CP,PROX,LVL=0,1,2
 tVal = 0.25
-ssc=0.8
+ssc=0.5
 
 function solveNodeProxPt(opfdata,nodeinfo,sg,K,HEUR,ctr,CTR_PARAM,
 			mpsoln)
@@ -129,8 +130,22 @@ function solveNodeProxPt(opfdata,nodeinfo,sg,K,HEUR,ctr,CTR_PARAM,
       )
     elseif CTR_PARAM == LVL
       @constraint(mMP, LVLConstr, linobj >= nodeinfo.nodeBd)
-      @objective(mMP, Min, sum( ( ctr.α[i] - α[i])^2 + (ctr.β[i] - β[i])^2 + (ctr.γ[i] - γ[i])^2 + (ctr.δ[i] - δ[i])^2 for i in N)
-      )
+#=
+      @variable(mMP, alphaSlack[i=N] >= 0)
+      @variable(mMP, betaSlack[i=N] >= 0)
+      @variable(mMP, gammaSlack[i=N] >= 0)
+      @variable(mMP, deltaSlack[i=N] >= 0)
+      @constraint(mMP, alphaUBSlack[i=N], ctr.α[i] - α[i] <= alphaSlack[i])
+      @constraint(mMP, alphaLBSlack[i=N], ctr.α[i] - α[i] >= -alphaSlack[i])
+      @constraint(mMP, betaUBSlack[i=N], ctr.β[i] - β[i] <= betaSlack[i])
+      @constraint(mMP, betaLBSlack[i=N], ctr.β[i] - β[i] >= -betaSlack[i])
+      @constraint(mMP, gammaUBSlack[i=N], ctr.γ[i] - γ[i] <= gammaSlack[i])
+      @constraint(mMP, gammaLBSlack[i=N], ctr.γ[i] - γ[i] >= -gammaSlack[i])
+      @constraint(mMP, deltaUBSlack[i=N], ctr.δ[i] - δ[i] <= deltaSlack[i])
+      @constraint(mMP, deltaLBSlack[i=N], ctr.δ[i] - δ[i] >= -deltaSlack[i])
+      @objective(mMP, Max, -sum(alphaSlack[i] + betaSlack[i] + gammaSlack[i] + deltaSlack[i] for i in N))
+=#
+      @objective(mMP, Max, -sum( ( ctr.α[i] - α[i])^2 + (ctr.β[i] - β[i])^2 + (ctr.γ[i] - γ[i])^2 + (ctr.δ[i] - δ[i])^2 for i in N))
     else
       @objective(mMP, Max, linobj)
     end
@@ -187,7 +202,6 @@ function solveNodeProxPt(opfdata,nodeinfo,sg,K,HEUR,ctr,CTR_PARAM,
 end
 
 
-
 function testProxPt(opfdata,K,HEUR)
   # OBTAIN SHORTHAND PROBLEM INFORMATION FROM opfdata
     nbuses, nlines, ngens = opfdata.nbuses, opfdata.nlines, opfdata.ngens
@@ -202,16 +216,87 @@ function testProxPt(opfdata,K,HEUR)
       zeros(nlines,maxNSG),zeros(nlines,maxNSG),zeros(nlines,maxNSG),zeros(nlines,maxNSG), 
       zeros(nbuses),zeros(nbuses),zeros(nbuses),zeros(nbuses),
       zeros(nlines),zeros(nlines),zeros(nlines),zeros(nlines), 
-      zeros(maxNSG)
+      Dict(),zeros(maxNSG)
     )
   # INITIAL ITERATION
-    trl_soln=Dict()
+    ctr=SolnInfo(zeros(nbuses),zeros(nbuses),zeros(nbuses),zeros(nbuses),
+			zeros(ngens),zeros(ngens),zeros(ngens),zeros(ngens),
+			zeros(nlines),zeros(nlines),zeros(nlines),zeros(nlines),zeros(nlines),0.0,0.0,0.0,0.0)
+    x_val=zeros(opfdata.nlines)
+    x_val[41],x_val[80]=1,1
+    #x_val[8],x_val[9],x_val[10],x_val[40]=1,1,1,1
+    fixedNode=NodeInfo(x_val,x_val,1e20)
+    mpsoln=SolnInfo(zeros(nbuses),zeros(nbuses),zeros(nbuses),zeros(nbuses),
+	zeros(ngens),zeros(ngens),zeros(ngens),zeros(ngens),
+	zeros(nlines),zeros(nlines),zeros(nlines),zeros(nlines),zeros(nlines),0.0,0.0,0.0,0.0)
+    bestsoln = mpsoln
+    status = solveNodeProxPt(opfdata,fixedNode,sg,K,HEUR,ctr,CP,mpsoln)
+    if status == :Optimal || status == :CPX_STAT_NUM_BEST
+	updateCenter(opfdata,mpsoln,ctr)
+        η_val = computeSG(opfdata,mpsoln,sg)
+	ctr.eta = η_val
+        if η_val < 0
+          updateSG(opfdata,sg)
+	end
+	@show mpsoln.objval,-ctr.eta,sg.nSGs
+    end
+  # MAIN LOOP
+    for kk=1:maxNSG
+     # STEP 1
+      mpsoln=SolnInfo(zeros(nbuses),zeros(nbuses),zeros(nbuses),zeros(nbuses),
+			zeros(ngens),zeros(ngens),zeros(ngens),zeros(ngens),
+			zeros(nlines),zeros(nlines),zeros(nlines),zeros(nlines),zeros(nlines),0.0,0.0,0.0,0.0)
+      status = solveNodeProxPt(opfdata,fixedNode,sg,K,HEUR,ctr,PROX,mpsoln)
+      if status == :Optimal || status == :CPX_STAT_NUM_BEST
+        η_val = computeSG(opfdata,mpsoln,sg)
+       # STEP 2
+        if -ctr.eta < 1e-6
+	  println("Convergence to within tolerance.")
+	  break
+        end
+       # STEP 3
+        if (η_val-ctr.eta) >= -(0.05)*ctr.eta
+	  purgeSG(opfdata,sg)
+          # UPDATE CENTER VALUES
+	    updateCenter(opfdata,mpsoln,ctr)
+	    ctr.eta = η_val
+	  @show mpsoln.linobjval,-ctr.eta,sg.nSGs
+        end
+       # STEP 4
+        updateSG(opfdata,sg)
+      else
+	println("Solve status: $status")
+	break
+      end
+
+    end
+    println("Done")
+end
+
+function testLevelBM(opfdata,K,HEUR)
+  # OBTAIN SHORTHAND PROBLEM INFORMATION FROM opfdata
+    nbuses, nlines, ngens = opfdata.nbuses, opfdata.nlines, opfdata.ngens
+    N, L, G = opfdata.N, opfdata.L, opfdata.G 
+    fromLines,toLines,fromBus,toBus = opfdata.fromLines, opfdata.toLines, opfdata.fromBus, opfdata.toBus
+    BusGeners, Y = opfdata.BusGeners, opfdata.Y_AC
+  # DONE OBTAINING PROBLEM INFORMATION FROM opfdata
+
+  # DATA RELATED TO SUBGRADIENT INFORMATION
+    sg = EtaSGs(0,
+      zeros(nbuses,maxNSG),zeros(nbuses,maxNSG),zeros(nbuses,maxNSG),zeros(nbuses,maxNSG),
+      zeros(nlines,maxNSG),zeros(nlines,maxNSG),zeros(nlines,maxNSG),zeros(nlines,maxNSG), 
+      zeros(nbuses),zeros(nbuses),zeros(nbuses),zeros(nbuses),
+      zeros(nlines),zeros(nlines),zeros(nlines),zeros(nlines), 
+      Dict(),zeros(maxNSG)
+    )
+  # INITIAL ITERATION
     optUB=1e20
     ctr=SolnInfo(zeros(nbuses),zeros(nbuses),zeros(nbuses),zeros(nbuses),
 			zeros(ngens),zeros(ngens),zeros(ngens),zeros(ngens),
 			zeros(nlines),zeros(nlines),zeros(nlines),zeros(nlines),zeros(nlines),0.0,0.0,0.0,0.0)
     x_val=zeros(opfdata.nlines)
     x_val[41],x_val[80]=1,1
+    #x_val[8],x_val[9],x_val[10],x_val[40]=1,1,1,1
     fixedNode=NodeInfo(x_val,x_val,optUB)
     mpsoln=SolnInfo(zeros(nbuses),zeros(nbuses),zeros(nbuses),zeros(nbuses),
 	zeros(ngens),zeros(ngens),zeros(ngens),zeros(ngens),
@@ -220,12 +305,10 @@ function testProxPt(opfdata,K,HEUR)
     status = solveNodeProxPt(opfdata,fixedNode,sg,K,HEUR,ctr,CP,mpsoln)
     hkval = 0
     hkctr = hkval
-    if status == :Optimal || status == :CPX_STAT_NUM_BEST
-        trl_soln[0]=mpsoln
+    if status == :Optimal 
 	updateCenter(opfdata,mpsoln,ctr)
         η_val = computeSG(opfdata,mpsoln,sg)
 	ctr.eta = η_val
-        trl_soln[0].eta = η_val
 	hkval = -η_val
         hkctr = hkval
 	optUB = mpsoln.objval
@@ -233,60 +316,57 @@ function testProxPt(opfdata,K,HEUR)
           updateSG(opfdata,sg)
 	end
 	@show mpsoln.objval,optUB,-ctr.eta,hkval,sg.nSGs
+        fixedNode.nodeBd=optUB - ssc*hkval
     end
-    fixedNode.nodeBd=optUB - ssc*hkval
   # MAIN LOOP
-    ii=0
     for kk=1:maxNSG
       purgecuts=false
      # STEP 1
-      hkval = max(optUB - trl_soln[ii].linobjval,-trl_soln[ii].eta)
-      bestsoln = trl_soln[ii]
-      objval = trl_soln[ii].objval
-      linobjval = trl_soln[ii].linobjval
-      etaval = -trl_soln[ii].eta
-      for pp=(ii-1):-1:0
-	if max(optUB - trl_soln[pp].linobjval,-trl_soln[pp].eta) < hkval
-	  hkval = max(optUB - trl_soln[pp].objval,-trl_soln[pp].eta) 
-          bestsoln = trl_soln[pp]
-          objval = trl_soln[pp].objval
-          linobjval = trl_soln[pp].linobjval
-          etaval = -trl_soln[pp].eta
+      hkval = max(optUB - sg.trl_soln[0].linobjval,-sg.trl_soln[0].eta)
+      bestsoln = sg.trl_soln[0]
+      objval = sg.trl_soln[0].objval
+      linobjval = sg.trl_soln[0].linobjval
+      etaval = -sg.trl_soln[0].eta
+      for pp=sg.nSGs:-1:1
+	if max(optUB - sg.trl_soln[pp].linobjval,-sg.trl_soln[pp].eta) < hkval
+	  hkval = max(optUB - sg.trl_soln[pp].linobjval,-sg.trl_soln[pp].eta) 
+          bestsoln = sg.trl_soln[pp]
+          objval = sg.trl_soln[pp].objval
+          linobjval = sg.trl_soln[pp].linobjval
+          etaval = -sg.trl_soln[pp].eta
 	end
       end
       fixedNode.nodeBd = optUB - ssc*hkval
-      if hkval < 1e-4
+      if hkval < 1e-6
 	println("Convergence to within tolerance.")
 	break
       end
 
      # STEP 2
-      if hkval <= (1-ssc)*hkctr
+      if hkval <= (1-ssc)*hkctr 
         hkctr = hkval
         # UPDATE CENTER VALUES
 	  updateCenter(opfdata,bestsoln,ctr)
 	  ctr.eta = η_val
-	  #purgeSG(opfdata,sg)
+	  purgeSG(opfdata,sg)
 	  @show optUB,linobjval,etaval,hkval,sg.nSGs
-	  purgecuts=true
       end
      # STEP 3
       mpsoln=SolnInfo(zeros(nbuses),zeros(nbuses),zeros(nbuses),zeros(nbuses),
 			zeros(ngens),zeros(ngens),zeros(ngens),zeros(ngens),
 			zeros(nlines),zeros(nlines),zeros(nlines),zeros(nlines),zeros(nlines),0.0,0.0,0.0,0.0)
       status = solveNodeProxPt(opfdata,fixedNode,sg,K,HEUR,ctr,LVL,mpsoln)
-      if status == :Optimal || status == :CPX_STAT_NUM_BEST
-	ii += 1
-	if status == :Optimal 
-	  purgeSG(opfdata,sg)
+      if status == :Optimal # || (status == :CPX_STAT_NUM_BEST && mpsoln.linobjval >= fixedNode.nodeBd)
+	if status == :Optimal
+	  #purgeSG(opfdata,sg)
 	end
-        trl_soln[ii]=mpsoln
         η_val = computeSG(opfdata,mpsoln,sg)
-        trl_soln[ii].eta = η_val
         if η_val < 0
           updateSG(opfdata,sg)
         else
-          println("Tolerance met for not generating a new lazy cut.")
+          println("Tolerance met for not generating a new lazy cut, eta=",η_val,".")
+	  #@show kk,mpsoln.objval,mpsoln.linobjval,optUB,η_val,hkctr
+	  break
 	end
 	#@show optUB,linobjval,etaval,hkval,η_val,sg.nSGs
 	#@show kk,mpsoln.objval,mpsoln.linobjval,optUB,η_val,hkctr
@@ -339,6 +419,8 @@ end
         sg.μF_new[l] = (-Y["ffI"][l] * W_valF - Y["ftI"][l] * Wr_val + Y["ftR"][l] * Wi_val)
         sg.μT_new[l] = (-Y["ttI"][l] * W_valT - Y["tfI"][l] * Wr_val - Y["tfR"][l] * Wi_val)
       end
+      sg.trl_soln[0]=mpsoln
+      sg.trl_soln[0].eta = eta_val
       return eta_val
     end
   # SUBROUTINE FOR COMPUTING THE MINIMUM EIGENVALUE OF H WITH A CORRESPONDING EIGENVECTOR
@@ -436,6 +518,7 @@ end
 	  sg.λT[L,n].=sg.λT[L,sg.nSGs]
 	  sg.μF[L,n].=sg.μF[L,sg.nSGs]
 	  sg.μT[L,n].=sg.μT[L,sg.nSGs]
+          sg.trl_soln[n]=sg.trl_soln[sg.nSGs]
 	  sg.nSGs -= 1
 	end
       end
@@ -457,4 +540,5 @@ end
         sg.μF[l,newcut] = sg.μF_new[l]
         sg.μT[l,newcut] = sg.μT_new[l]
       end
+      sg.trl_soln[newcut]=sg.trl_soln[0]
     end
