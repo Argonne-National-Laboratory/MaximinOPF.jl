@@ -295,8 +295,8 @@ function testLevelBM(opfdata,K,HEUR)
 			zeros(ngens),zeros(ngens),zeros(ngens),zeros(ngens),
 			zeros(nlines),zeros(nlines),zeros(nlines),zeros(nlines),zeros(nlines),0.0,0.0,0.0,0.0)
     x_val=zeros(opfdata.nlines)
-    x_val[41],x_val[80]=1,1
-    #x_val[8],x_val[9],x_val[10],x_val[40]=1,1,1,1
+    #x_val[41],x_val[80]=1,1
+    x_val[8],x_val[9],x_val[10],x_val[40]=1,1,1,1
     fixedNode=NodeInfo(x_val,x_val,optUB)
     mpsoln=SolnInfo(zeros(nbuses),zeros(nbuses),zeros(nbuses),zeros(nbuses),
 	zeros(ngens),zeros(ngens),zeros(ngens),zeros(ngens),
@@ -343,24 +343,24 @@ function testLevelBM(opfdata,K,HEUR)
       end
 
      # STEP 2
+      center_updated = false
       if hkval <= (1-ssc)*hkctr 
         hkctr = hkval
         # UPDATE CENTER VALUES
 	  updateCenter(opfdata,bestsoln,ctr)
 	  ctr.eta = η_val
-	  purgeSG(opfdata,sg)
+	  #purgeSG(opfdata,sg)
 	  @show optUB,linobjval,etaval,hkval,sg.nSGs
+          center_updated = true
       end
      # STEP 3
       mpsoln=SolnInfo(zeros(nbuses),zeros(nbuses),zeros(nbuses),zeros(nbuses),
 			zeros(ngens),zeros(ngens),zeros(ngens),zeros(ngens),
 			zeros(nlines),zeros(nlines),zeros(nlines),zeros(nlines),zeros(nlines),0.0,0.0,0.0,0.0)
       status = solveNodeProxPt(opfdata,fixedNode,sg,K,HEUR,ctr,LVL,mpsoln)
-      if status == :Optimal # || (status == :CPX_STAT_NUM_BEST && mpsoln.linobjval >= fixedNode.nodeBd)
-	if status == :Optimal
-	  #purgeSG(opfdata,sg)
-	end
+      if status == :Optimal 
         η_val = computeSG(opfdata,mpsoln,sg)
+	purgeSG(opfdata,sg)
         if η_val < 0
           updateSG(opfdata,sg)
         else
@@ -509,7 +509,7 @@ end
       fromBus,toBus,Y = opfdata.fromBus, opfdata.toBus, opfdata.Y_AC
       ncuts = sg.nSGs
       for n=ncuts:-1:1
-	if abs(sg.cut_duals[n]) < 1e-6
+	if abs(sg.cut_duals[n]) < 1e-6 && (sg.trl_soln[n].eta > sg.trl_soln[0].eta)
 	  sg.α[N,n].=sg.α[N,sg.nSGs]
 	  sg.β[N,n].=sg.β[N,sg.nSGs]
 	  sg.γ[N,n].=sg.γ[N,sg.nSGs]
