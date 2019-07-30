@@ -316,30 +316,28 @@ function testLevelBM(opfdata,K,HEUR)
 			zeros(ngens),zeros(ngens),zeros(ngens),zeros(ngens),
 			zeros(nlines),zeros(nlines),zeros(nlines),zeros(nlines),zeros(nlines),0.0,0.0,0.0,0.0)
     x_val=zeros(opfdata.nlines)
-    x_val[41],x_val[80]=1,1
-    #x_val[8],x_val[9],x_val[10],x_val[40]=1,1,1,1
+    #x_val[41],x_val[80]=1,1
+    x_val[8],x_val[9],x_val[10],x_val[40]=1,1,1,1
     lbs = zeros(opfdata.nlines)
     ubs = ones(opfdata.nlines)
-    fixedNode=NodeInfo(lbs,ubs,optUB)
+    fixedNode=NodeInfo(x_val,x_val,optUB)
+    #fixedNode=NodeInfo(lbs,ubs,optUB)
     mpsoln=SolnInfo(zeros(nbuses),zeros(nbuses),zeros(nbuses),zeros(nbuses),
 	zeros(ngens),zeros(ngens),zeros(ngens),zeros(ngens),
 	zeros(nlines),zeros(nlines),zeros(nlines),zeros(nlines),zeros(nlines),0.0,0.0,0.0,0.0)
     bestsoln = mpsoln
-    status = solveNodeProxPt(opfdata,fixedNode,sg,K,HEUR,ctr,CP,mpsoln)
+    sg.trl_soln[0]=mpsoln
+    updateCenter(opfdata,mpsoln,ctr)
     hkval = 0
-    hkctr = hkval
+    η_val = 0
+    ctr.eta = η_val
+    cpsoln=SolnInfo(zeros(nbuses),zeros(nbuses),zeros(nbuses),zeros(nbuses),
+	zeros(ngens),zeros(ngens),zeros(ngens),zeros(ngens),
+	zeros(nlines),zeros(nlines),zeros(nlines),zeros(nlines),zeros(nlines),0.0,0.0,0.0,0.0)
+    status = solveNodeProxPt(opfdata,fixedNode,sg,K,HEUR,ctr,CP,cpsoln)
     if status == :Optimal 
-	updateCenter(opfdata,mpsoln,ctr)
-        η_val = computeSG(opfdata,mpsoln,sg)
-	ctr.eta = η_val
-	hkval = -η_val
-        hkctr = hkval
-	optUB = mpsoln.objval
-        if η_val < 0
-          updateSG(opfdata,sg)
-	end
-	@show mpsoln.objval,optUB,-ctr.eta,hkval,sg.nSGs
-        fixedNode.nodeBd=optUB - ssc*hkval
+	optUB = cpsoln.objval
+        hkctr = max(optUB,0)
     end
   # MAIN LOOP
     center_updated = false
@@ -369,17 +367,12 @@ function testLevelBM(opfdata,K,HEUR)
 
      # STEP 2
       if hkval <= (1-ssc)*hkctr 
-      #if -η_val <= -ctr.eta - (1-ssc)*hkval 
         hkctr = hkval
         # UPDATE CENTER VALUES
-	  updateCenter(opfdata,bestsoln,ctr)
-	  ctr.eta = η_val
-	  #purgeSG(opfdata,sg,ctr)
-	  if hkval > 1e-4
-	    #purgeSG2(opfdata,sg,bestIdx)
-	  end
-	  @show optUB,linobjval,etaval,hkval,sg.nSGs
-          center_updated = true
+	  #updateCenter(opfdata,bestsoln,ctr)
+	  #ctr.eta = η_val
+	  @show "hk  update",optUB,linobjval,etaval,hkval,sg.nSGs
+          #center_updated = true
       end
      # STEP 3
       mpsoln=SolnInfo(zeros(nbuses),zeros(nbuses),zeros(nbuses),zeros(nbuses),
@@ -388,32 +381,32 @@ function testLevelBM(opfdata,K,HEUR)
       status = solveNodeProxPt(opfdata,fixedNode,sg,K,HEUR,ctr,LVL,mpsoln)
       if status == :Optimal 
         η_val = computeSG(opfdata,mpsoln,sg)
-	#purgeSG(opfdata,sg,ctr)
+	if -(η_val - ctr.eta)/ctr.eta >= 0.5
+	  updateCenter(opfdata,bestsoln,ctr)
+	  ctr.eta = η_val
+	  @show "ctr update",optUB,linobjval,etaval,hkval,sg.nSGs
+          center_updated = true
+	  purgeSG(opfdata,sg,ctr)
+	end
         if η_val < 0
           updateSG(opfdata,sg)
+          cpstatus = solveNodeProxPt(opfdata,fixedNode,sg,K,HEUR,ctr,CP,cpsoln)
+          if cpstatus == :Optimal 
+	    if cpsoln.objval < optUB
+	      optUB = cpsoln.objval
+      	      hkctr = max(optUB - bestsoln.linobjval,-bestsoln.eta)
+	      #@show optUB,linobjval,etaval,hkctr,sg.nSGs
+	    end
+          end
         else
           println("Tolerance met for not generating a new lazy cut, eta=",η_val,".")
 	  #@show kk,mpsoln.objval,mpsoln.linobjval,optUB,η_val,hkctr
 	  break
 	end
-	#@show optUB,linobjval,etaval,hkval,η_val,sg.nSGs
-	#@show kk,mpsoln.objval,mpsoln.linobjval,optUB,η_val,hkctr,sg.nSGs
-        if center_updated
-	  purgeSG(opfdata,sg,ctr)
-	  center_updated = false
-	end
       else
-        hkctr = hkval
 	optUB = fixedNode.nodeBd 
-	#@show kk,optUB,linobjval,etaval,hkval,sg.nSGs
-	updateCenter(opfdata,bestsoln,ctr)
-	ctr.eta = η_val
-	#purgeSG(opfdata,sg,ctr)
-	if hkval > 1e-4
-	  #purgeSG2(opfdata,sg,bestIdx)
-	end
-	@show optUB,linobjval,etaval,hkval,sg.nSGs
-        center_updated = true
+        hkctr = max(optUB - linobjval,etaval)
+	@show "Infeas",optUB,linobjval,etaval,hkval,sg.nSGs
       end
     end
     time_End = (time_ns()-time_Start)/1e9
