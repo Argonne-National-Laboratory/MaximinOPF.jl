@@ -404,6 +404,7 @@ function testLevelBM(opfdata,K,HEUR)
 	    updateCenter(opfdata,bestsoln,ctr,bestIdx,sg)
 	    #purgeSG2(opfdata,sg,bestIdx)
 	  end
+	  purgeSG(opfdata,sg,mpsoln)
 	  @show "hk  update",optUB,ctr.linobjval,ctr.eta,hkval,sg.nSGs
           center_updated = true
       end
@@ -414,8 +415,9 @@ function testLevelBM(opfdata,K,HEUR)
 			zeros(ngens),zeros(ngens),zeros(ngens),zeros(ngens),
 			zeros(nlines),zeros(nlines),zeros(nlines),zeros(nlines),zeros(nlines),0.0,0.0,0.0,0.0,0.0)
         status = solveNodeProxPt(opfdata,fixedNode,sg,K,HEUR,ctr,LVL,mpsoln)
+
         if status == :Optimal 
-	  purgeSG(opfdata,sg,mpsoln)
+	  #purgeSG(opfdata,sg,mpsoln)
 	else
 	  cpy_soln(opfdata,cpsoln,mpsoln)
         end
@@ -424,14 +426,22 @@ function testLevelBM(opfdata,K,HEUR)
 	mpsoln.eta = η_val
         if η_val < 0
           updateSG(opfdata,sg)
+	  if mpsoln.eta >= ctr.eta + (1-ssc)*hkval
+	    updateCenter(opfdata,mpsoln,ctr,sg.nSGs,sg)
+	  end
         else
             println("Tolerance met for not generating a new lazy cut, eta=",η_val,".")
+	    if mpsoln.linobjval <= ctr.linobjval - (1-ssc)*hkval
+	      updateCenter(opfdata,mpsoln,ctr,sg.nSGs,sg)
+	    end
 	    #@show kk,mpsoln.objval,mpsoln.linobjval,optUB,η_val,hkctr
 	    break
 	end
       else
 	  optUB = fixedNode.nodeBd 
           hkctr = max(optUB - bestsoln.linobjval,-bestsoln.eta)
+	  purgeSG(opfdata,sg,cpsoln)
+	  #purgeSG2(opfdata,sg,bestIdx)
 	  @show "Infeas",optUB,bestsoln.linobjval,-bestsoln.eta,hkval,sg.nSGs
       end
     end
