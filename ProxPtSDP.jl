@@ -32,6 +32,7 @@ type SolnInfo
   eta::Float64
   lvl_dual::Float64
   solvetime::Float64
+  status
 end
 
 function cpy_soln(opfdata,fromSoln,toSoln)
@@ -54,6 +55,7 @@ function cpy_soln(opfdata,fromSoln,toSoln)
   toSoln.eta = fromSoln.eta
   toSoln.lvl_dual = fromSoln.lvl_dual
   toSoln.solvetime = fromSoln.solvetime
+  toSoln.status = fromSoln.status
 end
 
 type EtaSGs
@@ -221,6 +223,7 @@ function solveNodeProxPt(opfdata,nodeinfo,sg,K,HEUR,ctr,CTR_PARAM,
     end
 
   status=solve(mMP)
+  mpsoln.status=status
   if status == :Optimal || status == :CPX_STAT_NUM_BEST
       for i in N
           mpsoln.α[i],mpsoln.β[i],mpsoln.γ[i],mpsoln.δ[i] = getvalue(α[i]), getvalue(β[i]), getvalue(γ[i]), getvalue(δ[i])
@@ -278,7 +281,7 @@ function testProxPt(opfdata,K,HEUR)
     optUB = 1e20
     mpsoln=SolnInfo(zeros(nbuses),zeros(nbuses),zeros(nbuses),zeros(nbuses),
 	zeros(ngens),zeros(ngens),zeros(ngens),zeros(ngens),
-	zeros(nlines),zeros(nlines),zeros(nlines),zeros(nlines),zeros(nlines),0.0,0.0,0.0,0.0,0.0)
+	zeros(nlines),zeros(nlines),zeros(nlines),zeros(nlines),zeros(nlines),0.0,0.0,0.0,0.0,0.0,0)
    
     bestsoln = mpsoln
     status = solveNodeProxPt(opfdata,fixedNode,sg,K,HEUR,ctr,CP,mpsoln)
@@ -298,7 +301,7 @@ function testProxPt(opfdata,K,HEUR)
      # STEP 1
       mpsoln=SolnInfo(zeros(nbuses),zeros(nbuses),zeros(nbuses),zeros(nbuses),
 			zeros(ngens),zeros(ngens),zeros(ngens),zeros(ngens),
-			zeros(nlines),zeros(nlines),zeros(nlines),zeros(nlines),zeros(nlines),0.0,0.0,0.0,0.0,0.0)
+			zeros(nlines),zeros(nlines),zeros(nlines),zeros(nlines),zeros(nlines),0.0,0.0,0.0,0.0,0.0,0)
       fixedNode.nodeBd = optUB + ctr.eta
       status = solveNodeProxPt(opfdata,fixedNode,sg,K,HEUR,ctr,PROX,mpsoln)
       if status == :Optimal
@@ -362,22 +365,23 @@ function testLevelBM(opfdata,K,HEUR)
     # INITIAL SOLN (ALL ZEROS)
       mpsoln=SolnInfo(zeros(nbuses),zeros(nbuses),zeros(nbuses),zeros(nbuses),
 	zeros(ngens),zeros(ngens),zeros(ngens),zeros(ngens),
-	zeros(nlines),zeros(nlines),zeros(nlines),zeros(nlines),zeros(nlines),0.0,0.0,0.0,0.0,0.0)
+	zeros(nlines),zeros(nlines),zeros(nlines),zeros(nlines),zeros(nlines),0.0,0.0,0.0,0.0,0.0,0)
     bestsoln = mpsoln
     sg.trl_soln[0]=mpsoln
-    ctr=mpsoln #updateCenter(opfdata,mpsoln,ctr)
+    ctr=mpsoln 
 
     cpsoln=SolnInfo(zeros(nbuses),zeros(nbuses),zeros(nbuses),zeros(nbuses),
 	zeros(ngens),zeros(ngens),zeros(ngens),zeros(ngens),
-	zeros(nlines),zeros(nlines),zeros(nlines),zeros(nlines),zeros(nlines),0.0,0.0,0.0,0.0,0.0)
-    status = solveNodeProxPt(opfdata,fixedNode,sg,K,HEUR,ctr,CP,cpsoln)
-    if status == :Optimal 
+	zeros(nlines),zeros(nlines),zeros(nlines),zeros(nlines),zeros(nlines),0.0,0.0,0.0,0.0,0.0,0)
+    solveNodeProxPt(opfdata,fixedNode,sg,K,HEUR,ctr,CP,cpsoln)
+    if cpsoln.status == :Optimal 
 	optUB = cpsoln.objval
         hkctr = max(optUB,0)
     end
 
   # MAIN LOOP
-    center_updated = false
+    hkctr_updated = false
+    optub_updated = false
     for kk=1:maxNSG
      # STEP 1
       hkval = max(optUB - ctr.linobjval,-ctr.eta)
@@ -396,53 +400,88 @@ function testLevelBM(opfdata,K,HEUR)
 	break
       end
 
+      VARI = 2
      # STEP 2
-      if hkval <= (1-ssc)*hkctr 
-        hkctr = hkval
-        # UPDATE CENTER VALUES
-	  if bestIdx > 0
-	    updateCenter(opfdata,bestsoln,ctr,bestIdx,sg)
-	    #purgeSG2(opfdata,sg,bestIdx)
-	  end
-	  purgeSG(opfdata,sg,mpsoln)
-	  @show "hk  update",optUB,ctr.linobjval,ctr.eta,hkval,sg.nSGs
-          center_updated = true
+        if hkval <= (1-ssc)*hkctr 
+          hkctr = hkval
+      if VARI == 1
+          hkctr_updated = true
+          # UPDATE CENTER VALUES
+	    if bestIdx > 0
+	      updateCenter(opfdata,bestsoln,ctr,bestIdx,sg)
+	    end
       end
+	    @show "hk  update",optUB,ctr.linobjval,-ctr.eta,hkval,sg.nSGs
+          end
+
      # STEP 3
       cpstatus = solveNodeProxPt(opfdata,fixedNode,sg,K,HEUR,ctr,FEAS,cpsoln)
+      if cpsoln.status != :Optimal
+	println("FLAG! cpsoln.status = ",cpsoln.status)
+      end
       if cpsoln.objval < 1e-6
         mpsoln=SolnInfo(zeros(nbuses),zeros(nbuses),zeros(nbuses),zeros(nbuses),
 			zeros(ngens),zeros(ngens),zeros(ngens),zeros(ngens),
-			zeros(nlines),zeros(nlines),zeros(nlines),zeros(nlines),zeros(nlines),0.0,0.0,0.0,0.0,0.0)
-        status = solveNodeProxPt(opfdata,fixedNode,sg,K,HEUR,ctr,LVL,mpsoln)
+			zeros(nlines),zeros(nlines),zeros(nlines),zeros(nlines),zeros(nlines),0.0,0.0,0.0,0.0,0.0,0)
+        solveNodeProxPt(opfdata,fixedNode,sg,K,HEUR,ctr,LVL,mpsoln)
 
-        if status == :Optimal 
-	  #purgeSG(opfdata,sg,mpsoln)
-	else
+	if mpsoln.status != :Optimal
 	  cpy_soln(opfdata,cpsoln,mpsoln)
+	  println("Taking recourse since mpsoln does not have an optimal solution for MP. Feas: ",mpsoln.linobjval - fixedNode.nodeBd)
+        end
+
+        if VARI==1
+	  if hkctr_updated
+	    purgeSG(opfdata,sg,mpsoln)
+	    hkctr_updated = false
+	  end
         end
 
         η_val = computeSG(opfdata,mpsoln,sg)
 	mpsoln.eta = η_val
         if η_val < 0
           updateSG(opfdata,sg)
-	  if mpsoln.eta >= ctr.eta + (1-ssc)*hkval
-	    updateCenter(opfdata,mpsoln,ctr,sg.nSGs,sg)
+	  if VARI==2
+	    if mpsoln.eta >= ctr.eta + (1-ssc)*hkval
+	      updateCenter(opfdata,mpsoln,ctr,sg.nSGs,sg)
+	      purgeSG(opfdata,sg,mpsoln)
+	      @show "ctr update",optUB,ctr.linobjval,-ctr.eta,hkval,sg.nSGs
+	    end
 	  end
         else
             println("Tolerance met for not generating a new lazy cut, eta=",η_val,".")
-	    if mpsoln.linobjval <= ctr.linobjval - (1-ssc)*hkval
-	      updateCenter(opfdata,mpsoln,ctr,sg.nSGs,sg)
+	    if VARI==2
+	      if mpsoln.linobjval <= ctr.linobjval - (1-ssc)*hkval
+	        updateCenter(opfdata,mpsoln,ctr,sg.nSGs,sg)
+	        purgeSG(opfdata,sg,mpsoln)
+	      end
 	    end
-	    #@show kk,mpsoln.objval,mpsoln.linobjval,optUB,η_val,hkctr
-	    break
+
+	    if mpsoln.linobjval < optUB
+	      optUB = mpsoln.linobjval
+              optub_updated = true
+	    end
+	    @show "bnd opt update",optUB,mpsoln.linobjval,-mpsoln.eta,hkval,sg.nSGs
+            if VARI==2 && optub_updated
+	      purgeSG(opfdata,sg,mpsoln)
+	      optub_updated=false
+            end
 	end
       else
 	  optUB = fixedNode.nodeBd 
+          optub_updated = true
           hkctr = max(optUB - bestsoln.linobjval,-bestsoln.eta)
-	  purgeSG(opfdata,sg,cpsoln)
-	  #purgeSG2(opfdata,sg,bestIdx)
-	  @show "Infeas",optUB,bestsoln.linobjval,-bestsoln.eta,hkval,sg.nSGs
+          hkctr_updated = true
+	  if VARI==1
+	    if bestIdx > 0
+	      updateCenter(opfdata,bestsoln,ctr,bestIdx,sg)
+	    end
+	  end
+	  @show "bnd update",optUB,bestsoln.linobjval,-bestsoln.eta,hkval,sg.nSGs
+          if VARI==2 && optub_updated
+	    purgeSG(opfdata,sg,cpsoln)
+	    optub_updated=false
+          end
       end
     end
     time_End = (time_ns()-time_Start)/1e9
@@ -455,28 +494,16 @@ end
     function updateCenter(opfdata,mpsoln,ctr,bestIdx,sg)
       nbuses, nlines, ngens, N, L, G = opfdata.nbuses, opfdata.nlines, opfdata.ngens, opfdata.N, opfdata.L, opfdata.G 
       fromBus,toBus,Y = opfdata.fromBus, opfdata.toBus, opfdata.Y_AC
-        for i in N
-          ctr.α[i],ctr.β[i],ctr.γ[i],ctr.δ[i] = mpsoln.α[i],mpsoln.β[i],mpsoln.γ[i],mpsoln.δ[i]
-        end 
-        for g in G
-          ctr.ζpLB[g],ctr.ζpUB[g],ctr.ζqLB[g],ctr.ζqUB[g] = mpsoln.ζpLB[g],mpsoln.ζpUB[g],mpsoln.ζqLB[g],mpsoln.ζqUB[g]
-        end
-        for l in L
-          ctr.x[l] =  mpsoln.x[l] 
-          ctr.λF[l], ctr.λT[l], ctr.μF[l], ctr.μT[l] = mpsoln.λF[l], mpsoln.λT[l], mpsoln.μF[l], mpsoln.μT[l] 
-        end
-        ctr.objval = mpsoln.objval
-        ctr.linobjval = mpsoln.linobjval
-        ctr.eta = mpsoln.eta
+      cpy_soln(opfdata,mpsoln,ctr)
 
-	sg.α_ctr[N].=sg.α[N,bestIdx]
-	sg.β_ctr[N].=sg.β[N,bestIdx]
-	sg.γ_ctr[N].=sg.γ[N,bestIdx]
-	sg.δ_ctr[N].=sg.δ[N,bestIdx]
-	sg.λF_ctr[L].=sg.λF[L,bestIdx]
-	sg.λT_ctr[L].=sg.λT[L,bestIdx]
-	sg.μF_ctr[L].=sg.μF[L,bestIdx]
-	sg.μT_ctr[L].=sg.μT[L,bestIdx]
+      sg.α_ctr[N].=sg.α[N,bestIdx]
+      sg.β_ctr[N].=sg.β[N,bestIdx]
+      sg.γ_ctr[N].=sg.γ[N,bestIdx]
+      sg.δ_ctr[N].=sg.δ[N,bestIdx]
+      sg.λF_ctr[L].=sg.λF[L,bestIdx]
+      sg.λT_ctr[L].=sg.λT[L,bestIdx]
+      sg.μF_ctr[L].=sg.μF[L,bestIdx]
+      sg.μT_ctr[L].=sg.μT[L,bestIdx]
     end
     function computeSG(opfdata,mpsoln,sg)
       nbuses, nlines, ngens, N, L, G = opfdata.nbuses, opfdata.nlines, opfdata.ngens, opfdata.N, opfdata.L, opfdata.G 
