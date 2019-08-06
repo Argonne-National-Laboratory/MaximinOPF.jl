@@ -8,6 +8,11 @@ Brian Dandurand
 
 include("utils.jl")
 
+maxNSG = 2000
+CP,PROX0,PROX,LVL1,LVL2,LVLINF,FEAS=0,1,2,3,4,5,6
+tVal = 1
+ssc=0.5
+
 type NodeInfo
   x_lbs::Array{Float64}
   x_ubs::Array{Float64}
@@ -71,7 +76,8 @@ function comp_norm(opfdata,soln)
   nbuses, nlines, ngens, N, L, G = opfdata.nbuses, opfdata.nlines, opfdata.ngens, opfdata.N, opfdata.L, opfdata.G 
   return sqrt(norm(soln.α[N])^2 + norm(soln.β[N])^2 + norm(soln.γ[N])^2 + norm(soln.δ[N])^2 
 	+ norm(soln.ζpLB[G])^2 + norm(soln.ζpUB[G])^2 + norm(soln.ζqLB[G])^2 + norm(soln.ζqUB[G])^2
-  	+ norm(soln.x[L])^2 + norm(soln.λF[L])^2 + norm(soln.λT[L])^2 + norm(soln.μF[L])^2 + norm(soln.μT[L])^2)
+  	+ norm(soln.x[L])^2 
+	+ norm(soln.λF[L])^2 + norm(soln.λT[L])^2 + norm(soln.μF[L])^2 + norm(soln.μT[L])^2)
 end
 
 type Bundle
@@ -143,10 +149,6 @@ type EtaSGs
 end
 =#
 
-maxNSG = 100
-CP,PROX,LVL1,LVL2,LVLINF,FEAS=0,1,2,3,4,5
-tVal = 1
-ssc=0.5
 
 function solveNodeProxPt(opfdata,nodeinfo,bundles,K,HEUR,ctr,CTR_PARAM,
 			mpsoln)
@@ -174,7 +176,7 @@ function solveNodeProxPt(opfdata,nodeinfo,bundles,K,HEUR,ctr,CTR_PARAM,
 	)
       )
     #else
-    #  mMP = Model(solver=IpoptSolver())
+    #mMP = Model(solver=IpoptSolver())
     #end
     #mMP = Model(solver=CplexSolver(CPX_PARAM_SCRIND=1,CPX_PARAM_TILIM=MAX_TIME,CPX_PARAM_MIPINTERVAL=50,CPX_PARAM_LPMETHOD=4,CPX_PARAM_SOLUTIONTYPE=2,CPX_PARAM_STARTALG=4))
     # each x[l] is either 0 (line l active) or 1 (line l is cut)
@@ -226,14 +228,72 @@ function solveNodeProxPt(opfdata,nodeinfo,bundles,K,HEUR,ctr,CTR_PARAM,
     @expression(mMP, linobj, sum(lin_cfs.ζpLB[g]*ζpLB[g] + lin_cfs.ζpUB[g]*ζpUB[g] + lin_cfs.ζqLB[g]*ζqLB[g] + lin_cfs.ζqUB[g]*ζqUB[g]  for g in G)
     			+ sum( lin_cfs.γ[i]*γ[i] + lin_cfs.δ[i]*δ[i] + lin_cfs.α[i]*α[i] + lin_cfs.β[i]*β[i] for i in N) 
     )
-    if CTR_PARAM == PROX 
+  #These constraints are not quite valid, but their inclusion often results in much faster time to near optimal solution.
+    if HEUR == 1
+      @constraint(mMP, LambdaMuConstr1[l in L], λF[l]*Y["ftI"][l] - λT[l]*Y["tfI"][l] + μF[l]*Y["ftR"][l] - μT[l]*Y["tfR"][l] == 0.0)
+    elseif HEUR == 2
+      @constraint(mMP, LambdaFequalsT[l in L], λF[l] - λT[l]  == 0)
+      @constraint(mMP, muFequalsT[l in L], μF[l] - μT[l]  == 0)
+    elseif HEUR == 3
+      lRelax=rand(Bool,nlines)
+      @show lRelax
+      for l in L
+        if lRelax[l]
+          @constraint(mMP, λF[l] - λT[l]  == 0)
+          @constraint(mMP, μF[l] - μT[l]  == 0)
+        end
+      end
+    end
+   # METHOD-SPECIFIC SETUP
+    if CTR_PARAM == PROX0
+      @objective(mMP, Max, linobj - 0.5*tVal*(
+	sum( (ctr.soln.α[i] - α[i])^2 + (ctr.soln.β[i] - β[i])^2 + (ctr.soln.γ[i] - γ[i])^2 + (ctr.soln.δ[i] - δ[i])^2 for i in N)
+	+sum((ctr.soln.λF[l] - λF[l])^2 + (ctr.soln.λT[l] - λT[l])^2 + (ctr.soln.μF[l] - μF[l])^2 + (ctr.soln.μT[l] - μT[l])^2 for l in L)
+	)
+      )
+      if length(bundles) > 0
+        @constraint(mMP, CutPlanes[n=1:length(bundles)], 0 <= -bundles[n].eta 
+	  + sum( bundles[n].eta_sg.α[i]*(α[i]-bundles[n].soln.α[i]) + bundles[n].eta_sg.β[i]*(β[i]-bundles[n].soln.β[i])
+	    + bundles[n].eta_sg.γ[i]*(γ[i]-bundles[n].soln.γ[i]) + bundles[n].eta_sg.δ[i]*(δ[i]-bundles[n].soln.δ[i]) for i in N)
+          + sum( bundles[n].eta_sg.λF[l]*(λF[l]-bundles[n].soln.λF[l]) + bundles[n].eta_sg.λT[l]*(λT[l]-bundles[n].soln.λT[l]) 
+	    + bundles[n].eta_sg.μF[l]*(μF[l]-bundles[n].soln.μF[l]) + bundles[n].eta_sg.μT[l]*(μT[l]-bundles[n].soln.μT[l]) for l in L)
+        )
+      end
+    elseif CTR_PARAM == PROX 
 	@variable(mMP, psi)
-        @objective(mMP, Max, linobj - 0.5*tVal*(
+        @objective(mMP, Min, psi + 0.5*tVal*(
 	  sum( (ctr.soln.α[i] - α[i])^2 + (ctr.soln.β[i] - β[i])^2 + (ctr.soln.γ[i] - γ[i])^2 + (ctr.soln.δ[i] - δ[i])^2 for i in N)
 	  +sum( (ctr.soln.ζpLB[g] - ζpLB[g])^2 + (ctr.soln.ζpUB[g] - ζpUB[g])^2 + (ctr.soln.ζqLB[g] - ζqLB[g])^2 + (ctr.soln.ζqUB[g] - ζqUB[g])^2 for g in G)
-	  +sum( (ctr.soln.x[l] - x[l])^2 + (ctr.soln.λF[l] - λF[l])^2 + (ctr.soln.λT[l] - λT[l])^2 + (ctr.soln.μF[l] - μF[l])^2 + (ctr.soln.μT[l] - μT[l])^2 for l in L)
+	  +sum( (ctr.soln.x[l]-x[l])^2 + (ctr.soln.λF[l] - λF[l])^2 + (ctr.soln.λT[l] - λT[l])^2 + (ctr.soln.μF[l] - μF[l])^2 + (ctr.soln.μT[l] - μT[l])^2 for l in L)
 	  )
 	)
+	addnncon=true
+	addlincon=true
+	if ctr.linobjval >= 0
+	   @constraint(mMP, ctr.linobjval - linobj - psi <= 0)
+	   addlincon = false
+	end
+	for n=1:length(bundles)
+	  if ctr.linobjval-bundles[n].linobjval < bundles[n].eta
+	  #@show ctr.linobjval-bundles[n].linobjval,bundles[n].eta
+	    if bundles[n].eta == 0.0
+	      #@constraint(mMP, psi >= 0)
+	      addnncon=false
+	    elseif bundles[n].eta > 0.0
+              @constraint(mMP, bundles[n].eta - sum( bundles[n].eta_sg.α[i]*(α[i]-bundles[n].soln.α[i]) + bundles[n].eta_sg.β[i]*(β[i]-bundles[n].soln.β[i]) 
+	        + bundles[n].eta_sg.γ[i]*(γ[i]-bundles[n].soln.γ[i]) + bundles[n].eta_sg.δ[i]*(δ[i]-bundles[n].soln.δ[i]) for i in N)
+                - sum( bundles[n].eta_sg.λF[l]*(λF[l]-bundles[n].soln.λF[l]) + bundles[n].eta_sg.λT[l]*(λT[l]-bundles[n].soln.λT[l]) 
+		+ bundles[n].eta_sg.μF[l]*(μF[l]-bundles[n].soln.μF[l]) + bundles[n].eta_sg.μT[l]*(μT[l]-bundles[n].soln.μT[l]) for l in L) - psi <= 0.0
+              )
+	    end
+	  else
+	    if addlincon
+	      @constraint(mMP, ctr.linobjval - linobj - psi <= 0)
+	      addlincon = false
+	    end
+	    #println("Not adding cut")
+	  end
+	end
     elseif CTR_PARAM == LVL2 || CTR_PARAM == LVL2 || CTR_PARAM == LVLINF
       @constraint(mMP, LVLConstr, linobj >= nodeinfo.nodeBd)
       if CTR_PARAM==LVL1
@@ -264,80 +324,49 @@ function solveNodeProxPt(opfdata,nodeinfo,bundles,K,HEUR,ctr,CTR_PARAM,
       else
         @objective(mMP, Max, linobj - 0.5*tVal*sum( ( ctr.soln.α[i] - α[i])^2 + (ctr.soln.β[i] - β[i])^2 + (ctr.soln.γ[i] - γ[i])^2 + (ctr.soln.δ[i] - δ[i])^2 for i in N))
       end
+      if length(bundles) > 0
+        @constraint(mMP, CutPlanes[n=1:length(bundles)], 0 <= -bundles[n].eta 
+	  + sum( bundles[n].eta_sg.α[i]*(α[i]-bundles[n].soln.α[i]) + bundles[n].eta_sg.β[i]*(β[i]-bundles[n].soln.β[i])
+	    + bundles[n].eta_sg.γ[i]*(γ[i]-bundles[n].soln.γ[i]) + bundles[n].eta_sg.δ[i]*(δ[i]-bundles[n].soln.δ[i]) for i in N)
+          + sum( bundles[n].eta_sg.λF[l]*(λF[l]-bundles[n].soln.λF[l]) + bundles[n].eta_sg.λT[l]*(λT[l]-bundles[n].soln.λT[l]) 
+	    + bundles[n].eta_sg.μF[l]*(μF[l]-bundles[n].soln.μF[l]) + bundles[n].eta_sg.μT[l]*(μT[l]-bundles[n].soln.μT[l]) for l in L)
+        )
+      end
     elseif CTR_PARAM == CP
       @objective(mMP, Max, linobj)
+      if length(bundles) > 0
+        @constraint(mMP, CutPlanes[n=1:length(bundles)], 0 <= -bundles[n].eta 
+	  + sum( bundles[n].eta_sg.α[i]*(α[i]-bundles[n].soln.α[i]) + bundles[n].eta_sg.β[i]*(β[i]-bundles[n].soln.β[i])
+	    + bundles[n].eta_sg.γ[i]*(γ[i]-bundles[n].soln.γ[i]) + bundles[n].eta_sg.δ[i]*(δ[i]-bundles[n].soln.δ[i]) for i in N)
+          + sum( bundles[n].eta_sg.λF[l]*(λF[l]-bundles[n].soln.λF[l]) + bundles[n].eta_sg.λT[l]*(λT[l]-bundles[n].soln.λT[l]) 
+	    + bundles[n].eta_sg.μF[l]*(μF[l]-bundles[n].soln.μF[l]) + bundles[n].eta_sg.μT[l]*(μT[l]-bundles[n].soln.μT[l]) for l in L)
+        )
+      end
     elseif CTR_PARAM == FEAS
       @variable(mMP, sLev >= 0)
       @constraint(mMP, LVLConstr, linobj + sLev >= nodeinfo.nodeBd)
       @objective(mMP, Min, sLev)
+      if length(bundles) > 0
+        @constraint(mMP, CutPlanes[n=1:length(bundles)], 0 <= -bundles[n].eta 
+	  + sum( bundles[n].eta_sg.α[i]*(α[i]-bundles[n].soln.α[i]) + bundles[n].eta_sg.β[i]*(β[i]-bundles[n].soln.β[i])
+	    + bundles[n].eta_sg.γ[i]*(γ[i]-bundles[n].soln.γ[i]) + bundles[n].eta_sg.δ[i]*(δ[i]-bundles[n].soln.δ[i]) for i in N)
+          + sum( bundles[n].eta_sg.λF[l]*(λF[l]-bundles[n].soln.λF[l]) + bundles[n].eta_sg.λT[l]*(λT[l]-bundles[n].soln.λT[l]) 
+	    + bundles[n].eta_sg.μF[l]*(μF[l]-bundles[n].soln.μF[l]) + bundles[n].eta_sg.μT[l]*(μT[l]-bundles[n].soln.μT[l]) for l in L)
+        )
+      end
     else
       @objective(mMP, Min, 0)
     end
 
   # Adding the extra cuts
-    if length(bundles) > 0
       if CTR_PARAM == LVL2 || CTR_PARAM == LVL2 || CTR_PARAM == LVLINF
-        @constraint(mMP, CutPlanes[n=1:length(bundles)], 0 <= sum( bundles[n].eta_sg.α[i]*α[i] + bundles[n].eta_sg.β[i]*β[i] 
-	  + bundles[n].eta_sg.γ[i]*γ[i] + bundles[n].eta_sg.δ[i]*δ[i] for i in N)
-          + sum( bundles[n].eta_sg.λF[l]*λF[l] + bundles[n].eta_sg.λT[l]*λT[l] + bundles[n].eta_sg.μF[l]*μF[l] + bundles[n].eta_sg.μT[l]*μT[l] for l in L)
-        )
       elseif CTR_PARAM == PROX
-#=
-	addnncon=true
-	addlincon=true
-	if ctr.linobjval >= 0
-@show ctr.linobjval
-	   @constraint(mMP, ctr.linobjval - linobj - psi <= 0)
-	   addlincon = false
-	end
-	if ctr.linobjval <= 0
-	  @constraint(mMP, psi >= 0)
-	  addnncon=false
-	end
-=#
-	for n=1:length(bundles)
-	  #if ctr.linobjval-bundles[n].linobjval < bundles[n].eta
-	  if true
-	    if bundles[n].eta == 0.0
-	    elseif bundles[n].eta > 0.0
-              @constraint(mMP, bundles[n].eta - sum( bundles[n].eta_sg.α[i]*(α[i]-bundles[n].soln.α[i]) + bundles[n].eta_sg.β[i]*(β[i]-bundles[n].soln.β[i]) 
-	        + bundles[n].eta_sg.γ[i]*(γ[i]-bundles[n].soln.γ[i]) + bundles[n].eta_sg.δ[i]*(δ[i]-bundles[n].soln.δ[i]) for i in N)
-                - sum( bundles[n].eta_sg.λF[l]*(λF[l]-bundles[n].soln.λF[l]) + bundles[n].eta_sg.λT[l]*(λT[l]-bundles[n].soln.λT[l]) 
-		+ bundles[n].eta_sg.μF[l]*(μF[l]-bundles[n].soln.μF[l]) + bundles[n].eta_sg.μT[l]*(μT[l]-bundles[n].soln.μT[l]) for l in L) <= 0.0
-              )
-	    end
-	  else
-	    if addlincon
-	      @constraint(mMP, ctr.linobjval - linobj - psi <= 0)
-	      addlincon = false
-	    end
-	    #println("Not adding cut")
-	  end
-	end
       end
-    end
   ### END DEFINING THE LaGRANGIAN DUAL PROBLEM
-
-  #These constraints are not quite valid, but their inclusion often results in much faster time to near optimal solution.
-    if HEUR == 1
-      @constraint(mMP, LambdaMuConstr1[l in L], λF[l]*Y["ftI"][l] - λT[l]*Y["tfI"][l] + μF[l]*Y["ftR"][l] - μT[l]*Y["tfR"][l] == 0.0)
-    elseif HEUR == 2
-      @constraint(mMP, LambdaFequalsT[l in L], λF[l] - λT[l]  == 0)
-      @constraint(mMP, muFequalsT[l in L], μF[l] - μT[l]  == 0)
-    elseif HEUR == 3
-      lRelax=rand(Bool,nlines)
-      @show lRelax
-      for l in L
-        if lRelax[l]
-          @constraint(mMP, λF[l] - λT[l]  == 0)
-          @constraint(mMP, μF[l] - μT[l]  == 0)
-        end
-      end
-    end
 
   status=solve(mMP)
   mpsoln.status=status
-  if status == :Optimal || status == :CPX_STAT_NUM_BEST
+  if status == :Optimal # || status == :CPX_STAT_NUM_BEST
       for i in N
           mpsoln.soln.α[i],mpsoln.soln.β[i],mpsoln.soln.γ[i],mpsoln.soln.δ[i] = getvalue(α[i]), getvalue(β[i]), getvalue(γ[i]), getvalue(δ[i])
       end
@@ -371,7 +400,54 @@ function solveNodeProxPt(opfdata,nodeinfo,bundles,K,HEUR,ctr,CTR_PARAM,
   return status
 end
 
+function testProxPt0(opfdata,K,HEUR)
+    global tVal
+    time_Start = time_ns()
+  # OBTAIN SHORTHAND PROBLEM INFORMATION FROM opfdata
+    nbuses, nlines, ngens = opfdata.nbuses, opfdata.nlines, opfdata.ngens
+    N, L, G = opfdata.N, opfdata.L, opfdata.G 
+    fromLines,toLines,fromBus,toBus = opfdata.fromLines, opfdata.toLines, opfdata.fromBus, opfdata.toBus
+    BusGeners, Y = opfdata.BusGeners, opfdata.Y_AC
+  # DONE OBTAINING PROBLEM INFORMATION FROM opfdata
 
+  # INITIAL ITERATION
+    x_val=zeros(opfdata.nlines)
+    #x_val[41],x_val[80]=1,1
+    x_val[8],x_val[9],x_val[10],x_val[40]=1,1,1,1
+    fixedNode=NodeInfo(x_val,x_val,1e20)
+    bundles=Dict()
+    mpsoln=create_bundle(opfdata)
+    mpsoln.soln.x[L] = x_val[L]
+    sg_agg=create_soln(opfdata)
+    ctr=mpsoln
+
+  # MAIN LOOP
+    for kk=1:maxNSG
+     # STEP 1
+      mpsoln=create_bundle(opfdata)
+      status = solveNodeProxPt(opfdata,fixedNode,bundles,K,HEUR,ctr,PROX0,mpsoln)
+      if status == :Optimal
+       # STEP 2
+        if mpsoln.eta < 1e-6 
+	  println("Convergence to within tolerance: obj, feas ",mpsoln.linobjval,mpsoln.eta)
+	  break
+        end
+       # STEP 3
+        ncuts = length(bundles)
+        if -(mpsoln.eta-ctr.eta)/ctr.eta >= 0.05 || kk==1
+          # UPDATE CENTER VALUES
+	    updateCenter(opfdata,mpsoln,ctr)
+	    ncuts=purgeSG(opfdata,bundles)
+        end
+        bundles[ncuts+1]=mpsoln
+      else
+	println("Solver returned: $status")
+      end
+@show kk,mpsoln.linobjval,mpsoln.eta
+    end
+    time_End = (time_ns()-time_Start)/1e9
+    println("Done after ",time_End," seconds.")
+end
 function testProxPt(opfdata,K,HEUR)
     global tVal
     time_Start = time_ns()
@@ -389,6 +465,7 @@ function testProxPt(opfdata,K,HEUR)
     fixedNode=NodeInfo(x_val,x_val,1e20)
     bundles=Dict()
     mpsoln=create_bundle(opfdata)
+    mpsoln.soln.x[L] = x_val[L]
     sg_agg=create_soln(opfdata)
     ctr=mpsoln
 
@@ -401,21 +478,22 @@ function testProxPt(opfdata,K,HEUR)
 	comp_agg(opfdata,ctr.soln,mpsoln.soln,sg_agg)
 	agg_norm=comp_norm(opfdata,sg_agg)
 	epshat=max(0,ctr.eta)-mpsoln.psival-(1.0/tVal)*agg_norm^2
-	del=epshat+0.5*(1.0/tVal)*agg_norm^2
-#@show del,ctr.linobjval,mpsoln.linobjval,mpsoln.eta
+	#del=epshat+0.5*(1.0/tVal)*agg_norm^2
+        del=ctr.eta-mpsoln.objval
+#@show del,ctr.linobjval,mpsoln.linobjval,mpsoln.eta,mpsoln.psival,agg_norm^2,epshat,mpsoln.status
        # STEP 2
-        #if del < 1e-6 
-        if false
+        if del < 1e-6 
 	  println("Convergence to within tolerance: del = ",del)
 	  break
         end
        # STEP 3
 	hk = max(ctr.linobjval-mpsoln.linobjval,mpsoln.eta)
-@show hk, ctr.eta, del
+      @show kk,ctr.linobjval,ctr.eta,mpsoln.linobjval,mpsoln.eta,epshat,del,hk
         #if (η_val-ctr.eta) >= -ssc*ctr.eta || kk==1
         #if true
-        #if hk <= max(0,ctr.eta) - ssc*del
-        if -(mpsoln.eta-ctr.eta)/ctr.eta >= 0.05 || kk==1
+@show hk, ctr.eta, -ssc*del
+        if hk <= max(0,ctr.eta) - ssc*del
+        #if -(mpsoln.eta-ctr.eta)/ctr.eta >= 0.05 || kk==1
 println("Updating center")
 	  #purgeSG(opfdata,sg,ctr)
           # UPDATE CENTER VALUES
@@ -428,13 +506,11 @@ println("Updating center")
 	#break
       end
       bundles[kk]=mpsoln
-      @show kk,ctr.linobjval,ctr.eta,mpsoln.linobjval,mpsoln.eta,length(bundles)
     end
     time_End = (time_ns()-time_Start)/1e9
     println("Done after ",time_End," seconds.")
 end
 
-#=
 function testLevelBM(opfdata,K,HEUR)
   global tVal
     time_Start = time_ns()
@@ -445,17 +521,6 @@ function testLevelBM(opfdata,K,HEUR)
     BusGeners, Y = opfdata.BusGeners, opfdata.Y_AC
   # DONE OBTAINING PROBLEM INFORMATION FROM opfdata
 
-  # DATA RELATED TO SUBGRADIENT INFORMATION
-    sg = EtaSGs(0,
-      zeros(nbuses,maxNSG),zeros(nbuses,maxNSG),zeros(nbuses,maxNSG),zeros(nbuses,maxNSG),
-      zeros(nlines,maxNSG),zeros(nlines,maxNSG),zeros(nlines,maxNSG),zeros(nlines,maxNSG), 
-      zeros(nbuses),zeros(nbuses),zeros(nbuses),zeros(nbuses),
-      zeros(nlines),zeros(nlines),zeros(nlines),zeros(nlines), 
-      zeros(nbuses),zeros(nbuses),zeros(nbuses),zeros(nbuses),
-      zeros(ngens),zeros(ngens),zeros(ngens),zeros(ngens),
-      zeros(nlines),zeros(nlines),zeros(nlines),zeros(nlines),zeros(nlines), 
-      Dict(),zeros(maxNSG)
-    )
   # INITIAL ITERATION
     optUB=1e20
     x_val=zeros(opfdata.nlines)
@@ -466,17 +531,13 @@ function testLevelBM(opfdata,K,HEUR)
     fixedNode=NodeInfo(x_val,x_val,optUB)
     #fixedNode=NodeInfo(lbs,ubs,optUB)
     # INITIAL SOLN (ALL ZEROS)
-      mpsoln=SolnInfo(zeros(nbuses),zeros(nbuses),zeros(nbuses),zeros(nbuses),
-	zeros(ngens),zeros(ngens),zeros(ngens),zeros(ngens),
-	zeros(nlines),zeros(nlines),zeros(nlines),zeros(nlines),zeros(nlines),0.0,0.0,0.0,0.0,0.0,0.0,0)
+      mpsoln=create_bundle(opfdata)
     bestsoln = mpsoln
-    sg.trl_soln[0]=mpsoln
     ctr=mpsoln 
+    bundles = Dict()
 
-    cpsoln=SolnInfo(zeros(nbuses),zeros(nbuses),zeros(nbuses),zeros(nbuses),
-	zeros(ngens),zeros(ngens),zeros(ngens),zeros(ngens),
-	zeros(nlines),zeros(nlines),zeros(nlines),zeros(nlines),zeros(nlines),0.0,0.0,0.0,0.0,0.0,0.0,0)
-    solveNodeProxPt(opfdata,fixedNode,sg,K,HEUR,ctr,CP,cpsoln)
+    cpsoln=create_bundle(opfdata)
+    solveNodeProxPt(opfdata,fixedNode,bundles,K,HEUR,ctr,CP,cpsoln)
     if cpsoln.status == :Optimal 
 	optUB = cpsoln.objval
         hkctr = max(optUB,0)
@@ -487,13 +548,14 @@ function testLevelBM(opfdata,K,HEUR)
     optub_updated = false
     for kk=1:maxNSG
      # STEP 1
-      hkval = max(optUB - ctr.linobjval,-ctr.eta)
+      hkval = max(optUB - ctr.linobjval,ctr.eta)
       bestsoln = ctr
       bestIdx = 0
-      for pp=sg.nSGs:-1:1
-	if max(optUB - sg.trl_soln[pp].linobjval,-sg.trl_soln[pp].eta) < hkval
-	  hkval = max(optUB - sg.trl_soln[pp].linobjval,-sg.trl_soln[pp].eta) 
-          bestsoln = sg.trl_soln[pp]
+      ncuts=length(bundles)
+      for pp=ncuts:-1:1
+	if max(optUB - bundles[pp].linobjval,bundles[pp].eta) < hkval
+	  hkval = max(optUB - bundles[pp].linobjval,bundles[pp].eta) 
+          bestsoln = bundles[pp]
 	  bestIdx=pp
 	end
       end
@@ -511,57 +573,54 @@ function testLevelBM(opfdata,K,HEUR)
 	    if bestIdx > 0
 	      updateCenter(opfdata,bestsoln,ctr)
 	    end
-	  @show "hk  update",optUB,ctr.linobjval,-ctr.eta,hkval,sg.nSGs
+	  @show "hk  update",optUB,ctr.linobjval,ctr.eta,hkval,ncuts
         end
 
      # STEP 3
-      cpstatus = solveNodeProxPt(opfdata,fixedNode,sg,K,HEUR,ctr,CP,cpsoln)
+      cpstatus = solveNodeProxPt(opfdata,fixedNode,bundles,K,HEUR,ctr,CP,cpsoln)
       if cpsoln.status != :Optimal
 	println("FLAG! cpsoln.status = ",cpsoln.status)
       end
       if fixedNode.nodeBd-cpsoln.linobjval <= 0.0
-        mpsoln=SolnInfo(zeros(nbuses),zeros(nbuses),zeros(nbuses),zeros(nbuses),
-			zeros(ngens),zeros(ngens),zeros(ngens),zeros(ngens),
-			zeros(nlines),zeros(nlines),zeros(nlines),zeros(nlines),zeros(nlines),0.0,0.0,0.0,0.0,0.0,0.0,0)
-        solveNodeProxPt(opfdata,fixedNode,sg,K,HEUR,ctr,LVLINF,mpsoln)
-
+        mpsoln=create_bundle(opfdata)
+        solveNodeProxPt(opfdata,fixedNode,bundles,K,HEUR,ctr,LVLINF,mpsoln)
 	if mpsoln.status != :Optimal
 	  println("Taking recourse since mpsoln does not have an optimal solution for MP. Feas: ",fixedNode.nodeBd - mpsoln.linobjval," val: ",fixedNode.nodeBd - cpsoln.linobjval)
 	  cpy_soln(opfdata,cpsoln,mpsoln)
 	else
 	  if hkctr_updated
-	    purgeSG(opfdata,sg,mpsoln)
+	    oldncuts = ncuts
+	    ncuts=purgeSG(opfdata,bundles)
+	    println("There were ",oldncuts," cuts; after purging, there are ",ncuts)
 	    hkctr_updated = false
 	  end
         end
 
-        η_val = computeSG(opfdata,mpsoln)
-	mpsoln.eta = η_val
-        if η_val < 0
-          updateSG(opfdata,sg)
+        if mpsoln.eta > 0
+          bundles[ncuts+1] = mpsoln
+	  ncuts += 1
         else
-            println("Tolerance met for not generating a new lazy cut, eta=",η_val,".")
+            println("Tolerance met for not generating a new lazy cut, obj,eta=",mpsoln.linobjval,mpsoln.eta,".")
 	    if mpsoln.linobjval < optUB
 	      optUB = mpsoln.linobjval
               optub_updated = true
 	    end
-	    @show "bnd opt update",optUB,mpsoln.linobjval,-mpsoln.eta,hkval,sg.nSGs
+	    @show "bnd opt update",optUB,mpsoln.linobjval,-mpsoln.eta,hkval,ncuts
 	end
       else
 	  optUB = fixedNode.nodeBd 
           optub_updated = true
-          hkctr = max(optUB - bestsoln.linobjval,-bestsoln.eta)
+          hkctr = max(optUB - bestsoln.linobjval,bestsoln.eta)
           hkctr_updated = true
 	  if bestIdx > 0
 	    updateCenter(opfdata,bestsoln,ctr)
 	  end
-	  @show "bnd update",optUB,bestsoln.linobjval,-bestsoln.eta,hkval,sg.nSGs
+	  @show "bnd update",kk,optUB,bestsoln.linobjval,bestsoln.eta,hkval,ncuts
       end
     end
     time_End = (time_ns()-time_Start)/1e9
     println("Done after ",time_End," seconds.")
 end
-=#
 
 
   #USEFUL SUBROUTINES
@@ -576,11 +635,6 @@ end
       vR = zeros(nbuses)
       vI = zeros(nbuses)
       mpsoln.eta = -solveEta0Eigs(opfdata,mpsoln.soln,vR,vI)
-      if mpsoln.eta <= 0
-	vR .= 0
-	vI .= 0
-	mpsoln.eta = 0
-      end
       for i in N
         W_val = vR[i]^2 + vI[i]^2
         mpsoln.eta_sg.α[i] = Y["shR"][i] * W_val
@@ -643,6 +697,7 @@ end
 
   # SUBROUTINE FOR COMPUTING THE MINIMUM EIGENVALUE OF H WITH A CORRESPONDING EIGENVECTOR
     # VIA AN OPTIMIZATION PROBLEM
+#=
     function solveEta0SDP(H,opfdata,v)
       nbuses, nlines, ngens, N, L, G = opfdata.nbuses, opfdata.nlines, opfdata.ngens, opfdata.N, opfdata.L, opfdata.G 
       fromBus,toBus = opfdata.fromBus, opfdata.toBus
@@ -679,9 +734,9 @@ end
       end
       return η0Val
     end
+=#
 
   # SUBROUTINE FOR COMPUTING A SUBGRADIENT OF ETA(PI), WHICH IS THE FUNCTION TAKING THE VALUE OF THE MINIMUM EIGENVALUE OF H(PI)
-#=
     function purgeSG(opfdata,bundle)
       nbuses, nlines, ngens, N, L, G = opfdata.nbuses, opfdata.nlines, opfdata.ngens, opfdata.N, opfdata.L, opfdata.G 
       fromBus,toBus,Y = opfdata.fromBus, opfdata.toBus, opfdata.Y_AC
@@ -690,9 +745,11 @@ end
       for n=orig_ncuts:-1:1
         if abs(bundle[n].cut_dual) < 1e-8 
 	  bundle[n] = bundle[ncuts]
+	  delete!(bundle,ncuts)
 	  ncuts -= 1
 	end
       end
+      return ncuts
     end
     function updateSG(opfdata,sg)
       nbuses, nlines, ngens, N, L, G = opfdata.nbuses, opfdata.nlines, opfdata.ngens, opfdata.N, opfdata.L, opfdata.G 
@@ -713,5 +770,4 @@ end
       end
       sg.trl_soln[newcut]=sg.trl_soln[0]
     end
-=#
 
