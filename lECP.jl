@@ -7,6 +7,7 @@ Brian Dandurand
 =#
 
 include("utils.jl")
+TOL=1e-4
 
 function solveLECP(opfdata,K,HEUR)
 
@@ -247,9 +248,9 @@ function solveLECP(opfdata,K,HEUR)
         end
         if η0Val < -TOL
           computeSG(opfdata,v,sg)
-          @lazyconstraint(cb, 0 <= sum( (sg["α"][i,1])* α[i] for i in N) + sum( (sg["β"][i,1])* β[i] for i in N )
-            + sum( (sg["γ"][i,1])* γ[i] for i in N)  + sum( (sg["δ"][i,1])* δ[i] for i in N)
-            + sum( (sg["λF"][l,1])* λF[l] + (sg["λT"][l,1])* λT[l] for l in L) + sum( (sg["μF"][l,1])* μF[l] + (sg["μT"][l,1])* μT[l] for l in L),
+          @lazyconstraint(cb, 0 <=  η0Val + sum( (sg["α"][i,1])* (α[i]-pi_val["α"][i]) for i in N) + sum( (sg["β"][i,1])*(β[i]-pi_val["β"][i]) for i in N )
+            + sum( (sg["γ"][i,1])*(γ[i]-pi_val["γ"][i]) for i in N)  + sum( (sg["δ"][i,1])*(δ[i]-pi_val["δ"][i]) for i in N)
+            + sum( (sg["λF"][l,1])*(λF[l]-pi_val["λF"][l]) + (sg["λT"][l,1])*(λT[l]-pi_val["λT"][l]) for l in L) + sum( (sg["μF"][l,1])*(μF[l]-pi_val["μF"][l]) + (sg["μT"][l,1])*(μT[l]-pi_val["μT"][l]) for l in L),
             localcut=useLocalCuts
 	  )
           ncuts += 1
