@@ -8,7 +8,7 @@ Brian Dandurand
 
 include("utils.jl")
 
-maxNSG = 2000
+maxNSG = 20000
 CP,PROX0,PROX,LVL1,LVL2,LVLINF,FEAS=0,1,2,3,4,5,6
 tVal = 1
 ssc=0.5
@@ -113,42 +113,160 @@ function cpy_bundle(opfdata,fromBundle,toBundle)
 end
 
 #=
-type EtaSGs
-  nSGs::Int
-  α::Array{Float64,2}
-  β::Array{Float64,2}
-  γ::Array{Float64,2}
-  δ::Array{Float64,2}
-  λF::Array{Float64,2}
-  λT::Array{Float64,2}
-  μF::Array{Float64,2}
-  μT::Array{Float64,2}
-  α_new::Array{Float64}
-  β_new::Array{Float64}
-  γ_new::Array{Float64}
-  δ_new::Array{Float64}
-  λF_new::Array{Float64}
-  λT_new::Array{Float64}
-  μF_new::Array{Float64}
-  μT_new::Array{Float64}
-  α_agg::Array{Float64}
-  β_agg::Array{Float64}
-  γ_agg::Array{Float64}
-  δ_agg::Array{Float64}
-  ζpLB_agg::Array{Float64}
-  ζpUB_agg::Array{Float64}
-  ζqLB_agg::Array{Float64}
-  ζqUB_agg::Array{Float64}
-  x_agg::Array{Float64}
-  λF_agg::Array{Float64}
-  λT_agg::Array{Float64}
-  μF_agg::Array{Float64}
-  μT_agg::Array{Float64}
-  trl_soln::Dict
-  cut_duals::Array{Float64}
+function evalConstraints(opfdata,soln,K)
+  nbuses, nlines, ngens, N, L, G = opfdata.nbuses, opfdata.nlines, opfdata.ngens, opfdata.N, opfdata.L, opfdata.G 
+  fromLines,toLines,fromBus,toBus = opfdata.fromLines, opfdata.toLines, opfdata.fromBus, opfdata.toBus
+  BusGeners, Y = opfdata.BusGeners, opfdata.Y_AC
+
+  maxViolation = soln.eta
+  xUBV = soln.x - 1
+  xLBV = 0 - soln.x
+  αUBV = soln.α - 1 
+  αLBV = -1 - soln.α 
+  βUBV = soln.β - 1 
+  βLBV = -1 - soln.β 
+  γLBV = 0 - soln.γ 
+  δLBV = 0 - soln.δ 
+  γδUBV = soln.γ+soln.δ - 1 
+  ζpUBV = soln.ζpUB - 1 
+  ζpLBV = 1 - soln.ζpLB  
+  ζqUBV = soln.ζqUB - 1 
+  ζqLBV = 1 - soln.ζqLB
+  maxViolation = max(maximum(xUBV),maximum(xLBV),maximum(αUBV),maximum(αLBV),maximum(βUBV),maximum(βLBV),
+	maximum(γLBV),maximum(δLBV),maximum(γδUBV),maximum(ζpUBV),maximum(ζpLBV),maximum(ζqUBV),maximum(ζqLBV),maxViolation)
+
+  for i in N
+    for g in BusGeners[i]
+      maxViolation = max(abs( -soln.α[i] + soln.ζpUB[g] - soln.ζpLB[g] ),maxViolation)
+      maxViolation = max(abs( -soln.β[i] + soln.ζqUB[g] - soln.ζqLB[g] ),maxViolation)
+    end
+  end
+  maxViolation = max(sum(soln.x) - K, maxViolation)
+  
+end
+
+function solveNodeProxPtSagadov(opfdata,nodeinfo,bundles,K,HEUR,ctr,CTR_PARAM,
+			mpsoln)
+  global tVal
+  # OBTAIN SHORTHAND PROBLEM INFORMATION FROM opfdata
+    nbuses, nlines, ngens = opfdata.nbuses, opfdata.nlines, opfdata.ngens
+    N, L, G = opfdata.N, opfdata.L, opfdata.G 
+    fromLines,toLines,fromBus,toBus = opfdata.fromLines, opfdata.toLines, opfdata.fromBus, opfdata.toBus
+    BusGeners, Y = opfdata.BusGeners, opfdata.Y_AC
+  # DONE OBTAINING PROBLEM INFORMATION FROM opfdata
+
+
+  # The master problem MP
+    #if CTR_PARAM == CP || CTR_PARAM == FEAS
+      mMP = Model(solver=CplexSolver(
+        CPX_PARAM_SCRIND=0,
+        CPX_PARAM_TILIM=MAX_TIME,
+        CPX_PARAM_THREADS=1
+	)
+      )
+    @variable(mMP, psi)
+    # each x[l] is either 0 (line l active) or 1 (line l is cut)
+      @variable(mMP, 0 <= x[l=L] <= 1, start=0)
+      @constraint(mMP, [l=L], x[l] - nodeinfo.x_ubs[l] <= psi)
+      @constraint(mMP, [l=L], nodeinfo.x_lbs[l] -x[l] <= psi)
+    # dual multipliers associated with active power flow balance constraints
+      @variable(mMP, -1 <= α[i=N] <= 1, start=0)
+      @constraint(mMP, [i=N], α[i] - 1 <= psi)
+      @constraint(mMP, [i=N], -1 - α[i] <= psi)
+    # dual multipliers associated with active power flow balance constraints
+      @variable(mMP, -1 <= β[i=N] <= 1, start=0)
+      @constraint(mMP, [i=N], β[i] - 1 <= psi)
+      @constraint(mMP, [i=N], -1 - β[i] <= psi)
+    # dual multipliers associated with the voltage magnitude bounds
+      @variable(mMP, δ[i=N] >= 0) 
+      @constraint(mMP, [i=N], -δ[i] <= psi)
+      @variable(mMP, γ[i=N] >= 0) 
+      @constraint(mMP, [i=N], -γ[i] <= psi)
+      @constraint(mMP, [i=N], δ[i]+γ[i] -1 <= psi)
+    # dual multipliers associated with the power generation bounds
+      @variable(mMP, 0 <= ζpUB[g=G] <= 1); @variable(mMP, 0 <= ζpLB[g=G] <= 1); @variable(mMP, 0 <= ζqUB[g=G] <= 1); @variable(mMP, 0 <= ζqLB[g=G] <= 1)
+      @constraint(mMP, [g=G], ζpUB[g] - 1 <= psi)
+      @constraint(mMP, [g=G], -ζpUB[g] <= psi)
+      @constraint(mMP, [g=G], ζpLB[g] - 1 <= psi)
+      @constraint(mMP, [g=G], -ζpLB[g] <= psi)
+      @constraint(mMP, [g=G], ζqUB[g] - 1 <= psi)
+      @constraint(mMP, [g=G], -ζqUB[g] <= psi)
+      @constraint(mMP, [g=G], ζqLB[g] - 1 <= psi)
+      @constraint(mMP, [g=G], -ζqLB[g] <= psi)
+    # constraints needed for terms in pG[g] and qG[g] in the Lagrangian to vanish (needed for dual feasibility)
+      for i in N
+        for g in BusGeners[i]
+          @constraint(mMP, -α[i] + ζpUB[g] - ζpLB[g] == 0 )
+          @constraint(mMP, -β[i] + ζqUB[g] - ζqLB[g] == 0 )
+        end
+      end
+  @constraint(mMP, sum(x[l] for l in L) - K <= psi)
+ # McCormick inequalities enforcing bilinear equalities
+    # auxiliary dual variables due to McCormick reformulation of cross terms appearing in the Lagrangian
+      @variable(mMP, λF[l=L], start=0); @variable(mMP, λT[l=L], start=0); @variable(mMP, μF[l=L], start=0); @variable(mMP, μT[l=L], start=0)
+    @constraint(mMP, AMcf1[l in L], α[fromBus[l]] - x[l] - λF[l] <= psi); @constraint(mMP, AMcf2[l in L], α[fromBus[l]] + x[l] - λF[l] >= -psi)
+    @constraint(mMP, AMcf3[l in L], -(1 - x[l]) - λF[l] <= psi); @constraint(mMP, AMcf4[l in L], (1 - x[l]) - λF[l] >= -psi)
+    @constraint(mMP, AMct1[l in L], α[toBus[l]] - x[l] - λT[l] <= psi); @constraint(mMP, AMct2[l in L], α[toBus[l]] + x[l] - λT[l] >= -psi)
+    @constraint(mMP, AMct3[l in L], -(1 - x[l]) - λT[l] <= psi); @constraint(mMP, AMct4[l in L], (1 - x[l]) - λT[l] >= -psi)
+
+    @constraint(mMP, BMcf1[l in L], β[fromBus[l]] - x[l] - μF[l] <= psi); @constraint(mMP, BMcf2[l in L], β[fromBus[l]] + x[l] - μF[l] >= -psi)
+    @constraint(mMP, BMcf3[l in L], -(1 - x[l]) - μF[l] <= psi); @constraint(mMP, BMcf4[l in L], (1 - x[l]) - μF[l] >= -psi)
+    @constraint(mMP, BMct1[l in L], β[toBus[l]] - x[l] - μT[l] <= psi); @constraint(mMP, BMct2[l in L], β[toBus[l]] + x[l] - μT[l] >= -psi)
+    @constraint(mMP, BMct3[l in L], -(1 - x[l]) - μT[l] <= psi); @constraint(mMP, BMct4[l in L], (1 - x[l]) - μT[l] >= -psi)
+
+  # Lagrangian objective, after vanishing terms are removed under the assumption of dual feasibility
+    lin_cfs = create_soln(opfdata)
+    for i in N
+      lin_cfs.α[i],lin_cfs.β[i],lin_cfs.γ[i],lin_cfs.δ[i] = opfdata.PD[i],opfdata.QD[i],opfdata.Wmin[i],-opfdata.Wmax[i]
+    end
+    for g in G
+      lin_cfs.ζpLB[g],lin_cfs.ζpUB[g],lin_cfs.ζqLB[g],lin_cfs.ζqUB[g] = opfdata.Pmin[g],-opfdata.Pmax[g],opfdata.Qmin[g],-opfdata.Qmax[g]
+    end
+    @expression(mMP, linobj, sum(lin_cfs.ζpLB[g]*ζpLB[g] + lin_cfs.ζpUB[g]*ζpUB[g] + lin_cfs.ζqLB[g]*ζqLB[g] + lin_cfs.ζqUB[g]*ζqUB[g]  for g in G)
+    			+ sum( lin_cfs.γ[i]*γ[i] + lin_cfs.δ[i]*δ[i] + lin_cfs.α[i]*α[i] + lin_cfs.β[i]*β[i] for i in N) 
+    )
+    #@constraint(mMP, ctr.linobjval - linobj <= psi)
+    @constraint(mMP, 0.937 - linobj <= psi)
+   
+    @objective(mMP, Min, psi + 0.5*tVal*(
+      sum( (ctr.soln.α[i] - α[i])^2 + (ctr.soln.β[i] - β[i])^2 + (ctr.soln.γ[i] - γ[i])^2 + (ctr.soln.δ[i] - δ[i])^2 for i in N)
+	+sum( (ctr.soln.ζpLB[g] - ζpLB[g])^2 + (ctr.soln.ζpUB[g] - ζpUB[g])^2 + (ctr.soln.ζqLB[g] - ζqLB[g])^2 + (ctr.soln.ζqUB[g] - ζqUB[g])^2 for g in G)
+	+sum( (ctr.soln.x[l]-x[l])^2 + (ctr.soln.λF[l] - λF[l])^2 + (ctr.soln.λT[l] - λT[l])^2 + (ctr.soln.μF[l] - μF[l])^2 + (ctr.soln.μT[l] - μT[l])^2 for l in L)
+      )
+    )
+    for n=1:length(bundles)
+      @constraint(mMP, bundles[n].eta - sum( bundles[n].eta_sg.α[i]*(α[i]-bundles[n].soln.α[i]) + bundles[n].eta_sg.β[i]*(β[i]-bundles[n].soln.β[i]) 
+	+ bundles[n].eta_sg.γ[i]*(γ[i]-bundles[n].soln.γ[i]) + bundles[n].eta_sg.δ[i]*(δ[i]-bundles[n].soln.δ[i]) for i in N)
+        - sum( bundles[n].eta_sg.λF[l]*(λF[l]-bundles[n].soln.λF[l]) + bundles[n].eta_sg.λT[l]*(λT[l]-bundles[n].soln.λT[l]) 
+	+ bundles[n].eta_sg.μF[l]*(μF[l]-bundles[n].soln.μF[l]) + bundles[n].eta_sg.μT[l]*(μT[l]-bundles[n].soln.μT[l]) for l in L) - psi <= 0.0
+      )
+    end
+    status=solve(mMP)
+    mpsoln.status=status
+    if status == :Optimal 
+      for i in N
+          mpsoln.soln.α[i],mpsoln.soln.β[i],mpsoln.soln.γ[i],mpsoln.soln.δ[i] = getvalue(α[i]), getvalue(β[i]), getvalue(γ[i]), getvalue(δ[i])
+      end
+      for g in G
+          mpsoln.soln.ζpLB[g],mpsoln.soln.ζpUB[g],mpsoln.soln.ζqLB[g],mpsoln.soln.ζqUB[g] = getvalue(ζpLB[g]), getvalue(ζpUB[g]), getvalue(ζqLB[g]), getvalue(ζqUB[g])
+      end
+      for l in L
+        mpsoln.soln.x[l] = getvalue(x[l])
+        mpsoln.soln.λF[l], mpsoln.soln.λT[l], mpsoln.soln.μF[l], mpsoln.soln.μT[l] = getvalue(λF[l]), getvalue(λT[l]), getvalue(μF[l]), getvalue(μT[l])
+      end
+      #mpsoln.objval,mpsoln.solvetime = getobjectivevalue(mMP), getsolvetime(mMP)
+      mpsoln.objval = getobjectivevalue(mMP)
+      mpsoln.linobjval = getvalue(linobj)
+      mpsoln.psival = getvalue(psi)
+
+      computeSG(opfdata,mpsoln) #This computes mpsoln.eta 
+
+    else
+      #println("solveNodeAC: Return status $status")
+    end
+    return status
 end
 =#
-
 
 function solveNodeProxPt(opfdata,nodeinfo,bundles,K,HEUR,ctr,CTR_PARAM,
 			mpsoln)
@@ -269,30 +387,32 @@ function solveNodeProxPt(opfdata,nodeinfo,bundles,K,HEUR,ctr,CTR_PARAM,
 	)
 	addnncon=true
 	addlincon=true
-	if ctr.linobjval >= 0
+	#if ctr.linobjval >= 0
 	   @constraint(mMP, ctr.linobjval - linobj - psi <= 0)
-	   addlincon = false
-	end
+	   #addlincon = false
+	#end
 	for n=1:length(bundles)
-	  if ctr.linobjval-bundles[n].linobjval < bundles[n].eta
+	  #if ctr.linobjval-bundles[n].linobjval < bundles[n].eta
 	  #@show ctr.linobjval-bundles[n].linobjval,bundles[n].eta
-	    if bundles[n].eta == 0.0
+	    #if bundles[n].eta == 0.0
 	      #@constraint(mMP, psi >= 0)
-	      addnncon=false
-	    elseif bundles[n].eta > 0.0
+	    #  addnncon=false
+	    #if bundles[n].eta > 0.0
               @constraint(mMP, bundles[n].eta - sum( bundles[n].eta_sg.α[i]*(α[i]-bundles[n].soln.α[i]) + bundles[n].eta_sg.β[i]*(β[i]-bundles[n].soln.β[i]) 
 	        + bundles[n].eta_sg.γ[i]*(γ[i]-bundles[n].soln.γ[i]) + bundles[n].eta_sg.δ[i]*(δ[i]-bundles[n].soln.δ[i]) for i in N)
                 - sum( bundles[n].eta_sg.λF[l]*(λF[l]-bundles[n].soln.λF[l]) + bundles[n].eta_sg.λT[l]*(λT[l]-bundles[n].soln.λT[l]) 
 		+ bundles[n].eta_sg.μF[l]*(μF[l]-bundles[n].soln.μF[l]) + bundles[n].eta_sg.μT[l]*(μT[l]-bundles[n].soln.μT[l]) for l in L) - psi <= 0.0
               )
-	    end
-	  else
+	    #end
+	  #else
+#=
 	    if addlincon
 	      @constraint(mMP, ctr.linobjval - linobj - psi <= 0)
 	      addlincon = false
 	    end
 	    #println("Not adding cut")
-	  end
+=#
+	  #end
 	end
     elseif CTR_PARAM == LVL2 || CTR_PARAM == LVL2 || CTR_PARAM == LVLINF
       @constraint(mMP, LVLConstr, linobj >= nodeinfo.nodeBd)
@@ -366,7 +486,7 @@ function solveNodeProxPt(opfdata,nodeinfo,bundles,K,HEUR,ctr,CTR_PARAM,
 
   status=solve(mMP)
   mpsoln.status=status
-  if status == :Optimal # || status == :CPX_STAT_NUM_BEST
+  if status == :Optimal || status == :CPX_STAT_NUM_BEST
       for i in N
           mpsoln.soln.α[i],mpsoln.soln.β[i],mpsoln.soln.γ[i],mpsoln.soln.δ[i] = getvalue(α[i]), getvalue(β[i]), getvalue(γ[i]), getvalue(δ[i])
       end
@@ -416,10 +536,24 @@ function testProxPt0(opfdata,K,HEUR)
     x_val[8],x_val[9],x_val[10],x_val[40]=1,1,1,1
     fixedNode=NodeInfo(x_val,x_val,1e20)
     bundles=Dict()
+    ncuts=0
     mpsoln=create_bundle(opfdata)
-    mpsoln.soln.x[L] = x_val[L]
-    sg_agg=create_soln(opfdata)
-    ctr=mpsoln
+    ctr=create_bundle(opfdata)
+    status = solveNodeProxPt(opfdata,fixedNode,bundles,K,HEUR,ctr,PROX0,mpsoln)
+    if status == :Optimal
+      if mpsoln.eta < 1e-6 
+	  println("Convergence to within tolerance: obj, feas ",mpsoln.linobjval,mpsoln.eta)
+          time_End = (time_ns()-time_Start)/1e9
+          println("Done after ",time_End," seconds.")
+	  return
+      end
+      updateCenter(opfdata,mpsoln,ctr)
+      bundles[1]=mpsoln
+      ncuts=1
+    else
+	println("Solver returned: $status")
+    end
+    @show 0,mpsoln.linobjval,mpsoln.eta
 
   # MAIN LOOP
     for kk=1:maxNSG
@@ -430,11 +564,13 @@ function testProxPt0(opfdata,K,HEUR)
        # STEP 2
         if mpsoln.eta < 1e-6 
 	  println("Convergence to within tolerance: obj, feas ",mpsoln.linobjval,mpsoln.eta)
-	  break
+          time_End = (time_ns()-time_Start)/1e9
+          println("Done after ",time_End," seconds.")
+	  return
         end
        # STEP 3
         ncuts = length(bundles)
-        if -(mpsoln.eta-ctr.eta)/ctr.eta >= 0.05 || kk==1
+        if -(mpsoln.eta-ctr.eta)/ctr.eta >= 0.05 
           # UPDATE CENTER VALUES
 	    updateCenter(opfdata,mpsoln,ctr)
 	    ncuts=purgeSG(opfdata,bundles)
@@ -474,7 +610,7 @@ function testProxPt(opfdata,K,HEUR)
      # STEP 1
       mpsoln=create_bundle(opfdata)
       status = solveNodeProxPt(opfdata,fixedNode,bundles,K,HEUR,ctr,PROX,mpsoln)
-      if status == :Optimal
+      if status == :Optimal || status == :CPX_STAT_NUM_BEST
 	comp_agg(opfdata,ctr.soln,mpsoln.soln,sg_agg)
 	agg_norm=comp_norm(opfdata,sg_agg)
 	epshat=max(0,ctr.eta)-mpsoln.psival-(1.0/tVal)*agg_norm^2
@@ -489,15 +625,19 @@ function testProxPt(opfdata,K,HEUR)
        # STEP 3
 	hk = max(ctr.linobjval-mpsoln.linobjval,mpsoln.eta)
       @show kk,ctr.linobjval,ctr.eta,mpsoln.linobjval,mpsoln.eta,epshat,del,hk
-        #if (η_val-ctr.eta) >= -ssc*ctr.eta || kk==1
+        #if (η_val-ctr.eta) >= -ssc*ctr.eta 
         #if true
-@show hk, ctr.eta, -ssc*del
-        if hk <= max(0,ctr.eta) - ssc*del
-        #if -(mpsoln.eta-ctr.eta)/ctr.eta >= 0.05 || kk==1
+#@show hk, mpsoln.psival,ctr.eta, -ssc*del
+        if hk <= max(0,ctr.eta) - ssc*del || kk==1
+        #if -(mpsoln.psival-ctr.psival)/ctr.psival >= 0.05 
 println("Updating center")
 	  #purgeSG(opfdata,sg,ctr)
           # UPDATE CENTER VALUES
 	    updateCenter(opfdata,mpsoln,ctr)
+	    empty!(bundles)
+	else
+	  ncuts = length(bundles)
+          bundles[ncuts+1]=mpsoln
         end
        # STEP 4
         #updateSG(opfdata,sg)
@@ -505,7 +645,6 @@ println("Updating center")
 	#println("Solve status: $status")
 	#break
       end
-      bundles[kk]=mpsoln
     end
     time_End = (time_ns()-time_Start)/1e9
     println("Done after ",time_End," seconds.")
