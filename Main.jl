@@ -73,7 +73,8 @@ if FORM == ECP
 elseif FORM == ProxPtSDP
   include("ProxPtSDP.jl")
   #testLevelBM(opfdata,K,HEUR)
-  testProxPt(opfdata,K,HEUR)
+  #testProxPt(opfdata,K,HEUR)
+  testProxPt0(opfdata,K,HEUR)
 elseif FORM == AC
   include("DualAC.jl")
 elseif FORM == SOCP

@@ -33,7 +33,8 @@ function solveNodeAC(opfdata,ndata,mpsoln)
 
   # Instantiating the model and solver for the dual problem
     nThreads=1
-    mMP = Model(solver=MosekSolver(MSK_IPAR_LOG=0,MSK_IPAR_NUM_THREADS=nThreads))
+    #mMP = Model(solver=MosekSolver(MSK_IPAR_LOG=0,MSK_IPAR_NUM_THREADS=nThreads))
+    mMP = Model(solver=SCSSolver(verbose=1,max_iters=1000000))
     @variable(mMP, -1 <= α[i=N] <= 1)
     @variable(mMP, -1 <= β[i=N] <= 1)
     @variable(mMP, γp[i=N] >= 0)
@@ -43,12 +44,8 @@ function solveNodeAC(opfdata,ndata,mpsoln)
     @variable(mMP, ζpLB[g=G] >= 0)
     @variable(mMP, ζqUB[g=G] >= 0)
     @variable(mMP, ζqLB[g=G] >= 0)
-    @variable(mMP, 0.0 <= x[l=L] <= 1.0)
+    @variable(mMP, ndata.x_lbs[l] <= x[l=L] <= ndata.x_ubs[l])
     @constraint(mMP, sum(x[l] for l in L) <= K)
-    for l in L
-        setlowerbound(x[l],ndata.x_lbs[l])
-        setupperbound(x[l],ndata.x_ubs[l])
-    end
 
   for i in N
    for g in BusGeners[i]
@@ -238,7 +235,7 @@ function testDualAC(opfdata)
   x_val[80]=1
   fixedNode=NodeInfo(x_val,x_val,1e20)
 
-  mpsoln = SolnInfo(zeros(nlines),ones(nlines),1e20,0)
+  mpsoln = SolnInfo(zeros(opfdata.nlines),ones(opfdata.nlines),1e20,0)
 
   solveNodeAC(opfdata,fixedNode,mpsoln)
   dualObjval = mpsoln.optval
@@ -396,9 +393,11 @@ function primHeurXInt(opfdata,mpsoln,feasXs,incSoln)
   end
 end
 
-#testDualAC(opfdata)
+testDualAC(opfdata)
 
+#=
 finalXSoln = SolnInfo(zeros(opfdata.nlines),ones(opfdata.nlines),0.0,0.0)
+
 bestUBVal,nNodes,runtime = solveBnBSDP(opfdata,finalXSoln)
 
 @printf("\n********************FINAL RESULT FOR CASE %s WITH %d LINES CUT H%dR%d*******************\n",CASE_NUM,K, HEUR,FORM)
@@ -460,4 +459,4 @@ println("Best bound:  ", bestUBVal)
 @show runtime
 @show finalXSoln
 end
-
+=#
