@@ -10,7 +10,9 @@ include("utils.jl")
 
 maxNSG = 10000
 CP,PROX0,PROX,LVL1,LVL2,LVLINF,FEAS=0,1,2,3,4,5,6
-tVal = 0.25
+tMin = 0.01
+tMax = 2
+tVal = 0.1
 ssc=0.1
 
 type NodeInfo
@@ -400,6 +402,7 @@ function testProxPt0(opfdata,K,HEUR)
     bundles=Dict()
     ncuts=0
     rho = 1
+    v_est = 1e20
     mpsoln=create_bundle(opfdata)
     ctr=create_bundle(opfdata)
     sg_agg=create_soln(opfdata)
@@ -424,10 +427,12 @@ function testProxPt0(opfdata,K,HEUR)
     end
     @show 0,mpsoln.linobjval,mpsoln.eta
 
+    ssc_cntr = 0
   # MAIN LOOP
     for kk=1:maxNSG
-      #tVal = 100/kk
      # STEP 1
+      nextTVal=tVal
+      oldTVal=tVal
       mpsoln=create_bundle(opfdata)
       status = solveNodeProxPt(opfdata,fixedNode,bundles,K,HEUR,ctr,PROX0,mpsoln)
       while status != :Optimal
@@ -455,7 +460,7 @@ function testProxPt0(opfdata,K,HEUR)
 
         #if mpsoln.eta < 1e-4 
 	TOL = 1e-5
-        if ctr.eta < TOL && agg_norm < TOL && epshat < 1e-3 
+        if ctr.eta < TOL && agg_norm < 1e-3 && epshat < 1e-3 
 	  println("Convergence to within tolerance: obj, feas ",mpsoln.linobjval," ",mpsoln.eta)
           time_End = (time_ns()-time_Start)/1e9
 	  @show "Basic",kk,mpsoln.linobjval,mpsoln.eta,ncuts,ctr.eta,agg_norm,epshat
@@ -463,17 +468,46 @@ function testProxPt0(opfdata,K,HEUR)
 	  return
         end
        # STEP 3
-        if ((mpsoln.linobjval - rho*mpsoln.eta)-(ctr.linobjval - rho*ctr.eta))/(mpsoln.linobjval-(ctr.linobjval - rho*ctr.eta)) >= ssc
+	sscval = ((mpsoln.linobjval - rho*mpsoln.eta)-(ctr.linobjval - rho*ctr.eta))/(mpsoln.linobjval-(ctr.linobjval - rho*ctr.eta)) 
+	vval = (mpsoln.linobjval-(ctr.linobjval - rho*ctr.eta)) 
+        if sscval >= ssc
         #if -(mpsoln.eta - ctr.eta)/ctr.eta >= ssc 
           # UPDATE CENTER VALUES
 	    updateCenter(opfdata,mpsoln,ctr)
-	    @show "Basic",kk,mpsoln.linobjval,mpsoln.eta,ncuts
+	    @show "Basic",kk,mpsoln.linobjval,mpsoln.eta,ncuts,tVal,agg_norm,epshat
+	    # TVAL ADJUST
+#=
+	    if sscval >= 0.5 && ssc_cntr > 0
+	      nextTVal = 2*tVal*(1-sscval)
+	    elseif ssc_cntr > 3
+	      nextTVal = tVal/2
+	    end
+	    tVal = max(nextTVal, tVal/10, tMin)
+	    v_est = max(v_est,2*vval)
+	    ssc_cntr = max(ssc_cntr+1,1)
+	    if oldTVal != tVal
+	      ssc_cntr = 1
+	    end
+=#
 #=
 	    if ncuts > 2
               aggregateSG(opfdata,bundles,mpsoln)
 	      bundles[2]=ctr
               bundles[3]=mpsoln
 	    end
+=#
+	else
+	 # TVAL ADJUST
+	  v_est=min(v_est,agg_norm+epshat)
+#=
+	  if mpsoln.linerr > max(v_est,10*vval) && ssc_cntr < -3
+	    nextTVal = 2*tVal*(1-sscval)
+	    tVal = min(nextTVal,10*tVal)
+	    ssc_cntr = min(ssc_cntr-1,-1)
+	    if oldTVal != tVal
+	      ssc_cntr = -1	
+	    end
+	  end
 =#
         end
 	ncuts=purgeSG(opfdata,bundles)
