@@ -8,10 +8,10 @@ Brian Dandurand
 
 include("utils.jl")
 
-maxNSG = 20000
+maxNSG = 10000
 CP,PROX0,PROX,LVL1,LVL2,LVLINF,FEAS=0,1,2,3,4,5,6
-tVal = 0.20
-ssc=0.5
+tVal = 0.25
+ssc=0.1
 
 type NodeInfo
   x_lbs::Array{Float64}
@@ -88,6 +88,7 @@ type Bundle
   penval::Float64
   psival::Float64
   eta::Float64
+  etahat::Float64
   linerr::Float64
   cut_dual::Float64
   lvl_dual::Float64
@@ -96,7 +97,7 @@ type Bundle
 end
 function create_bundle(opfdata)
   nbuses, nlines, ngens, N, L, G = opfdata.nbuses, opfdata.nlines, opfdata.ngens, opfdata.N, opfdata.L, opfdata.G 
-  return Bundle(create_soln(opfdata),create_soln(opfdata),0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0)
+  return Bundle(create_soln(opfdata),create_soln(opfdata),0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0)
 end
 function cpy_bundle(opfdata,fromBundle,toBundle)
   nbuses, nlines, ngens, N, L, G = opfdata.nbuses, opfdata.nlines, opfdata.ngens, opfdata.N, opfdata.L, opfdata.G 
@@ -107,6 +108,7 @@ function cpy_bundle(opfdata,fromBundle,toBundle)
   toBundle.penval = fromBundle.penval
   toBundle.psival = fromBundle.psival
   toBundle.eta = fromBundle.eta
+  toBundle.etahat = fromBundle.etahat
   toBundle.linerr = fromBundle.linerr
   toBundle.cut_dual = fromBundle.cut_dual
   toBundle.lvl_dual = fromBundle.lvl_dual
@@ -212,8 +214,11 @@ function solveNodeProxPt(opfdata,nodeinfo,bundles,K,HEUR,ctr,CTR_PARAM,
    # METHOD-SPECIFIC SETUP
     if CTR_PARAM == PROX0
       @objective(mMP, Max, linobj - 0.5*tVal*(
-	sum( (ctr.soln.α[i] - α[i])^2 + (ctr.soln.β[i] - β[i])^2 + (ctr.soln.γ[i] - γ[i])^2 + (ctr.soln.δ[i] - δ[i])^2 for i in N)
-	+sum((ctr.soln.λF[l] - λF[l])^2 + (ctr.soln.λT[l] - λT[l])^2 + (ctr.soln.μF[l] - μF[l])^2 + (ctr.soln.μT[l] - μT[l])^2 for l in L)
+	#sum( (ctr.soln.α[i] - α[i])^2 + (ctr.soln.β[i] - β[i])^2 + (ctr.soln.γ[i] - γ[i])^2 + (ctr.soln.δ[i] - δ[i])^2 for i in N)
+	#+sum((ctr.soln.λF[l] - λF[l])^2 + (ctr.soln.λT[l] - λT[l])^2 + (ctr.soln.μF[l] - μF[l])^2 + (ctr.soln.μT[l] - μT[l])^2 for l in L)
+	  sum( (ctr.soln.α[i] - α[i])^2 + (ctr.soln.β[i] - β[i])^2 + (ctr.soln.γ[i] - γ[i])^2 + (ctr.soln.δ[i] - δ[i])^2 for i in N)
+	  +sum( (ctr.soln.ζpLB[g] - ζpLB[g])^2 + (ctr.soln.ζpUB[g] - ζpUB[g])^2 + (ctr.soln.ζqLB[g] - ζqLB[g])^2 + (ctr.soln.ζqUB[g] - ζqUB[g])^2 for g in G)
+	  +sum( (ctr.soln.x[l]-x[l])^2 + (ctr.soln.λF[l] - λF[l])^2 + (ctr.soln.λT[l] - λT[l])^2 + (ctr.soln.μF[l] - μF[l])^2 + (ctr.soln.μT[l] - μT[l])^2 for l in L)
 	)
       )
       if length(bundles) > 0
@@ -350,6 +355,18 @@ function solveNodeProxPt(opfdata,nodeinfo,bundles,K,HEUR,ctr,CTR_PARAM,
         + dot(mpsoln.eta_sg.λT[L],(mpsoln.soln.λT[L] - ctr.soln.λT[L]))
         + dot(mpsoln.eta_sg.μF[L],(mpsoln.soln.μF[L] - ctr.soln.μF[L]))
         + dot(mpsoln.eta_sg.μT[L],(mpsoln.soln.μT[L] - ctr.soln.μT[L]))
+      mpsoln.etahat = 1e20
+      for n=1:length(bundles)
+        etaval=getvalue(-bundles[n].eta 
+	  + sum( bundles[n].eta_sg.α[i]*(α[i]-bundles[n].soln.α[i]) + bundles[n].eta_sg.β[i]*(β[i]-bundles[n].soln.β[i])
+	    + bundles[n].eta_sg.γ[i]*(γ[i]-bundles[n].soln.γ[i]) + bundles[n].eta_sg.δ[i]*(δ[i]-bundles[n].soln.δ[i]) for i in N)
+          + sum( bundles[n].eta_sg.λF[l]*(λF[l]-bundles[n].soln.λF[l]) + bundles[n].eta_sg.λT[l]*(λT[l]-bundles[n].soln.λT[l]) 
+	    + bundles[n].eta_sg.μF[l]*(μF[l]-bundles[n].soln.μF[l]) + bundles[n].eta_sg.μT[l]*(μT[l]-bundles[n].soln.μT[l]) for l in L)
+        )
+	if mpsoln.etahat > etaval
+	  mpsoln.etahat = etaval
+	end
+      end
 
       if status == :Optimal 
 	for n=1:length(bundles)
@@ -385,6 +402,7 @@ function testProxPt0(opfdata,K,HEUR)
     rho = 1
     mpsoln=create_bundle(opfdata)
     ctr=create_bundle(opfdata)
+    sg_agg=create_soln(opfdata)
     status = solveNodeProxPt(opfdata,fixedNode,bundles,K,HEUR,ctr,PROX0,mpsoln)
     while status != :Optimal
       tVal /= 2
@@ -419,28 +437,48 @@ function testProxPt0(opfdata,K,HEUR)
       end	
       if status == :Optimal
        # STEP 2
-        if mpsoln.eta < 1e-5 
+        ncuts = length(bundles)
+	# UPDATING RHO AS NECESSARY TO CORRESPOND TO EXACT PENALTY
+	if rho < sum(bundles[n].cut_dual for n in 1:ncuts)
+	  rho = sum(bundles[n].cut_dual for n in 1:ncuts) + 1
+	  println("Updating rho to ",rho)
+	end
+        # COMPUTING LINEARIZATION ERRORS
+	  comp_agg(opfdata,ctr.soln,mpsoln.soln,sg_agg)
+	  agg_norm=comp_norm(opfdata,sg_agg)
+	  epshat = mpsoln.linobjval - (ctr.linobjval - rho*ctr.eta)
+	- dot(sg_agg.α[N],(mpsoln.soln.α[N]-ctr.soln.α[N])) - dot(sg_agg.β[N],(mpsoln.soln.β[N]-ctr.soln.β[N])) 
+	- dot(sg_agg.γ[N],(mpsoln.soln.γ[N]-ctr.soln.γ[N])) - dot(sg_agg.δ[N],(mpsoln.soln.δ[N]-ctr.soln.δ[N])) 
+	- dot(sg_agg.λF[L],(mpsoln.soln.λF[L] - ctr.soln.λF[L])) - dot(sg_agg.λT[L],(mpsoln.soln.λT[L] - ctr.soln.λT[L]))
+	- dot(sg_agg.x[L], (mpsoln.soln.x[L] - ctr.soln.x[L]))
+        - dot(sg_agg.μF[L],(mpsoln.soln.μF[L] - ctr.soln.μF[L])) - dot(sg_agg.μT[L],(mpsoln.soln.μT[L] - ctr.soln.μT[L]))
+
+        #if mpsoln.eta < 1e-4 
+	TOL = 1e-5
+        if ctr.eta < TOL && agg_norm < TOL && epshat < 1e-3 
 	  println("Convergence to within tolerance: obj, feas ",mpsoln.linobjval," ",mpsoln.eta)
           time_End = (time_ns()-time_Start)/1e9
+	  @show "Basic",kk,mpsoln.linobjval,mpsoln.eta,ncuts,ctr.eta,agg_norm,epshat
           println("Done after ",time_End," seconds.")
 	  return
         end
        # STEP 3
-        ncuts = length(bundles)
-	for n=1:ncuts
-	  if rho < bundles[n].cut_dual
-	    rho = 2*bundles[n].cut_dual
-	    println("Updating rho to ",rho)
-	  end
-	end
-        #if ((mpsoln.linobjval - rho*mpsoln.eta)-(ctr.linobjval - rho*ctr.eta))/(mpsoln.linobjval-(ctr.linobjval - rho*ctr.eta)) >= 0.05 
-        if -(mpsoln.eta - ctr.eta)/ctr.eta >= 0.05 
+        if ((mpsoln.linobjval - rho*mpsoln.eta)-(ctr.linobjval - rho*ctr.eta))/(mpsoln.linobjval-(ctr.linobjval - rho*ctr.eta)) >= ssc
+        #if -(mpsoln.eta - ctr.eta)/ctr.eta >= ssc 
           # UPDATE CENTER VALUES
 	    updateCenter(opfdata,mpsoln,ctr)
 	    @show "Basic",kk,mpsoln.linobjval,mpsoln.eta,ncuts
+#=
+	    if ncuts > 2
+              aggregateSG(opfdata,bundles,mpsoln)
+	      bundles[2]=ctr
+              bundles[3]=mpsoln
+	    end
+=#
         end
 	ncuts=purgeSG(opfdata,bundles)
         bundles[ncuts+1]=mpsoln
+	ncuts=length(bundles)
       else
 	println("Solver returned: $status")
       end
@@ -786,6 +824,67 @@ end
 	end
       end
       return ncuts
+    end
+    function aggregateSG(opfdata,bundle,mpsoln)
+      nbuses, nlines, ngens, N, L, G = opfdata.nbuses, opfdata.nlines, opfdata.ngens, opfdata.N, opfdata.L, opfdata.G 
+      fromBus,toBus,Y = opfdata.fromBus, opfdata.toBus, opfdata.Y_AC
+      orig_ncuts = length(bundle)
+      ncuts = orig_ncuts
+      if ncuts > 0
+        sumDuals = sum(bundle[n].cut_dual for n in 1:ncuts)
+#=
+for n=1:ncuts
+  print(" ",bundle[n].cut_dual/sumDuals)
+end
+println()
+@show bundle[1].cut_dual/sumDuals,bundle[1].soln.α[N]
+@show bundle[2].cut_dual/sumDuals,bundle[2].soln.α[N]
+@show bundle[1].soln.α[N]
+        bundle[1].soln.α[N] = (1/sumDuals)*sum( bundle[n].cut_dual*bundle[n].soln.α[N] for n in 1:ncuts) 
+        bundle[1].soln.β[N] = (1/sumDuals)*sum( bundle[n].cut_dual*bundle[n].soln.β[N] for n in 1:ncuts) 
+        bundle[1].soln.γ[N] = (1/sumDuals)*sum( bundle[n].cut_dual*bundle[n].soln.γ[N] for n in 1:ncuts) 
+        bundle[1].soln.δ[N] = (1/sumDuals)*sum( bundle[n].cut_dual*bundle[n].soln.δ[N] for n in 1:ncuts) 
+        bundle[1].soln.ζpLB[G] = (1/sumDuals)*sum( bundle[n].cut_dual*bundle[n].soln.ζpLB[G] for n in 1:ncuts) 
+        bundle[1].soln.ζpUB[G] = (1/sumDuals)*sum( bundle[n].cut_dual*bundle[n].soln.ζpUB[G] for n in 1:ncuts) 
+        bundle[1].soln.ζqLB[G] = (1/sumDuals)*sum( bundle[n].cut_dual*bundle[n].soln.ζqLB[G] for n in 1:ncuts) 
+        bundle[1].soln.ζqUB[G] = (1/sumDuals)*sum( bundle[n].cut_dual*bundle[n].soln.ζqUB[G] for n in 1:ncuts) 
+        bundle[1].soln.x[L] = (1/sumDuals)*sum( bundle[n].cut_dual*bundle[n].soln.x[L] for n in 1:ncuts) 
+        bundle[1].soln.λF[L] = (1/sumDuals)*sum( bundle[n].cut_dual*bundle[n].soln.λF[L] for n in 1:ncuts) 
+        bundle[1].soln.λT[L] = (1/sumDuals)*sum( bundle[n].cut_dual*bundle[n].soln.λT[L] for n in 1:ncuts) 
+        bundle[1].soln.μF[L] = (1/sumDuals)*sum( bundle[n].cut_dual*bundle[n].soln.μF[L] for n in 1:ncuts) 
+        bundle[1].soln.μT[L] = (1/sumDuals)*sum( bundle[n].cut_dual*bundle[n].soln.μT[L] for n in 1:ncuts) 
+	@show mpsoln.soln
+	@show bundle[1].soln
+=#
+
+	cpy_soln(opfdata,mpsoln.soln,bundle[1].soln)
+
+        bundle[1].eta_sg.α[N] = (1/sumDuals)*sum( bundle[n].cut_dual*bundle[n].eta_sg.α[N] for n in 1:ncuts) 
+        bundle[1].eta_sg.β[N] = (1/sumDuals)*sum( bundle[n].cut_dual*bundle[n].eta_sg.β[N] for n in 1:ncuts) 
+        bundle[1].eta_sg.γ[N] = (1/sumDuals)*sum( bundle[n].cut_dual*bundle[n].eta_sg.γ[N] for n in 1:ncuts) 
+        bundle[1].eta_sg.δ[N] = (1/sumDuals)*sum( bundle[n].cut_dual*bundle[n].eta_sg.δ[N] for n in 1:ncuts) 
+        bundle[1].eta_sg.ζpLB[G] = (1/sumDuals)*sum( bundle[n].cut_dual*bundle[n].eta_sg.ζpLB[G] for n in 1:ncuts) 
+        bundle[1].eta_sg.ζpUB[G] = (1/sumDuals)*sum( bundle[n].cut_dual*bundle[n].eta_sg.ζpUB[G] for n in 1:ncuts) 
+        bundle[1].eta_sg.ζqLB[G] = (1/sumDuals)*sum( bundle[n].cut_dual*bundle[n].eta_sg.ζqLB[G] for n in 1:ncuts) 
+        bundle[1].eta_sg.ζqUB[G] = (1/sumDuals)*sum( bundle[n].cut_dual*bundle[n].eta_sg.ζqUB[G] for n in 1:ncuts) 
+        bundle[1].eta_sg.x[L] = (1/sumDuals)*sum( bundle[n].cut_dual*bundle[n].eta_sg.x[L] for n in 1:ncuts) 
+        bundle[1].eta_sg.λF[L] = (1/sumDuals)*sum( bundle[n].cut_dual*bundle[n].eta_sg.λF[L] for n in 1:ncuts) 
+        bundle[1].eta_sg.λT[L] = (1/sumDuals)*sum( bundle[n].cut_dual*bundle[n].eta_sg.λT[L] for n in 1:ncuts) 
+        bundle[1].eta_sg.μF[L] = (1/sumDuals)*sum( bundle[n].cut_dual*bundle[n].eta_sg.μF[L] for n in 1:ncuts) 
+        bundle[1].eta_sg.μT[L] = (1/sumDuals)*sum( bundle[n].cut_dual*bundle[n].eta_sg.μT[L] for n in 1:ncuts) 
+
+        #bundle[1].objval = (1/sumDuals)*sum( bundle[n].cut_dual*bundle[n].objval for n in 1:ncuts) 
+        #bundle[1].linobjval = (1/sumDuals)*sum( bundle[n].cut_dual*bundle[n].linobjval for n in 1:ncuts) 
+        #bundle[1].penval = (1/sumDuals)*sum( bundle[n].cut_dual*bundle[n].penval for n in 1:ncuts) 
+        #bundle[1].psival = (1/sumDuals)*sum( bundle[n].cut_dual*bundle[n].psival for n in 1:ncuts) 
+        #bundle[1].eta = (1/sumDuals)*sum( bundle[n].cut_dual*bundle[n].eta for n in 1:ncuts) 
+        bundle[1].eta = mpsoln.etahat
+#@show bundle[1].eta,sumDuals
+        for n=ncuts:-1:2
+	  delete!(bundle,n)
+	end
+	ncuts = 1
+      end
     end
     function updateSG(opfdata,sg)
       nbuses, nlines, ngens, N, L, G = opfdata.nbuses, opfdata.nlines, opfdata.ngens, opfdata.N, opfdata.L, opfdata.G 
