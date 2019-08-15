@@ -8,11 +8,11 @@ Brian Dandurand
 
 include("utils.jl")
 
-maxNSG = 10000
+maxNSG = 100000
 CP,PROX0,PROX,LVL1,LVL2,LVLINF,FEAS=0,1,2,3,4,5,6
-tMin = 0.01
-tMax = 2
-tVal = 0.1
+tMin = 0.001
+tMax = 10 
+tVal = 1
 ssc=0.1
 
 type NodeInfo
@@ -247,15 +247,6 @@ function solveNodeProxPt(opfdata,nodeinfo,bundles,K,HEUR,ctr,CTR_PARAM,
 	    + bundles[n].eta_sg.μF[l]*(μF[l]-bundles[n].soln.μF[l]) + bundles[n].eta_sg.μT[l]*(μT[l]-bundles[n].soln.μT[l]) for l in L) - psi <= 0.0
           )
 	end
-#=
-	for n=1:length(bundles)
-          @constraint(mMP, ctr.eta - bundles[n].linerr - sum( bundles[n].eta_sg.α[i]*(α[i]-ctr.soln.α[i]) + bundles[n].eta_sg.β[i]*(β[i]-ctr.soln.β[i]) 
-	    + bundles[n].eta_sg.γ[i]*(γ[i]-ctr.soln.γ[i]) + bundles[n].eta_sg.δ[i]*(δ[i]-ctr.soln.δ[i]) for i in N)
-            - sum( bundles[n].eta_sg.λF[l]*(λF[l]-ctr.soln.λF[l]) + bundles[n].eta_sg.λT[l]*(λT[l]-ctr.soln.λT[l]) 
-	    + bundles[n].eta_sg.μF[l]*(μF[l]-ctr.soln.μF[l]) + bundles[n].eta_sg.μT[l]*(μT[l]-ctr.soln.μT[l]) for l in L) - psi <= 0.0
-          )
-	end
-=#
     elseif CTR_PARAM == LVL2 || CTR_PARAM == LVL2 || CTR_PARAM == LVLINF
       @constraint(mMP, LVLConstr, linobj >= nodeinfo.nodeBd)
       if CTR_PARAM==LVL1
@@ -348,18 +339,18 @@ function solveNodeProxPt(opfdata,nodeinfo,bundles,K,HEUR,ctr,CTR_PARAM,
       end
 
       computeSG(opfdata,mpsoln) #This computes mpsoln.eta 
-      mpsoln.linerr = ctr.eta - mpsoln.eta 
-	+ dot(mpsoln.eta_sg.α[N],(mpsoln.soln.α[N]-ctr.soln.α[N]))
-	+ dot(mpsoln.eta_sg.β[N],(mpsoln.soln.β[N]-ctr.soln.β[N]))
-	+ dot(mpsoln.eta_sg.γ[N],(mpsoln.soln.γ[N]-ctr.soln.γ[N]))
-	+ dot(mpsoln.eta_sg.δ[N],(mpsoln.soln.δ[N]-ctr.soln.δ[N]))
-        + dot(mpsoln.eta_sg.λF[L],(mpsoln.soln.λF[L] - ctr.soln.λF[L]))
-        + dot(mpsoln.eta_sg.λT[L],(mpsoln.soln.λT[L] - ctr.soln.λT[L]))
-        + dot(mpsoln.eta_sg.μF[L],(mpsoln.soln.μF[L] - ctr.soln.μF[L]))
-        + dot(mpsoln.eta_sg.μT[L],(mpsoln.soln.μT[L] - ctr.soln.μT[L]))
+      mpsoln.linerr = -ctr.eta + mpsoln.eta 
+	  - dot( mpsoln.eta_sg.α[N], (ctr.soln.α[N]-mpsoln.soln.α[N]) )
+	  - dot( mpsoln.eta_sg.β[N], (ctr.soln.β[N]-mpsoln.soln.β[N]) )
+	  - dot( mpsoln.eta_sg.γ[N], (ctr.soln.γ[N]-mpsoln.soln.γ[N]) )
+	  - dot( mpsoln.eta_sg.δ[N], (ctr.soln.δ[N]-mpsoln.soln.δ[N]) )
+          - dot( mpsoln.eta_sg.λF[L],(ctr.soln.λF[L]-mpsoln.soln.λF[L]) )
+          - dot( mpsoln.eta_sg.λT[L],(ctr.soln.λT[L]-mpsoln.soln.λT[L]) )
+          - dot( mpsoln.eta_sg.μF[L],(ctr.soln.μF[L]-mpsoln.soln.μF[L]) )
+          - dot( mpsoln.eta_sg.μT[L],(ctr.soln.μT[L]-mpsoln.soln.μT[L]) )
       mpsoln.etahat = 1e20
       for n=1:length(bundles)
-        etaval=getvalue(-bundles[n].eta 
+        etaval=-getvalue(-bundles[n].eta 
 	  + sum( bundles[n].eta_sg.α[i]*(α[i]-bundles[n].soln.α[i]) + bundles[n].eta_sg.β[i]*(β[i]-bundles[n].soln.β[i])
 	    + bundles[n].eta_sg.γ[i]*(γ[i]-bundles[n].soln.γ[i]) + bundles[n].eta_sg.δ[i]*(δ[i]-bundles[n].soln.δ[i]) for i in N)
           + sum( bundles[n].eta_sg.λF[l]*(λF[l]-bundles[n].soln.λF[l]) + bundles[n].eta_sg.λT[l]*(λT[l]-bundles[n].soln.λT[l]) 
@@ -402,7 +393,6 @@ function testProxPt0(opfdata,K,HEUR)
     bundles=Dict()
     ncuts=0
     rho = 1
-    v_est = 1e20
     mpsoln=create_bundle(opfdata)
     ctr=create_bundle(opfdata)
     sg_agg=create_soln(opfdata)
@@ -419,7 +409,7 @@ function testProxPt0(opfdata,K,HEUR)
           println("Done after ",time_End," seconds.")
 	  return
       end
-      updateCenter(opfdata,mpsoln,ctr)
+      updateCenter(opfdata,mpsoln,ctr,bundles)
       bundles[1]=mpsoln
       ncuts=1
     else
@@ -427,12 +417,10 @@ function testProxPt0(opfdata,K,HEUR)
     end
     @show 0,mpsoln.linobjval,mpsoln.eta
 
-    ssc_cntr = 0
+    v_est,ssc_cntr = 1e20,0
   # MAIN LOOP
     for kk=1:maxNSG
      # STEP 1
-      nextTVal=tVal
-      oldTVal=tVal
       mpsoln=create_bundle(opfdata)
       status = solveNodeProxPt(opfdata,fixedNode,bundles,K,HEUR,ctr,PROX0,mpsoln)
       while status != :Optimal
@@ -451,12 +439,13 @@ function testProxPt0(opfdata,K,HEUR)
         # COMPUTING LINEARIZATION ERRORS
 	  comp_agg(opfdata,ctr.soln,mpsoln.soln,sg_agg)
 	  agg_norm=comp_norm(opfdata,sg_agg)
+#@show mpsoln.etahat
 	  epshat = mpsoln.linobjval - (ctr.linobjval - rho*ctr.eta)
-	- dot(sg_agg.α[N],(mpsoln.soln.α[N]-ctr.soln.α[N])) - dot(sg_agg.β[N],(mpsoln.soln.β[N]-ctr.soln.β[N])) 
-	- dot(sg_agg.γ[N],(mpsoln.soln.γ[N]-ctr.soln.γ[N])) - dot(sg_agg.δ[N],(mpsoln.soln.δ[N]-ctr.soln.δ[N])) 
-	- dot(sg_agg.λF[L],(mpsoln.soln.λF[L] - ctr.soln.λF[L])) - dot(sg_agg.λT[L],(mpsoln.soln.λT[L] - ctr.soln.λT[L]))
-	- dot(sg_agg.x[L], (mpsoln.soln.x[L] - ctr.soln.x[L]))
-        - dot(sg_agg.μF[L],(mpsoln.soln.μF[L] - ctr.soln.μF[L])) - dot(sg_agg.μT[L],(mpsoln.soln.μT[L] - ctr.soln.μT[L]))
+	  - (dot(sg_agg.α[N],(mpsoln.soln.α[N]-ctr.soln.α[N])) - dot(sg_agg.β[N],(mpsoln.soln.β[N]-ctr.soln.β[N])) 
+	+ dot(sg_agg.γ[N],(mpsoln.soln.γ[N]-ctr.soln.γ[N])) - dot(sg_agg.δ[N],(mpsoln.soln.δ[N]-ctr.soln.δ[N])) 
+	+ dot(sg_agg.λF[L],(mpsoln.soln.λF[L] - ctr.soln.λF[L])) - dot(sg_agg.λT[L],(mpsoln.soln.λT[L] - ctr.soln.λT[L]))
+	+ dot(sg_agg.x[L], (mpsoln.soln.x[L] - ctr.soln.x[L]))
+        + dot(sg_agg.μF[L],(mpsoln.soln.μF[L] - ctr.soln.μF[L])) - dot(sg_agg.μT[L],(mpsoln.soln.μT[L] - ctr.soln.μT[L])) )
 
         #if mpsoln.eta < 1e-4 
 	TOL = 1e-5
@@ -473,22 +462,8 @@ function testProxPt0(opfdata,K,HEUR)
         if sscval >= ssc
         #if -(mpsoln.eta - ctr.eta)/ctr.eta >= ssc 
           # UPDATE CENTER VALUES
-	    updateCenter(opfdata,mpsoln,ctr)
-	    @show "Basic",kk,mpsoln.linobjval,mpsoln.eta,ncuts,tVal,agg_norm,epshat
-	    # TVAL ADJUST
-#=
-	    if sscval >= 0.5 && ssc_cntr > 0
-	      nextTVal = 2*tVal*(1-sscval)
-	    elseif ssc_cntr > 3
-	      nextTVal = tVal/2
-	    end
-	    tVal = max(nextTVal, tVal/10, tMin)
-	    v_est = max(v_est,2*vval)
-	    ssc_cntr = max(ssc_cntr+1,1)
-	    if oldTVal != tVal
-	      ssc_cntr = 1
-	    end
-=#
+	    updateCenter(opfdata,mpsoln,ctr,bundles)
+	    @show "Basic",kk,mpsoln.linobjval,mpsoln.eta,ncuts,agg_norm,epshat,ssc_cntr,tVal
 #=
 	    if ncuts > 2
               aggregateSG(opfdata,bundles,mpsoln)
@@ -496,29 +471,49 @@ function testProxPt0(opfdata,K,HEUR)
               bundles[3]=mpsoln
 	    end
 =#
-	else
-	 # TVAL ADJUST
-	  v_est=min(v_est,agg_norm+epshat)
-#=
-	  if mpsoln.linerr > max(v_est,10*vval) && ssc_cntr < -3
-	    nextTVal = 2*tVal*(1-sscval)
-	    tVal = min(nextTVal,10*tVal)
-	    ssc_cntr = min(ssc_cntr-1,-1)
-	    if oldTVal != tVal
-	      ssc_cntr = -1	
-	    end
-	  end
-=#
         end
 	ncuts=purgeSG(opfdata,bundles)
         bundles[ncuts+1]=mpsoln
 	ncuts=length(bundles)
+	# TVAL ADJUST
+          tVal,v_est,ssc_cntr = KiwielRhoUpdate(opfdata,mpsoln,sscval,vval,agg_norm,epshat,rho,tVal,v_est,ssc_cntr)
       else
 	println("Solver returned: $status")
       end
     end
     time_End = (time_ns()-time_Start)/1e9
     println("Done after ",time_End," seconds.")
+end
+
+function KiwielRhoUpdate(opfdata,mpsoln,sscval,vval,agg_norm,epshat,rho,tVal,v_est,ssc_cntr)
+  global ssc
+  nextTVal=tVal
+  oldTVal=tVal
+  if sscval >= ssc
+    if sscval >= 0.5 && ssc_cntr > 0
+      nextTVal = 2*tVal*(1-sscval)
+    elseif ssc_cntr > 3
+      nextTVal = tVal/2
+    end
+    tVal = max(nextTVal, tVal/10, tMin)
+    v_est = max(v_est,2*vval)
+    ssc_cntr = max(ssc_cntr+1,1)
+    if oldTVal != tVal
+      ssc_cntr = 1
+    end
+  else
+    v_est=min(v_est,agg_norm+epshat)
+#@show rho*mpsoln.linerr,max(v_est,10*vval),ssc_cntr
+    if rho*mpsoln.linerr > max(v_est,10*vval) && ssc_cntr < -3
+      nextTVal = 2*tVal*(1-sscval)
+    end
+    tVal = min(nextTVal,10*tVal)
+    ssc_cntr = min(ssc_cntr-1,-1)
+    if oldTVal != tVal
+      ssc_cntr = -1	
+    end
+  end
+  return tVal,v_est,ssc_cntr
 end
 
 # Implements the approach of Sagastizabal and Solodov 2005
@@ -534,8 +529,8 @@ function testProxPt(opfdata,K,HEUR)
 
   # INITIAL ITERATION
     x_val=zeros(opfdata.nlines)
-    x_val[41],x_val[80]=1,1
-    #x_val[8],x_val[9],x_val[10],x_val[40]=1,1,1,1
+    #x_val[41],x_val[80]=1,1
+    x_val[8],x_val[9],x_val[10],x_val[40]=1,1,1,1
     fixedNode=NodeInfo(x_val,x_val,1e20)
     bundles=Dict()
     mpsoln=create_bundle(opfdata)
@@ -543,10 +538,10 @@ function testProxPt(opfdata,K,HEUR)
     sg_agg=create_soln(opfdata)
     ctr=mpsoln
 
+    v_est,ssc_cntr = 1e20,0
   # MAIN LOOP
     for kk=1:maxNSG
      # STEP 1
-      tVal = 0.1
       mpsoln=create_bundle(opfdata)
       status = solveNodeProxPt(opfdata,fixedNode,bundles,K,HEUR,ctr,PROX,mpsoln)
       while status != :Optimal
@@ -567,20 +562,10 @@ function testProxPt(opfdata,K,HEUR)
         end
        # STEP 3
 	hk = max(ctr.linobjval-mpsoln.linobjval,mpsoln.eta)
+	sscval = max(0,ctr.eta) - hk
         if hk <= max(0,ctr.eta) - ssc*del || kk==1
           # UPDATE CENTER VALUES
-	    updateCenter(opfdata,mpsoln,ctr,)
-	    for n=1:length(bundles)
-      	      bundles[n].linerr = ctr.eta - bundles[n].eta 
-		+ dot(bundles[n].eta_sg.α[N],(bundles[n].soln.α[N] - ctr.soln.α[N]))
-		+ dot(bundles[n].eta_sg.β[N],(bundles[n].soln.β[N] - ctr.soln.β[N]))
-		+ dot(bundles[n].eta_sg.γ[N],(bundles[n].soln.γ[N] - ctr.soln.γ[N]))
-		+ dot(bundles[n].eta_sg.δ[N],(bundles[n].soln.δ[N] - ctr.soln.δ[N]))
-        	+ dot(bundles[n].eta_sg.λF[L],(bundles[n].soln.λF[L] - ctr.soln.λF[L]))
-        	+ dot(bundles[n].eta_sg.λT[L],(bundles[n].soln.λT[L] - ctr.soln.λT[L]))
-        	+ dot(bundles[n].eta_sg.μF[L],(bundles[n].soln.μF[L] - ctr.soln.μF[L]))
-        	+ dot(bundles[n].eta_sg.μT[L],(bundles[n].soln.μT[L] - ctr.soln.μT[L]))
-	    end
+	    updateCenter(opfdata,mpsoln,ctr,bundles)
 	    #purgeSG(opfdata,bundles)
 	    oldncuts = length(bundles)
 	    ncuts = oldncuts
@@ -595,13 +580,14 @@ function testProxPt(opfdata,K,HEUR)
 	      ncuts = length(bundles)
               bundles[ncuts+1]=mpsoln
 	    end
-            @show "Sagadov",kk,ctr.linobjval,ctr.eta,epshat,del,hk,length(bundles)
+            @show "Sagadov",kk,ctr.linobjval,ctr.eta,epshat,del,hk,length(bundles),tVal
 	else
 	  ncuts = length(bundles)
           bundles[ncuts+1]=mpsoln
         end
        # STEP 4
         #updateSG(opfdata,sg)
+        #tVal,v_est,ssc_cntr = KiwielRhoUpdate(opfdata,mpsoln,sscval,del,agg_norm,epshat,tVal,v_est,ssc_cntr)
       else
 	#println("Solve status: $status")
 	#break
@@ -673,7 +659,7 @@ function testLevelBM(opfdata,K,HEUR)
           hkctr_updated = true
           # UPDATE CENTER VALUES
 	    if bestIdx > 0
-	      updateCenter(opfdata,bestsoln,ctr)
+	      updateCenter(opfdata,bestsoln,ctr,bundles)
 	    end
 	  @show "hk  update",optUB,ctr.linobjval,ctr.eta,hkval,ncuts
         end
@@ -721,7 +707,7 @@ function testLevelBM(opfdata,K,HEUR)
           hkctr = max(optUB - bestsoln.linobjval,bestsoln.eta)
           hkctr_updated = true
 	  if bestIdx > 0
-	    updateCenter(opfdata,bestsoln,ctr)
+	    updateCenter(opfdata,bestsoln,ctr,bundles)
 	  end
 	  @show "bnd update",kk,optUB,bestsoln.linobjval,bestsoln.eta,hkval,ncuts
       end
@@ -732,10 +718,21 @@ end
 
 
   #USEFUL SUBROUTINES
-    function updateCenter(opfdata,mpsoln,ctr)
+    function updateCenter(opfdata,mpsoln,ctr,bundles)
       nbuses, nlines, ngens, N, L, G = opfdata.nbuses, opfdata.nlines, opfdata.ngens, opfdata.N, opfdata.L, opfdata.G 
       fromBus,toBus,Y = opfdata.fromBus, opfdata.toBus, opfdata.Y_AC
       cpy_bundle(opfdata,mpsoln,ctr)
+      for n=1:length(bundles)
+      	bundles[n].linerr = ctr.eta - bundles[n].eta 
+	- dot(bundles[n].eta_sg.α[N],(bundles[n].soln.α[N] - ctr.soln.α[N]))
+	- dot(bundles[n].eta_sg.β[N],(bundles[n].soln.β[N] - ctr.soln.β[N]))
+	- dot(bundles[n].eta_sg.γ[N],(bundles[n].soln.γ[N] - ctr.soln.γ[N]))
+	- dot(bundles[n].eta_sg.δ[N],(bundles[n].soln.δ[N] - ctr.soln.δ[N]))
+        - dot(bundles[n].eta_sg.λF[L],(bundles[n].soln.λF[L] - ctr.soln.λF[L]))
+        - dot(bundles[n].eta_sg.λT[L],(bundles[n].soln.λT[L] - ctr.soln.λT[L]))
+        - dot(bundles[n].eta_sg.μF[L],(bundles[n].soln.μF[L] - ctr.soln.μF[L]))
+        - dot(bundles[n].eta_sg.μT[L],(bundles[n].soln.μT[L] - ctr.soln.μT[L]))
+      end
     end
     function computeSG(opfdata,mpsoln)
       nbuses, nlines, ngens, N, L, G = opfdata.nbuses, opfdata.nlines, opfdata.ngens, opfdata.N, opfdata.L, opfdata.G 
