@@ -18,7 +18,7 @@ include("opfdata.jl")
 MAX_TIME = 24*3600 # in seconds
 
 
-TOL = 1e-8  #feasibility tolerance for lazy constraints
+#TOL = 1e-8  #feasibility tolerance for lazy constraints
 useLocalCuts = false
 verboseOut = false
 
@@ -75,6 +75,7 @@ elseif FORM == ProxPtSDP
   #testLevelBM(opfdata,K,HEUR)
   #testProxPt(opfdata,K,HEUR)
   testProxPt0(opfdata,K,HEUR)
+  #testProxTraj(opfdata,K,HEUR)
 elseif FORM == AC
   include("DualAC.jl")
 elseif FORM == SOCP

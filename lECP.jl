@@ -19,7 +19,7 @@ function solveLECP(opfdata,K,HEUR)
   # DONE OBTAINING PROBLEM INFORMATION FROM opfdata
 
   # indicate to enable chordal decomposition
-    chordal_decomposition = false
+    chordal_decomposition = true
 
     if chordal_decomposition
         # Constrcut a chordal extension of the network topology

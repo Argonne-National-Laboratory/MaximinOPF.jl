@@ -29,12 +29,12 @@ function solveNodeAC(opfdata,ndata,mpsoln)
     BusGeners, Y = opfdata.BusGeners, opfdata.Y_AC
 
     # indicate to enable chordal decomposition
-    chordal_decomposition = false
+    chordal_decomposition = true
 
   # Instantiating the model and solver for the dual problem
     nThreads=1
-    #mMP = Model(solver=MosekSolver(MSK_IPAR_LOG=0,MSK_IPAR_NUM_THREADS=nThreads))
-    mMP = Model(solver=SCSSolver(verbose=1,max_iters=1000000))
+    mMP = Model(solver=MosekSolver(MSK_IPAR_LOG=0,MSK_IPAR_NUM_THREADS=nThreads))
+    #mMP = Model(solver=SCSSolver(verbose=1,max_iters=1000000))
     @variable(mMP, -1 <= α[i=N] <= 1)
     @variable(mMP, -1 <= β[i=N] <= 1)
     @variable(mMP, γp[i=N] >= 0)
@@ -393,9 +393,8 @@ function primHeurXInt(opfdata,mpsoln,feasXs,incSoln)
   end
 end
 
-testDualAC(opfdata)
+#testDualAC(opfdata)
 
-#=
 finalXSoln = SolnInfo(zeros(opfdata.nlines),ones(opfdata.nlines),0.0,0.0)
 
 bestUBVal,nNodes,runtime = solveBnBSDP(opfdata,finalXSoln)
@@ -459,4 +458,3 @@ println("Best bound:  ", bestUBVal)
 @show runtime
 @show finalXSoln
 end
-=#
