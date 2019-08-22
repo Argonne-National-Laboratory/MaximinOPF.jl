@@ -11,7 +11,7 @@ include("utils.jl")
 maxNSG = 100000
 CP,PROX0,PROX,LVL1,LVL2,LVLINF,FEAS=0,1,2,3,4,5,6
 tMin = 0.01
-tMax = 2
+tMax = 20
 tVal = 0.5
 ssc=0.5
 
@@ -94,7 +94,7 @@ type Bundle
   linerr::Float64
   cut_dual::Float64
   lvl_dual::Float64
-  usefulness::Float64
+  age::Float64
   solvetime::Float64
   status
 end
@@ -119,8 +119,35 @@ function cpy_bundle(opfdata,fromBundle,toBundle)
   toBundle.status = fromBundle.status
 end
 
+type ConstrDuals
+  var_bds::Soln
+  zeta_eq::Array{Float64,2}
+  budget::Float64
+  AMcf1::Array{Float64} 
+  AMcf2::Array{Float64} 
+  AMcf3::Array{Float64} 
+  AMcf4::Array{Float64} 
+  AMct1::Array{Float64} 
+  AMct2::Array{Float64} 
+  AMct3::Array{Float64} 
+  AMct4::Array{Float64} 
+  BMcf1::Array{Float64} 
+  BMcf2::Array{Float64} 
+  BMcf3::Array{Float64} 
+  BMcf4::Array{Float64} 
+  BMct1::Array{Float64} 
+  BMct2::Array{Float64} 
+  BMct3::Array{Float64} 
+  BMct4::Array{Float64} 
+end
+function create_constr_duals(opfdata)
+  nbuses, nlines, ngens, N, L, G = opfdata.nbuses, opfdata.nlines, opfdata.ngens, opfdata.N, opfdata.L, opfdata.G 
+  return ConstrDuals(create_soln(opfdata),zeros(nbuses,ngens),0,
+    zeros(nlines),zeros(nlines),zeros(nlines),zeros(nlines),zeros(nlines),zeros(nlines),zeros(nlines),zeros(nlines),
+    zeros(nlines),zeros(nlines),zeros(nlines),zeros(nlines),zeros(nlines),zeros(nlines),zeros(nlines),zeros(nlines))
+end
 
-function solveNodeProxPt(opfdata,nodeinfo,bundles,agg_bundles,K,HEUR,ctr,CTR_PARAM,
+function solveNodeProxPt(opfdata,nodeinfo,bundles,ctr_bundles,agg_bundles,K,HEUR,ctr,CTR_PARAM,
 			mpsoln)
   global tVal
   # OBTAIN SHORTHAND PROBLEM INFORMATION FROM opfdata
@@ -150,11 +177,7 @@ function solveNodeProxPt(opfdata,nodeinfo,bundles,agg_bundles,K,HEUR,ctr,CTR_PAR
     #end
     #mMP = Model(solver=CplexSolver(CPX_PARAM_SCRIND=1,CPX_PARAM_TILIM=MAX_TIME,CPX_PARAM_MIPINTERVAL=50,CPX_PARAM_LPMETHOD=4,CPX_PARAM_SOLUTIONTYPE=2,CPX_PARAM_STARTALG=4))
     # each x[l] is either 0 (line l active) or 1 (line l is cut)
-      @variable(mMP, 0 <= x[l=L] <= 1, start=0)
-      for l in L
-        setlowerbound(x[l],nodeinfo.x_lbs[l])
-        setupperbound(x[l],nodeinfo.x_ubs[l])
-      end
+      @variable(mMP, nodeinfo.x_lbs[l] <= x[l=L] <= nodeinfo.x_ubs[l])
     # dual multipliers associated with active power flow balance constraints
       @variable(mMP, -1 <= α[i=N] <= 1, start=0)
     # dual multipliers associated with active power flow balance constraints
@@ -177,15 +200,23 @@ function solveNodeProxPt(opfdata,nodeinfo,bundles,agg_bundles,K,HEUR,ctr,CTR_PAR
  # McCormick inequalities enforcing bilinear equalities
     # auxiliary dual variables due to McCormick reformulation of cross terms appearing in the Lagrangian
       @variable(mMP, λF[l=L], start=0); @variable(mMP, λT[l=L], start=0); @variable(mMP, μF[l=L], start=0); @variable(mMP, μT[l=L], start=0)
-    @constraint(mMP, AMcf1[l in L], α[fromBus[l]] - x[l] <= λF[l]); @constraint(mMP, AMcf2[l in L], α[fromBus[l]] + x[l] >= λF[l])
-    @constraint(mMP, AMcf3[l in L], -(1 - x[l]) <= λF[l]); @constraint(mMP, AMcf4[l in L], (1 - x[l]) >= λF[l])
-    @constraint(mMP, AMct1[l in L], α[toBus[l]] - x[l] <= λT[l]); @constraint(mMP, AMct2[l in L], α[toBus[l]] + x[l] >= λT[l])
-    @constraint(mMP, AMct3[l in L], -(1 - x[l]) <= λT[l]); @constraint(mMP, AMct4[l in L], (1 - x[l]) >= λT[l])
+    @constraint(mMP, AMcf1[l in L], α[fromBus[l]] - x[l] <= λF[l]) 
+    @constraint(mMP, AMcf2[l in L], α[fromBus[l]] + x[l] >= λF[l])
+    @constraint(mMP, AMcf3[l in L], -(1 - x[l]) <= λF[l]) 
+    @constraint(mMP, AMcf4[l in L], (1 - x[l]) >= λF[l])
+    @constraint(mMP, AMct1[l in L], α[toBus[l]] - x[l] <= λT[l]) 
+    @constraint(mMP, AMct2[l in L], α[toBus[l]] + x[l] >= λT[l])
+    @constraint(mMP, AMct3[l in L], -(1 - x[l]) <= λT[l])
+    @constraint(mMP, AMct4[l in L], (1 - x[l]) >= λT[l])
 
-    @constraint(mMP, BMcf1[l in L], β[fromBus[l]] - x[l] <= μF[l]); @constraint(mMP, BMcf2[l in L], β[fromBus[l]] + x[l] >= μF[l])
-    @constraint(mMP, BMcf3[l in L], -(1 - x[l]) <= μF[l]); @constraint(mMP, BMcf4[l in L], (1 - x[l]) >= μF[l])
-    @constraint(mMP, BMct1[l in L], β[toBus[l]] - x[l] <= μT[l]); @constraint(mMP, BMct2[l in L], β[toBus[l]] + x[l] >= μT[l])
-    @constraint(mMP, BMct3[l in L], -(1 - x[l]) <= μT[l]); @constraint(mMP, BMct4[l in L], (1 - x[l]) >= μT[l])
+    @constraint(mMP, BMcf1[l in L], β[fromBus[l]] - x[l] <= μF[l])
+    @constraint(mMP, BMcf2[l in L], β[fromBus[l]] + x[l] >= μF[l])
+    @constraint(mMP, BMcf3[l in L], -(1 - x[l]) <= μF[l])
+    @constraint(mMP, BMcf4[l in L], (1 - x[l]) >= μF[l])
+    @constraint(mMP, BMct1[l in L], β[toBus[l]] - x[l] <= μT[l])
+    @constraint(mMP, BMct2[l in L], β[toBus[l]] + x[l] >= μT[l])
+    @constraint(mMP, BMct3[l in L], -(1 - x[l]) <= μT[l])
+    @constraint(mMP, BMct4[l in L], (1 - x[l]) >= μT[l])
 
   # Lagrangian objective, after vanishing terms are removed under the assumption of dual feasibility
     lin_cfs = create_soln(opfdata)
@@ -217,19 +248,25 @@ function solveNodeProxPt(opfdata,nodeinfo,bundles,agg_bundles,K,HEUR,ctr,CTR_PAR
    # METHOD-SPECIFIC SETUP
     if CTR_PARAM == PROX0
       @objective(mMP, Max, linobj - 0.5*tVal*(
-	#sum( (ctr.soln.α[i] - α[i])^2 + (ctr.soln.β[i] - β[i])^2 + (ctr.soln.γ[i] - γ[i])^2 + (ctr.soln.δ[i] - δ[i])^2 for i in N)
-	#+sum((ctr.soln.λF[l] - λF[l])^2 + (ctr.soln.λT[l] - λT[l])^2 + (ctr.soln.μF[l] - μF[l])^2 + (ctr.soln.μT[l] - μT[l])^2 for l in L)
 	  sum( (ctr.soln.α[i] - α[i])^2 + (ctr.soln.β[i] - β[i])^2 + (ctr.soln.γ[i] - γ[i])^2 + (ctr.soln.δ[i] - δ[i])^2 for i in N)
 	  +sum( (ctr.soln.ζpLB[g] - ζpLB[g])^2 + (ctr.soln.ζpUB[g] - ζpUB[g])^2 + (ctr.soln.ζqLB[g] - ζqLB[g])^2 + (ctr.soln.ζqUB[g] - ζqUB[g])^2 for g in G)
 	  +sum( (ctr.soln.x[l]-x[l])^2 + (ctr.soln.λF[l] - λF[l])^2 + (ctr.soln.λT[l] - λT[l])^2 + (ctr.soln.μF[l] - μF[l])^2 + (ctr.soln.μT[l] - μT[l])^2 for l in L)
 	)
       )
       if length(agg_bundles) > 0
-        @constraint(mMP, CutPlanesAgg[n=1:length(agg_bundles)], 0 <= -agg_bundles[n].eta 
-	  + sum( agg_bundles[n].eta_sg.α[i]*(α[i]-agg_bundles[n].soln.α[i]) + agg_bundles[n].eta_sg.β[i]*(β[i]-agg_bundles[n].soln.β[i])
+#=
+        @constraint(mMP, CutPlanesAgg[n=1:length(agg_bundles)], # 0 <= -agg_bundles[n].etahat
+	  0 <= sum( agg_bundles[n].eta_sg.α[i]*(α[i]-agg_bundles[n].soln.α[i]) + agg_bundles[n].eta_sg.β[i]*(β[i]-agg_bundles[n].soln.β[i])
 	    + agg_bundles[n].eta_sg.γ[i]*(γ[i]-agg_bundles[n].soln.γ[i]) + agg_bundles[n].eta_sg.δ[i]*(δ[i]-agg_bundles[n].soln.δ[i]) for i in N)
           + sum( agg_bundles[n].eta_sg.λF[l]*(λF[l]-agg_bundles[n].soln.λF[l]) + agg_bundles[n].eta_sg.λT[l]*(λT[l]-agg_bundles[n].soln.λT[l]) 
 	    + agg_bundles[n].eta_sg.μF[l]*(μF[l]-agg_bundles[n].soln.μF[l]) + agg_bundles[n].eta_sg.μT[l]*(μT[l]-agg_bundles[n].soln.μT[l]) for l in L)
+        )
+=#
+        @constraint(mMP, CutPlanesAgg[n=1:length(agg_bundles)], # 0 <= -agg_bundles[n].etahat
+	  0 <= agg_bundles[n].etahat + sum( agg_bundles[n].eta_sg.α[i]*α[i] + agg_bundles[n].eta_sg.β[i]*β[i]
+	    + agg_bundles[n].eta_sg.γ[i]*γ[i] + agg_bundles[n].eta_sg.δ[i]*δ[i] for i in N)
+          + sum( agg_bundles[n].eta_sg.λF[l]*λF[l] + agg_bundles[n].eta_sg.λT[l]*λT[l] 
+	    + agg_bundles[n].eta_sg.μF[l]*μF[l] + agg_bundles[n].eta_sg.μT[l]*μT[l] for l in L)
         )
       end
       if length(bundles) > 0
@@ -238,6 +275,14 @@ function solveNodeProxPt(opfdata,nodeinfo,bundles,agg_bundles,K,HEUR,ctr,CTR_PAR
 	    + bundles[n].eta_sg.γ[i]*(γ[i]-bundles[n].soln.γ[i]) + bundles[n].eta_sg.δ[i]*(δ[i]-bundles[n].soln.δ[i]) for i in N)
           + sum( bundles[n].eta_sg.λF[l]*(λF[l]-bundles[n].soln.λF[l]) + bundles[n].eta_sg.λT[l]*(λT[l]-bundles[n].soln.λT[l]) 
 	    + bundles[n].eta_sg.μF[l]*(μF[l]-bundles[n].soln.μF[l]) + bundles[n].eta_sg.μT[l]*(μT[l]-bundles[n].soln.μT[l]) for l in L)
+        )
+      end
+      if length(ctr_bundles) > 0
+        @constraint(mMP, CutPlanesCtr[n=1:length(ctr_bundles)], 0 <= -ctr_bundles[n].eta 
+	  + sum( ctr_bundles[n].eta_sg.α[i]*(α[i]-ctr_bundles[n].soln.α[i]) + ctr_bundles[n].eta_sg.β[i]*(β[i]-ctr_bundles[n].soln.β[i])
+	    + ctr_bundles[n].eta_sg.γ[i]*(γ[i]-ctr_bundles[n].soln.γ[i]) + ctr_bundles[n].eta_sg.δ[i]*(δ[i]-ctr_bundles[n].soln.δ[i]) for i in N)
+          + sum( ctr_bundles[n].eta_sg.λF[l]*(λF[l]-ctr_bundles[n].soln.λF[l]) + ctr_bundles[n].eta_sg.λT[l]*(λT[l]-ctr_bundles[n].soln.λT[l]) 
+	    + ctr_bundles[n].eta_sg.μF[l]*(μF[l]-ctr_bundles[n].soln.μF[l]) + ctr_bundles[n].eta_sg.μT[l]*(μT[l]-ctr_bundles[n].soln.μT[l]) for l in L)
         )
       end
     elseif CTR_PARAM == PROX 
@@ -357,7 +402,12 @@ function solveNodeProxPt(opfdata,nodeinfo,bundles,agg_bundles,K,HEUR,ctr,CTR_PAR
           - dot( mpsoln.eta_sg.λT[L],(ctr.soln.λT[L]-mpsoln.soln.λT[L]) )
           - dot( mpsoln.eta_sg.μF[L],(ctr.soln.μF[L]-mpsoln.soln.μF[L]) )
           - dot( mpsoln.eta_sg.μT[L],(ctr.soln.μT[L]-mpsoln.soln.μT[L]) )
-      mpsoln.etahat = 1e20
+      mpsoln.etahat = -getvalue(-ctr.eta 
+	  + sum( ctr.eta_sg.α[i]*(α[i]-ctr.soln.α[i]) + ctr.eta_sg.β[i]*(β[i]-ctr.soln.β[i])
+	    + ctr.eta_sg.γ[i]*(γ[i]-ctr.soln.γ[i]) + ctr.eta_sg.δ[i]*(δ[i]-ctr.soln.δ[i]) for i in N)
+          + sum( ctr.eta_sg.λF[l]*(λF[l]-ctr.soln.λF[l]) + ctr.eta_sg.λT[l]*(λT[l]-ctr.soln.λT[l]) 
+	    + ctr.eta_sg.μF[l]*(μF[l]-ctr.soln.μF[l]) + ctr.eta_sg.μT[l]*(μT[l]-ctr.soln.μT[l]) for l in L)
+        )
       for n=1:length(bundles)
         etaval=-getvalue(-bundles[n].eta 
 	  + sum( bundles[n].eta_sg.α[i]*(α[i]-bundles[n].soln.α[i]) + bundles[n].eta_sg.β[i]*(β[i]-bundles[n].soln.β[i])
@@ -365,7 +415,18 @@ function solveNodeProxPt(opfdata,nodeinfo,bundles,agg_bundles,K,HEUR,ctr,CTR_PAR
           + sum( bundles[n].eta_sg.λF[l]*(λF[l]-bundles[n].soln.λF[l]) + bundles[n].eta_sg.λT[l]*(λT[l]-bundles[n].soln.λT[l]) 
 	    + bundles[n].eta_sg.μF[l]*(μF[l]-bundles[n].soln.μF[l]) + bundles[n].eta_sg.μT[l]*(μT[l]-bundles[n].soln.μT[l]) for l in L)
         )
-	if mpsoln.etahat > etaval
+	if mpsoln.etahat < etaval
+	  mpsoln.etahat = etaval
+	end
+      end
+      for n=1:length(agg_bundles)
+        etaval=-getvalue(-agg_bundles[n].etahat 
+	  + sum( agg_bundles[n].eta_sg.α[i]*(α[i]-agg_bundles[n].soln.α[i]) + agg_bundles[n].eta_sg.β[i]*(β[i]-agg_bundles[n].soln.β[i])
+	    + agg_bundles[n].eta_sg.γ[i]*(γ[i]-agg_bundles[n].soln.γ[i]) + agg_bundles[n].eta_sg.δ[i]*(δ[i]-agg_bundles[n].soln.δ[i]) for i in N)
+          + sum( agg_bundles[n].eta_sg.λF[l]*(λF[l]-agg_bundles[n].soln.λF[l]) + agg_bundles[n].eta_sg.λT[l]*(λT[l]-agg_bundles[n].soln.λT[l]) 
+	    + agg_bundles[n].eta_sg.μF[l]*(μF[l]-agg_bundles[n].soln.μF[l]) + agg_bundles[n].eta_sg.μT[l]*(μT[l]-agg_bundles[n].soln.μT[l]) for l in L)
+        )
+	if mpsoln.etahat < etaval
 	  mpsoln.etahat = etaval
 	end
       end
@@ -373,6 +434,12 @@ function solveNodeProxPt(opfdata,nodeinfo,bundles,agg_bundles,K,HEUR,ctr,CTR_PAR
       if status == :Optimal 
 	for n=1:length(bundles)
 	  bundles[n].cut_dual = getdual(CutPlanes[n])
+	end
+	for n=1:length(ctr_bundles)
+	  ctr_bundles[n].cut_dual = getdual(CutPlanesCtr[n])
+	end
+	for n=1:length(agg_bundles)
+	  agg_bundles[n].cut_dual = getdual(CutPlanesAgg[n])
 	end
       end
       if status == :Optimal && (CTR_PARAM==LVL1 || CTR_PARAM == LVL2 || CTR_PARAM == LVLINF )
@@ -421,18 +488,19 @@ function testProxTraj(opfdata,K,HEUR)
       while true
      # STEP 1
         mpsoln=create_bundle(opfdata)
-        status = solveNodeProxPt(opfdata,fixedNode,bundles,agg_bundles,K,HEUR,ctr,PROX0,mpsoln)
+        status = solveNodeProxPt(opfdata,fixedNode,bundles,ctr_bundles,agg_bundles,K,HEUR,ctr,PROX0,mpsoln)
         while status != :Optimal
 	  tVal /= 2
           println("Resolving with reduced prox parameter value: ",tVal)
-          status = solveNodeProxPt(opfdata,fixedNode,bundles,agg_bundles,K,HEUR,ctr,PROX0,mpsoln)
+          status = solveNodeProxPt(opfdata,fixedNode,bundles,ctr_bundles,agg_bundles,K,HEUR,ctr,PROX0,mpsoln)
         end	
         if status == :Optimal
 	  ncuts=length(bundles)
+	  naggcuts=length(bundles)
 	  if ncuts > 0
-	    rho = sum(bundles[n].cut_dual for n in 1:ncuts)
+	    rho = sum(bundles[n].cut_dual for n in 1:ncuts) + sum(agg_bundles[n].cut_dual for n in 1:naggcuts) 
            # COMPUTING LINEARIZATION ERRORS
-	    agg_norm,epshat=update_agg(opfdata,bundles,ctr,mpsoln,rho,sg_agg,agg_bundle)
+	    agg_norm,epshat,rho=update_agg(opfdata,bundles,ctr,mpsoln,sg_agg,ctr_bundles,agg_bundles,agg_bundle)
             if rho*mpsoln.eta <= ssc*(1/tVal)*agg_norm^2 
 	      break
 	    end
@@ -467,15 +535,20 @@ function testProxPt0(opfdata,K,HEUR)
 
   # INITIAL ITERATION
     x_val=zeros(opfdata.nlines)
-    x_val[41],x_val[80]=1,1
-    #x_val[8],x_val[9],x_val[10],x_val[40]=1,1,1,1
+    #x_val[41],x_val[80]=1,1
+    x_val[8],x_val[9],x_val[10],x_val[40]=1,1,1,1
     fixedNode=NodeInfo(x_val,x_val,1e20)
     bundles=Dict()
+    ctr_bundles=Dict()
+    agg_bundles=Dict()
     ncuts=0
     rho = 0
     mpsoln=create_bundle(opfdata)
     ctr=create_bundle(opfdata)
-    agg_bundles=Dict()
+    status = solveNodeProxPt(opfdata,fixedNode,bundles,ctr_bundles,agg_bundles,K,HEUR,ctr,PROX0,mpsoln)
+    updateCenter(opfdata,mpsoln,ctr,bundles)
+    bundles[1]=mpsoln
+
     agg_bundle=create_bundle(opfdata)
     sg_agg=create_soln(opfdata)
 
@@ -484,22 +557,26 @@ function testProxPt0(opfdata,K,HEUR)
   # MAIN LOOP
     for kk=1:maxNSG
      # STEP 1
-      tVal = 10/(10+length(bundles))
+      #tVal = 10/(10+length(bundles))
       mpsoln=create_bundle(opfdata)
-      status = solveNodeProxPt(opfdata,fixedNode,bundles,agg_bundles,K,HEUR,ctr,PROX0,mpsoln)
+      status = solveNodeProxPt(opfdata,fixedNode,bundles,ctr_bundles,agg_bundles,K,HEUR,ctr,PROX0,mpsoln)
       while status != :Optimal
 	tVal /= 2
         println("Resolving with reduced prox parameter value: ",tVal)
-        status = solveNodeProxPt(opfdata,fixedNode,bundles,agg_bundles,K,HEUR,ctr,PROX0,mpsoln)
+        status = solveNodeProxPt(opfdata,fixedNode,bundles,ctr_bundles,agg_bundles,K,HEUR,ctr,PROX0,mpsoln)
       end	
       if status == :Optimal
        # STEP 2
-        ncuts = length(bundles)
-	if ncuts > 0
+        ncuts,nctrcuts,naggcuts = length(bundles),length(ctr_bundles),length(agg_bundles)
 	 # UPDATING RHO AS NECESSARY TO CORRESPOND TO EXACT PENALTY
-	  rho = sum(bundles[n].cut_dual for n in 1:ncuts)
-         # COMPUTING LINEARIZATION ERRORS
-	  agg_norm,epshat=update_agg(opfdata,bundles,ctr,mpsoln,rho,sg_agg,agg_bundle)
+         # COMPUTING AGGREGATION INFORMATION
+	  agg_norm,epshat,rho=update_agg(opfdata,bundles,ctr,mpsoln,sg_agg,ctr_bundles,agg_bundles,agg_bundle)
+#=
+if kk>2
+@show ctr.cut_dual,bundles[1].cut_dual,agg_bundles[1].cut_dual,rho
+end
+=#
+          #agg_bundles[1]=agg_bundle
           if ctr.eta < TOL && agg_norm < 1e-3 && epshat < 1e-3 
 	    println("Convergence to within tolerance: obj, feas ",mpsoln.linobjval," ",mpsoln.eta)
 	    @show "Basic",kk,mpsoln.linobjval,mpsoln.eta,ncuts,ctr.linobjval,ctr.eta,agg_norm,epshat
@@ -508,27 +585,24 @@ function testProxPt0(opfdata,K,HEUR)
          # STEP 3
 	  sscval = ((mpsoln.linobjval - rho*mpsoln.eta)-(ctr.linobjval - rho*ctr.eta))/(mpsoln.linobjval-(ctr.linobjval - rho*ctr.eta)) 
 	  vval = (mpsoln.linobjval-(ctr.linobjval - rho*ctr.eta)) 
-          if sscval >= ssc
+          if sscval >= ssc 
          # UPDATE CENTER VALUES
 	    updateCenter(opfdata,mpsoln,ctr,bundles)
+	    nctrcuts=length(ctr_bundles)
+	    ctr_bundles[nctrcuts+1]=mpsoln
+	    #empty!(bundles)
+	    #empty!(agg_bundles)
 	    @show "Basic",kk,mpsoln.linobjval,mpsoln.eta,ncuts,agg_norm,epshat,ssc_cntr,tVal
 	  else
-            agg_bundles[1]=agg_bundle
-	    #agg_bundles[2]=ctr
+	    #ncuts=purgeSG(opfdata,bundles)
 	    ncuts=purgeSG(opfdata,bundles)
             bundles[ncuts+1]=mpsoln
-	    ncuts=length(bundles)
+            #bundles[ncuts+1]=mpsoln
           end
-	else
-	  if mpsoln.eta < TOL
-	    println("Convergence to within tolerance: obj, feas ",mpsoln.linobjval," ",mpsoln.eta)
-	    break
-	  else
-	    ncuts=length(bundles)
-            bundles[ncuts+1]=mpsoln
-	    ncuts += 1
-	  end
-	end
+          #bundles[1]=mpsoln
+	  #@show "Basic",kk,mpsoln.linobjval,mpsoln.eta,ncuts,agg_norm,epshat,ssc_cntr,tVal
+          #tVal,v_est,ssc_cntr=KiwielRhoUpdate(opfdata,mpsoln,sscval,vval,agg_norm,epshat,rho,tVal,v_est,ssc_cntr)
+	  #tVal = min(tVal,tMax)
       else
 	println("Solver returned: $status")
       end
@@ -568,19 +642,29 @@ function KiwielRhoUpdate(opfdata,mpsoln,sscval,vval,agg_norm,epshat,rho,tVal,v_e
   return tVal,v_est,ssc_cntr
 end
 
-function update_agg(opfdata,bundles,ctr,mpsoln,rho,sg_agg,agg_bundle)
+function update_agg(opfdata,bundles,ctr,mpsoln,sg_agg,ctr_bundles,agg_bundles,agg_bundle)
   nbuses, nlines, ngens = opfdata.nbuses, opfdata.nlines, opfdata.ngens
   N, L, G = opfdata.N, opfdata.L, opfdata.G 
   comp_agg(opfdata,ctr.soln,mpsoln.soln,sg_agg)
   agg_norm=comp_norm(opfdata,sg_agg)
+  rho = 0 #ctr.cut_dual
+  ncuts,naggcuts=length(bundles),length(agg_bundles)
+  if ncuts > 0
+    #@show sum(bundles[n].cut_dual for n in 1:ncuts) 
+    rho += sum(bundles[n].cut_dual for n in 1:ncuts) 
+  end
+  if naggcuts > 0
+    #@show sum(agg_bundles[n].cut_dual for n in 1:naggcuts)
+    rho += sum(agg_bundles[n].cut_dual for n in 1:naggcuts)
+  end
   epshat = mpsoln.linobjval - (ctr.linobjval - rho*ctr.eta)
   - (dot(sg_agg.α[N],(mpsoln.soln.α[N]-ctr.soln.α[N])) - dot(sg_agg.β[N],(mpsoln.soln.β[N]-ctr.soln.β[N])) 
   + dot(sg_agg.γ[N],(mpsoln.soln.γ[N]-ctr.soln.γ[N])) - dot(sg_agg.δ[N],(mpsoln.soln.δ[N]-ctr.soln.δ[N])) 
   + dot(sg_agg.λF[L],(mpsoln.soln.λF[L] - ctr.soln.λF[L])) - dot(sg_agg.λT[L],(mpsoln.soln.λT[L] - ctr.soln.λT[L]))
   + dot(sg_agg.x[L], (mpsoln.soln.x[L] - ctr.soln.x[L]))
   + dot(sg_agg.μF[L],(mpsoln.soln.μF[L] - ctr.soln.μF[L])) - dot(sg_agg.μT[L],(mpsoln.soln.μT[L] - ctr.soln.μT[L])) )
-  aggregateSG(opfdata,bundles,mpsoln,agg_bundle)
-  return agg_norm,epshat
+  aggregateSG(opfdata,bundles,mpsoln,ctr,ctr_bundles,agg_bundles,agg_bundle)
+  return agg_norm,epshat,rho
 end
 
 # Implements the approach of Sagastizabal and Solodov 2005
@@ -911,52 +995,138 @@ end
     function purgeSG(opfdata,bundle)
       nbuses, nlines, ngens, N, L, G = opfdata.nbuses, opfdata.nlines, opfdata.ngens, opfdata.N, opfdata.L, opfdata.G 
       fromBus,toBus,Y = opfdata.fromBus, opfdata.toBus, opfdata.Y_AC
+
       orig_ncuts = length(bundle)
       ncuts = orig_ncuts
       for n=orig_ncuts:-1:1
-        if abs(bundle[n].cut_dual) < 1e-6 
-	  bundle[n].usefulness /= 2
-	  if bundle[n].usefulness < 1e-6
-	    bundle[n] = bundle[ncuts]
-	    delete!(bundle,ncuts)
-	    ncuts -= 1
-	  end
-	else
-	  bundle[n].usefulness = 1.0
+        if abs(bundle[n].cut_dual) < 1e-8 
+	  bundle[n]=bundle[ncuts]
+	  delete!(bundle,ncuts)
+	  ncuts -= 1
 	end
       end
-      return ncuts
+      return length(bundle)
     end
-    function aggregateSG(opfdata,bundle,mpsoln,agg_bundle)
+    function aggregateSG(opfdata,bundles,mpsoln,ctr,ctr_bundles,agg_bundles,agg_bundle)
       nbuses, nlines, ngens, N, L, G = opfdata.nbuses, opfdata.nlines, opfdata.ngens, opfdata.N, opfdata.L, opfdata.G 
       fromBus,toBus,Y = opfdata.fromBus, opfdata.toBus, opfdata.Y_AC
-      orig_ncuts = length(bundle)
-      ncuts = orig_ncuts
+
+      cpy_soln(opfdata,mpsoln.soln,agg_bundle.soln)
+      ncuts,nctrcuts,naggcuts = length(bundles),length(ctr_bundles),length(agg_bundles)
+      naggcuts = length(agg_bundles)
+      sumDuals = ctr.cut_dual
       if ncuts > 0
-        sumDuals = sum(bundle[n].cut_dual for n in 1:ncuts)
-	cpy_soln(opfdata,mpsoln.soln,agg_bundle.soln)
-
-        agg_bundle.eta_sg.α[N] = (1/sumDuals)*sum( bundle[n].cut_dual*bundle[n].eta_sg.α[N] for n in 1:ncuts) 
-        agg_bundle.eta_sg.β[N] = (1/sumDuals)*sum( bundle[n].cut_dual*bundle[n].eta_sg.β[N] for n in 1:ncuts) 
-        agg_bundle.eta_sg.γ[N] = (1/sumDuals)*sum( bundle[n].cut_dual*bundle[n].eta_sg.γ[N] for n in 1:ncuts) 
-        agg_bundle.eta_sg.δ[N] = (1/sumDuals)*sum( bundle[n].cut_dual*bundle[n].eta_sg.δ[N] for n in 1:ncuts) 
-        agg_bundle.eta_sg.ζpLB[G] = (1/sumDuals)*sum( bundle[n].cut_dual*bundle[n].eta_sg.ζpLB[G] for n in 1:ncuts) 
-        agg_bundle.eta_sg.ζpUB[G] = (1/sumDuals)*sum( bundle[n].cut_dual*bundle[n].eta_sg.ζpUB[G] for n in 1:ncuts) 
-        agg_bundle.eta_sg.ζqLB[G] = (1/sumDuals)*sum( bundle[n].cut_dual*bundle[n].eta_sg.ζqLB[G] for n in 1:ncuts) 
-        agg_bundle.eta_sg.ζqUB[G] = (1/sumDuals)*sum( bundle[n].cut_dual*bundle[n].eta_sg.ζqUB[G] for n in 1:ncuts) 
-        agg_bundle.eta_sg.x[L] = (1/sumDuals)*sum( bundle[n].cut_dual*bundle[n].eta_sg.x[L] for n in 1:ncuts) 
-        agg_bundle.eta_sg.λF[L] = (1/sumDuals)*sum( bundle[n].cut_dual*bundle[n].eta_sg.λF[L] for n in 1:ncuts) 
-        agg_bundle.eta_sg.λT[L] = (1/sumDuals)*sum( bundle[n].cut_dual*bundle[n].eta_sg.λT[L] for n in 1:ncuts) 
-        agg_bundle.eta_sg.μF[L] = (1/sumDuals)*sum( bundle[n].cut_dual*bundle[n].eta_sg.μF[L] for n in 1:ncuts) 
-        agg_bundle.eta_sg.μT[L] = (1/sumDuals)*sum( bundle[n].cut_dual*bundle[n].eta_sg.μT[L] for n in 1:ncuts) 
-
-        agg_bundle.objval = (1/sumDuals)*sum( bundle[n].cut_dual*bundle[n].objval for n in 1:ncuts) 
-        agg_bundle.linobjval = (1/sumDuals)*sum( bundle[n].cut_dual*bundle[n].linobjval for n in 1:ncuts) 
-        agg_bundle.penval = (1/sumDuals)*sum( bundle[n].cut_dual*bundle[n].penval for n in 1:ncuts) 
-        agg_bundle.psival = (1/sumDuals)*sum( bundle[n].cut_dual*bundle[n].psival for n in 1:ncuts) 
-        agg_bundle.eta = (1/sumDuals)*sum( bundle[n].cut_dual*bundle[n].eta for n in 1:ncuts) 
-        agg_bundle.eta = mpsoln.etahat
-	agg_bundle.usefulness = 1
+        sumDuals += sum(bundles[n].cut_dual for n in 1:ncuts) 
       end
+      if nctrcuts > 0
+        sumDuals += sum(ctr_bundles[n].cut_dual for n in 1:nctrcuts) 
+      end
+      if naggcuts > 0
+        sumDuals += sum(agg_bundles[n].cut_dual for n in 1:naggcuts) 
+      end
+
+      agg_bundle.eta_sg.α[N] .= 0
+      agg_bundle.eta_sg.β[N] .= 0
+      agg_bundle.eta_sg.γ[N] .= 0
+      agg_bundle.eta_sg.δ[N] .= 0
+      agg_bundle.eta_sg.ζpLB[G] .= 0
+      agg_bundle.eta_sg.ζpUB[G] .= 0
+      agg_bundle.eta_sg.ζqLB[G] .= 0
+      agg_bundle.eta_sg.ζqUB[G] .= 0
+      agg_bundle.eta_sg.x[L] .= 0
+      agg_bundle.eta_sg.λF[L] .= 0
+      agg_bundle.eta_sg.λT[L] .= 0
+      agg_bundle.eta_sg.μF[L] .= 0
+      agg_bundle.eta_sg.μT[L] .= 0
+
+      agg_bundle.objval = 0
+      agg_bundle.linobjval = 0
+      agg_bundle.penval = 0
+      agg_bundle.psival = 0
+      agg_bundle.eta = 0
+
+      if ncuts > 0
+        agg_bundle.eta_sg.α[N] += (1/sumDuals)*( sum( bundles[n].cut_dual*bundles[n].eta_sg.α[N] for n in 1:ncuts) )
+        agg_bundle.eta_sg.β[N] += (1/sumDuals)*( sum( bundles[n].cut_dual*bundles[n].eta_sg.β[N] for n in 1:ncuts) )
+        agg_bundle.eta_sg.γ[N] += (1/sumDuals)*( sum( bundles[n].cut_dual*bundles[n].eta_sg.γ[N] for n in 1:ncuts) )
+        agg_bundle.eta_sg.δ[N] += (1/sumDuals)*( sum( bundles[n].cut_dual*bundles[n].eta_sg.δ[N] for n in 1:ncuts) )
+        agg_bundle.eta_sg.ζpLB[G] += (1/sumDuals)*( sum( bundles[n].cut_dual*bundles[n].eta_sg.ζpLB[G] for n in 1:ncuts) )
+        agg_bundle.eta_sg.ζpUB[G] += (1/sumDuals)*( sum( bundles[n].cut_dual*bundles[n].eta_sg.ζpUB[G] for n in 1:ncuts) )
+        agg_bundle.eta_sg.ζqLB[G] += (1/sumDuals)*( sum( bundles[n].cut_dual*bundles[n].eta_sg.ζqLB[G] for n in 1:ncuts) )
+        agg_bundle.eta_sg.ζqUB[G] += (1/sumDuals)*( sum( bundles[n].cut_dual*bundles[n].eta_sg.ζqUB[G] for n in 1:ncuts) )
+        agg_bundle.eta_sg.x[L]  += (1/sumDuals)* ( sum( bundles[n].cut_dual*bundles[n].eta_sg.x[L] for n in 1:ncuts) )
+        agg_bundle.eta_sg.λF[L] += (1/sumDuals)*( sum( bundles[n].cut_dual*bundles[n].eta_sg.λF[L] for n in 1:ncuts) )
+        agg_bundle.eta_sg.λT[L] += (1/sumDuals)*( sum( bundles[n].cut_dual*bundles[n].eta_sg.λT[L] for n in 1:ncuts) )
+        agg_bundle.eta_sg.μF[L] += (1/sumDuals)*( sum( bundles[n].cut_dual*bundles[n].eta_sg.μF[L] for n in 1:ncuts) )
+        agg_bundle.eta_sg.μT[L] += (1/sumDuals)*( sum( bundles[n].cut_dual*bundles[n].eta_sg.μT[L] for n in 1:ncuts) )
+
+        agg_bundle.objval += (1/sumDuals)*( sum( bundles[n].cut_dual*bundles[n].objval for n in 1:ncuts) )
+        agg_bundle.linobjval += (1/sumDuals)*( sum( bundles[n].cut_dual*bundles[n].linobjval for n in 1:ncuts) )
+        agg_bundle.penval += (1/sumDuals)*( sum( bundles[n].cut_dual*bundles[n].penval for n in 1:ncuts) )
+        agg_bundle.psival += (1/sumDuals)*( sum( bundles[n].cut_dual*bundles[n].psival for n in 1:ncuts) )
+        agg_bundle.eta += (1/sumDuals)*( sum( bundles[n].cut_dual*bundles[n].eta for n in 1:ncuts ) )
+
+        agg_bundle.etahat -= (1/sumDuals)*sum( bundles[n].cut_dual*(bundles[n].eta 
+	+ dot(bundles[n].eta_sg.α[N],bundles[n].soln.α[N]) + dot(bundles[n].eta_sg.β[N],bundles[n].soln.β[N])
+	  + dot(bundles[n].eta_sg.γ[N],bundles[n].soln.γ[N]) + dot(bundles[n].eta_sg.δ[N],bundles[n].soln.δ[N]) 
+        + dot(bundles[n].eta_sg.λF[L],bundles[n].soln.λF[L]) + dot(bundles[n].eta_sg.λT[L],bundles[n].soln.λT[L]) 
+	  + dot(bundles[n].eta_sg.μF[L],bundles[n].soln.μF[L]) + dot(bundles[n].eta_sg.μT[L],bundles[n].soln.μT[L]) ) for n in 1:ncuts)
+      end
+      if nctrcuts > 0
+        agg_bundle.eta_sg.α[N] += (1/sumDuals)*( sum( ctr_bundles[n].cut_dual*ctr_bundles[n].eta_sg.α[N] for n in 1:nctrcuts) )
+        agg_bundle.eta_sg.β[N] += (1/sumDuals)*( sum( ctr_bundles[n].cut_dual*ctr_bundles[n].eta_sg.β[N] for n in 1:nctrcuts) )
+        agg_bundle.eta_sg.γ[N] += (1/sumDuals)*( sum( ctr_bundles[n].cut_dual*ctr_bundles[n].eta_sg.γ[N] for n in 1:nctrcuts) )
+        agg_bundle.eta_sg.δ[N] += (1/sumDuals)*( sum( ctr_bundles[n].cut_dual*ctr_bundles[n].eta_sg.δ[N] for n in 1:nctrcuts) )
+        agg_bundle.eta_sg.ζpLB[G] += (1/sumDuals)*( sum( ctr_bundles[n].cut_dual*ctr_bundles[n].eta_sg.ζpLB[G] for n in 1:nctrcuts) )
+        agg_bundle.eta_sg.ζpUB[G] += (1/sumDuals)*( sum( ctr_bundles[n].cut_dual*ctr_bundles[n].eta_sg.ζpUB[G] for n in 1:nctrcuts) )
+        agg_bundle.eta_sg.ζqLB[G] += (1/sumDuals)*( sum( ctr_bundles[n].cut_dual*ctr_bundles[n].eta_sg.ζqLB[G] for n in 1:nctrcuts) )
+        agg_bundle.eta_sg.ζqUB[G] += (1/sumDuals)*( sum( ctr_bundles[n].cut_dual*ctr_bundles[n].eta_sg.ζqUB[G] for n in 1:nctrcuts) )
+        agg_bundle.eta_sg.x[L]  += (1/sumDuals)* ( sum( ctr_bundles[n].cut_dual*ctr_bundles[n].eta_sg.x[L] for n in 1:nctrcuts) )
+        agg_bundle.eta_sg.λF[L] += (1/sumDuals)*( sum( ctr_bundles[n].cut_dual*ctr_bundles[n].eta_sg.λF[L] for n in 1:nctrcuts) )
+        agg_bundle.eta_sg.λT[L] += (1/sumDuals)*( sum( ctr_bundles[n].cut_dual*ctr_bundles[n].eta_sg.λT[L] for n in 1:nctrcuts) )
+        agg_bundle.eta_sg.μF[L] += (1/sumDuals)*( sum( ctr_bundles[n].cut_dual*ctr_bundles[n].eta_sg.μF[L] for n in 1:nctrcuts) )
+        agg_bundle.eta_sg.μT[L] += (1/sumDuals)*( sum( ctr_bundles[n].cut_dual*ctr_bundles[n].eta_sg.μT[L] for n in 1:nctrcuts) )
+
+        agg_bundle.objval += (1/sumDuals)*( sum( ctr_bundles[n].cut_dual*ctr_bundles[n].objval for n in 1:nctrcuts) )
+        agg_bundle.linobjval += (1/sumDuals)*( sum( ctr_bundles[n].cut_dual*ctr_bundles[n].linobjval for n in 1:nctrcuts) )
+        agg_bundle.penval += (1/sumDuals)*( sum( ctr_bundles[n].cut_dual*ctr_bundles[n].penval for n in 1:nctrcuts) )
+        agg_bundle.psival += (1/sumDuals)*( sum( ctr_bundles[n].cut_dual*ctr_bundles[n].psival for n in 1:nctrcuts) )
+        agg_bundle.eta += (1/sumDuals)*( sum( ctr_bundles[n].cut_dual*ctr_bundles[n].eta for n in 1:nctrcuts ) )
+
+        agg_bundle.etahat -= (1/sumDuals)*sum( ctr_bundles[n].cut_dual*(ctr_bundles[n].eta 
+	+ dot(ctr_bundles[n].eta_sg.α[N],ctr_bundles[n].soln.α[N]) + dot(ctr_bundles[n].eta_sg.β[N],ctr_bundles[n].soln.β[N])
+	  + dot(ctr_bundles[n].eta_sg.γ[N],ctr_bundles[n].soln.γ[N]) + dot(ctr_bundles[n].eta_sg.δ[N],ctr_bundles[n].soln.δ[N]) 
+        + dot(ctr_bundles[n].eta_sg.λF[L],ctr_bundles[n].soln.λF[L]) + dot(ctr_bundles[n].eta_sg.λT[L],ctr_bundles[n].soln.λT[L]) 
+	  + dot(ctr_bundles[n].eta_sg.μF[L],ctr_bundles[n].soln.μF[L]) + dot(ctr_bundles[n].eta_sg.μT[L],ctr_bundles[n].soln.μT[L]) ) for n in 1:nctrcuts)
+      end
+      if naggcuts > 0
+        agg_bundle.eta_sg.α[N] += (1/sumDuals)*( sum( agg_bundles[n].cut_dual*agg_bundles[n].eta_sg.α[N] for n in 1:naggcuts) )
+        agg_bundle.eta_sg.β[N] += (1/sumDuals)*( sum( agg_bundles[n].cut_dual*agg_bundles[n].eta_sg.β[N] for n in 1:naggcuts) )
+        agg_bundle.eta_sg.γ[N] += (1/sumDuals)*( sum( agg_bundles[n].cut_dual*agg_bundles[n].eta_sg.γ[N] for n in 1:naggcuts) )
+        agg_bundle.eta_sg.δ[N] += (1/sumDuals)*( sum( agg_bundles[n].cut_dual*agg_bundles[n].eta_sg.δ[N] for n in 1:naggcuts) )
+        agg_bundle.eta_sg.ζpLB[G] += (1/sumDuals)*( sum( agg_bundles[n].cut_dual*agg_bundles[n].eta_sg.ζpLB[G] for n in 1:naggcuts) )
+        agg_bundle.eta_sg.ζpUB[G] += (1/sumDuals)*( sum( agg_bundles[n].cut_dual*agg_bundles[n].eta_sg.ζpUB[G] for n in 1:naggcuts) )
+        agg_bundle.eta_sg.ζqLB[G] += (1/sumDuals)*( sum( agg_bundles[n].cut_dual*agg_bundles[n].eta_sg.ζqLB[G] for n in 1:naggcuts) )
+        agg_bundle.eta_sg.ζqUB[G] += (1/sumDuals)*( sum( agg_bundles[n].cut_dual*agg_bundles[n].eta_sg.ζqUB[G] for n in 1:naggcuts) )
+        agg_bundle.eta_sg.x[L]  += (1/sumDuals)* ( sum( agg_bundles[n].cut_dual*agg_bundles[n].eta_sg.x[L] for n in 1:naggcuts) )
+        agg_bundle.eta_sg.λF[L] += (1/sumDuals)*( sum( agg_bundles[n].cut_dual*agg_bundles[n].eta_sg.λF[L] for n in 1:naggcuts) )
+        agg_bundle.eta_sg.λT[L] += (1/sumDuals)*( sum( agg_bundles[n].cut_dual*agg_bundles[n].eta_sg.λT[L] for n in 1:naggcuts) )
+        agg_bundle.eta_sg.μF[L] += (1/sumDuals)*( sum( agg_bundles[n].cut_dual*agg_bundles[n].eta_sg.μF[L] for n in 1:naggcuts) )
+        agg_bundle.eta_sg.μT[L] += (1/sumDuals)*( sum( agg_bundles[n].cut_dual*agg_bundles[n].eta_sg.μT[L] for n in 1:naggcuts) )
+
+        agg_bundle.objval += (1/sumDuals)*( sum( agg_bundles[n].cut_dual*agg_bundles[n].objval for n in 1:naggcuts) )
+        agg_bundle.linobjval += (1/sumDuals)*( sum( agg_bundles[n].cut_dual*agg_bundles[n].linobjval for n in 1:naggcuts) )
+        agg_bundle.penval += (1/sumDuals)*( sum( agg_bundles[n].cut_dual*agg_bundles[n].penval for n in 1:naggcuts) )
+        agg_bundle.psival += (1/sumDuals)*( sum( agg_bundles[n].cut_dual*agg_bundles[n].psival for n in 1:naggcuts) )
+        agg_bundle.eta += (1/sumDuals)*( sum( agg_bundles[n].cut_dual*agg_bundles[n].eta for n in 1:naggcuts ) )
+
+        agg_bundle.etahat -= (1/sumDuals)*sum( agg_bundles[n].cut_dual*(agg_bundles[n].eta 
+	+ dot(agg_bundles[n].eta_sg.α[N],agg_bundles[n].soln.α[N]) + dot(agg_bundles[n].eta_sg.β[N],agg_bundles[n].soln.β[N])
+	  + dot(agg_bundles[n].eta_sg.γ[N],agg_bundles[n].soln.γ[N]) + dot(agg_bundles[n].eta_sg.δ[N],agg_bundles[n].soln.δ[N]) 
+        + dot(agg_bundles[n].eta_sg.λF[L],agg_bundles[n].soln.λF[L]) + dot(agg_bundles[n].eta_sg.λT[L],agg_bundles[n].soln.λT[L]) 
+	  + dot(agg_bundles[n].eta_sg.μF[L],agg_bundles[n].soln.μF[L]) + dot(agg_bundles[n].eta_sg.μT[L],agg_bundles[n].soln.μT[L]) ) for n in 1:naggcuts)
+      end
+      #agg_bundle.etahat = mpsoln.etahat
+      agg_bundle.age = 1
     end
 
