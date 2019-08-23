@@ -8,7 +8,7 @@ Brian Dandurand
 
 include("utils.jl")
 
-maxNSG = 1000
+maxNSG = 100000
 CP,PROX0,PROX,LVL1,LVL2,LVLINF,FEAS=0,1,2,3,4,5,6
 tMin = 0.01
 tMax = 20
@@ -550,8 +550,8 @@ function testProxPt0(opfdata,K,HEUR)
 
   # INITIAL ITERATION
     x_val=zeros(opfdata.nlines)
-    #x_val[41],x_val[80]=1,1
-    x_val[8],x_val[9],x_val[10],x_val[40]=1,1,1,1
+    x_val[41],x_val[80]=1,1
+    #x_val[8],x_val[9],x_val[10],x_val[40]=1,1,1,1
     fixedNode=NodeInfo(x_val,x_val,1e20)
     bundles=Dict()
     ctr_bundles=Dict()
@@ -607,20 +607,21 @@ end
           if sscval >= ssc 
          # UPDATE CENTER VALUES
 	    updateCenter(opfdata,mpsoln,ctr,bundles)
-	    nctrcuts=length(ctr_bundles)
-	    #ctr_bundles[nctrcuts+1]=mpsoln
-	    ctr_bundles[1]=mpsoln
+	    #nctrcuts=length(ctr_bundles)
+	    nctrcuts=purgeSG(opfdata,ctr_bundles)
+	    ctr_bundles[nctrcuts+1]=mpsoln
+	    #ctr_bundles[1]=mpsoln
 	    #empty!(bundles)
 	    #empty!(agg_bundles)
 	    @show "Basic",kk,mpsoln.linobjval,mpsoln.eta,ncuts,agg_norm,epshat,ssc_cntr,tVal
 	  else
 	    #ncuts=purgeSG(opfdata,bundles)
-	    #ncuts=purgeSG(opfdata,bundles)
-            bundles[1]=mpsoln
-            #bundles[ncuts+1]=mpsoln
+	    ncuts=purgeSG(opfdata,bundles)
+            #bundles[1]=mpsoln
+            bundles[ncuts+1]=mpsoln
           end
 	  #@show "Basic",kk,mpsoln.linobjval,mpsoln.eta,ncuts,agg_norm,epshat,ssc_cntr,tVal
-          #tVal,v_est,ssc_cntr=KiwielRhoUpdate(opfdata,mpsoln,sscval,vval,agg_norm,epshat,rho,tVal,v_est,ssc_cntr)
+          tVal,v_est,ssc_cntr=KiwielRhoUpdate(opfdata,mpsoln,sscval,vval,agg_norm,epshat,rho,tVal,v_est,ssc_cntr)
 	  #tVal = min(tVal,tMax)
       else
 	println("Solver returned: $status")
@@ -1010,18 +1011,21 @@ end
 =#
 
   # SUBROUTINE FOR COMPUTING A SUBGRADIENT OF ETA(PI), WHICH IS THE FUNCTION TAKING THE VALUE OF THE MINIMUM EIGENVALUE OF H(PI)
-    function purgeSG(opfdata,bundle)
+    function purgeSG(opfdata,bundle,minAge=20,maxAge=80)
       nbuses, nlines, ngens, N, L, G = opfdata.nbuses, opfdata.nlines, opfdata.ngens, opfdata.N, opfdata.L, opfdata.G 
       fromBus,toBus,Y = opfdata.fromBus, opfdata.toBus, opfdata.Y_AC
 
       orig_ncuts = length(bundle)
       ncuts = orig_ncuts
       for n=orig_ncuts:-1:1
-        if abs(bundle[n].cut_dual) < 1e-8 
+        if (abs(bundle[n].cut_dual) < 1e-8 && bundle[n].age > minAge) || bundle[n].age > maxAge
 	  bundle[n]=bundle[ncuts]
 	  delete!(bundle,ncuts)
 	  ncuts -= 1
 	end
+      end
+      for n=1:length(bundle)
+	bundle[n].age += 1
       end
       return length(bundle)
     end
