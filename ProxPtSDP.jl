@@ -8,7 +8,7 @@ Brian Dandurand
 
 include("utils.jl")
 
-maxNSG = 100000
+maxNSG = 1000
 CP,PROX0,PROX,LVL1,LVL2,LVLINF,FEAS=0,1,2,3,4,5,6
 tMin = 0.01
 tMax = 20
@@ -256,18 +256,26 @@ function solveNodeProxPt(opfdata,nodeinfo,bundles,ctr_bundles,agg_bundles,K,HEUR
       if length(agg_bundles) > 0
 #=
         @constraint(mMP, CutPlanesAgg[n=1:length(agg_bundles)], # 0 <= -agg_bundles[n].etahat
+	  0 <= sum( agg_bundles[n].eta_sg.α[i]*α[i] + agg_bundles[n].eta_sg.β[i]*β[i]
+	    + agg_bundles[n].eta_sg.γ[i]*γ[i] + agg_bundles[n].eta_sg.δ[i]*δ[i] for i in N)
+          + sum( agg_bundles[n].eta_sg.λF[l]*λF[l] + agg_bundles[n].eta_sg.λT[l]*λT[l] 
+	    + agg_bundles[n].eta_sg.μF[l]*μF[l] + agg_bundles[n].eta_sg.μT[l]*μT[l] for l in L)
+        )
+=#
+        @constraint(mMP, CutPlanesAgg[n=1:length(agg_bundles)], # 0 <= -agg_bundles[n].etahat
 	  0 <= sum( agg_bundles[n].eta_sg.α[i]*(α[i]-agg_bundles[n].soln.α[i]) + agg_bundles[n].eta_sg.β[i]*(β[i]-agg_bundles[n].soln.β[i])
 	    + agg_bundles[n].eta_sg.γ[i]*(γ[i]-agg_bundles[n].soln.γ[i]) + agg_bundles[n].eta_sg.δ[i]*(δ[i]-agg_bundles[n].soln.δ[i]) for i in N)
           + sum( agg_bundles[n].eta_sg.λF[l]*(λF[l]-agg_bundles[n].soln.λF[l]) + agg_bundles[n].eta_sg.λT[l]*(λT[l]-agg_bundles[n].soln.λT[l]) 
 	    + agg_bundles[n].eta_sg.μF[l]*(μF[l]-agg_bundles[n].soln.μF[l]) + agg_bundles[n].eta_sg.μT[l]*(μT[l]-agg_bundles[n].soln.μT[l]) for l in L)
         )
-=#
+#=
         @constraint(mMP, CutPlanesAgg[n=1:length(agg_bundles)], # 0 <= -agg_bundles[n].etahat
 	  0 <= agg_bundles[n].etahat + sum( agg_bundles[n].eta_sg.α[i]*α[i] + agg_bundles[n].eta_sg.β[i]*β[i]
 	    + agg_bundles[n].eta_sg.γ[i]*γ[i] + agg_bundles[n].eta_sg.δ[i]*δ[i] for i in N)
           + sum( agg_bundles[n].eta_sg.λF[l]*λF[l] + agg_bundles[n].eta_sg.λT[l]*λT[l] 
 	    + agg_bundles[n].eta_sg.μF[l]*μF[l] + agg_bundles[n].eta_sg.μT[l]*μT[l] for l in L)
         )
+=#
       end
       if length(bundles) > 0
         @constraint(mMP, CutPlanes[n=1:length(bundles)], 0 <= -bundles[n].eta 
@@ -440,6 +448,13 @@ function solveNodeProxPt(opfdata,nodeinfo,bundles,ctr_bundles,agg_bundles,K,HEUR
 	end
 	for n=1:length(agg_bundles)
 	  agg_bundles[n].cut_dual = getdual(CutPlanesAgg[n])
+#=
+	  agg_viol=getvalue(sum( agg_bundles[n].eta_sg.α[i]*(α[i]-agg_bundles[n].soln.α[i]) + agg_bundles[n].eta_sg.β[i]*(β[i]-agg_bundles[n].soln.β[i])
+	    + agg_bundles[n].eta_sg.γ[i]*(γ[i]-agg_bundles[n].soln.γ[i]) + agg_bundles[n].eta_sg.δ[i]*(δ[i]-agg_bundles[n].soln.δ[i]) for i in N)
+          + sum( agg_bundles[n].eta_sg.λF[l]*(λF[l]-agg_bundles[n].soln.λF[l]) + agg_bundles[n].eta_sg.λT[l]*(λT[l]-agg_bundles[n].soln.λT[l]) 
+	    + agg_bundles[n].eta_sg.μF[l]*(μF[l]-agg_bundles[n].soln.μF[l]) + agg_bundles[n].eta_sg.μT[l]*(μT[l]-agg_bundles[n].soln.μT[l]) for l in L))
+	  @show agg_viol,agg_bundles[n].cut_dual
+=#
 	end
       end
       if status == :Optimal && (CTR_PARAM==LVL1 || CTR_PARAM == LVL2 || CTR_PARAM == LVLINF )
@@ -542,12 +557,12 @@ function testProxPt0(opfdata,K,HEUR)
     ctr_bundles=Dict()
     agg_bundles=Dict()
     ncuts=0
-    rho = 0
+    rho,rhoUB = 0,0
     mpsoln=create_bundle(opfdata)
     ctr=create_bundle(opfdata)
     status = solveNodeProxPt(opfdata,fixedNode,bundles,ctr_bundles,agg_bundles,K,HEUR,ctr,PROX0,mpsoln)
     updateCenter(opfdata,mpsoln,ctr,bundles)
-    bundles[1]=mpsoln
+    ctr_bundles[1]=mpsoln
 
     agg_bundle=create_bundle(opfdata)
     sg_agg=create_soln(opfdata)
@@ -572,34 +587,38 @@ function testProxPt0(opfdata,K,HEUR)
          # COMPUTING AGGREGATION INFORMATION
 	  agg_norm,epshat,rho=update_agg(opfdata,bundles,ctr,mpsoln,sg_agg,ctr_bundles,agg_bundles,agg_bundle)
 #=
-if kk>2
-@show ctr.cut_dual,bundles[1].cut_dual,agg_bundles[1].cut_dual,rho
+if kk>5
+@show bundles[1].cut_dual,ctr_bundles[1].cut_dual,agg_bundles[1].cut_dual,rho
 end
 =#
-          #agg_bundles[1]=agg_bundle
+	  if rhoUB < rho
+	    rhoUB = rho + 1
+@show rhoUB
+	  end
+          agg_bundles[1]=aggregateSG(opfdata,bundles,mpsoln,ctr,ctr_bundles,agg_bundles)
           if ctr.eta < TOL && agg_norm < 1e-3 && epshat < 1e-3 
 	    println("Convergence to within tolerance: obj, feas ",mpsoln.linobjval," ",mpsoln.eta)
 	    @show "Basic",kk,mpsoln.linobjval,mpsoln.eta,ncuts,ctr.linobjval,ctr.eta,agg_norm,epshat
 	    break
           end
          # STEP 3
-	  sscval = ((mpsoln.linobjval - rho*mpsoln.eta)-(ctr.linobjval - rho*ctr.eta))/(mpsoln.linobjval-(ctr.linobjval - rho*ctr.eta)) 
-	  vval = (mpsoln.linobjval-(ctr.linobjval - rho*ctr.eta)) 
+	  sscval = ((mpsoln.linobjval - rhoUB*mpsoln.eta)-(ctr.linobjval - rhoUB*ctr.eta))/(mpsoln.linobjval-(ctr.linobjval - rhoUB*ctr.eta)) 
+	  vval = (mpsoln.linobjval-(ctr.linobjval - rhoUB*ctr.eta)) 
           if sscval >= ssc 
          # UPDATE CENTER VALUES
 	    updateCenter(opfdata,mpsoln,ctr,bundles)
 	    nctrcuts=length(ctr_bundles)
-	    ctr_bundles[nctrcuts+1]=mpsoln
+	    #ctr_bundles[nctrcuts+1]=mpsoln
+	    ctr_bundles[1]=mpsoln
 	    #empty!(bundles)
 	    #empty!(agg_bundles)
 	    @show "Basic",kk,mpsoln.linobjval,mpsoln.eta,ncuts,agg_norm,epshat,ssc_cntr,tVal
 	  else
 	    #ncuts=purgeSG(opfdata,bundles)
-	    ncuts=purgeSG(opfdata,bundles)
-            bundles[ncuts+1]=mpsoln
+	    #ncuts=purgeSG(opfdata,bundles)
+            bundles[1]=mpsoln
             #bundles[ncuts+1]=mpsoln
           end
-          #bundles[1]=mpsoln
 	  #@show "Basic",kk,mpsoln.linobjval,mpsoln.eta,ncuts,agg_norm,epshat,ssc_cntr,tVal
           #tVal,v_est,ssc_cntr=KiwielRhoUpdate(opfdata,mpsoln,sscval,vval,agg_norm,epshat,rho,tVal,v_est,ssc_cntr)
 	  #tVal = min(tVal,tMax)
@@ -663,7 +682,6 @@ function update_agg(opfdata,bundles,ctr,mpsoln,sg_agg,ctr_bundles,agg_bundles,ag
   + dot(sg_agg.λF[L],(mpsoln.soln.λF[L] - ctr.soln.λF[L])) - dot(sg_agg.λT[L],(mpsoln.soln.λT[L] - ctr.soln.λT[L]))
   + dot(sg_agg.x[L], (mpsoln.soln.x[L] - ctr.soln.x[L]))
   + dot(sg_agg.μF[L],(mpsoln.soln.μF[L] - ctr.soln.μF[L])) - dot(sg_agg.μT[L],(mpsoln.soln.μT[L] - ctr.soln.μT[L])) )
-  aggregateSG(opfdata,bundles,mpsoln,ctr,ctr_bundles,agg_bundles,agg_bundle)
   return agg_norm,epshat,rho
 end
 
@@ -1007,14 +1025,15 @@ end
       end
       return length(bundle)
     end
-    function aggregateSG(opfdata,bundles,mpsoln,ctr,ctr_bundles,agg_bundles,agg_bundle)
+    function aggregateSG(opfdata,bundles,mpsoln,ctr,ctr_bundles,agg_bundles)
       nbuses, nlines, ngens, N, L, G = opfdata.nbuses, opfdata.nlines, opfdata.ngens, opfdata.N, opfdata.L, opfdata.G 
       fromBus,toBus,Y = opfdata.fromBus, opfdata.toBus, opfdata.Y_AC
+      agg_bundle=create_bundle(opfdata)
 
       cpy_soln(opfdata,mpsoln.soln,agg_bundle.soln)
       ncuts,nctrcuts,naggcuts = length(bundles),length(ctr_bundles),length(agg_bundles)
       naggcuts = length(agg_bundles)
-      sumDuals = ctr.cut_dual
+      sumDuals = 0
       if ncuts > 0
         sumDuals += sum(bundles[n].cut_dual for n in 1:ncuts) 
       end
@@ -1128,5 +1147,6 @@ end
       end
       #agg_bundle.etahat = mpsoln.etahat
       agg_bundle.age = 1
+      return agg_bundle
     end
 
