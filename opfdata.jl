@@ -1,4 +1,4 @@
-type Bus
+mutable struct Bus
   bus_i::Int
   bustype::Int
   Pd::Float64
@@ -14,7 +14,7 @@ type Bus
   Vmin::Float64
 end
 
-type Line
+mutable struct Line
   from::Int
   to::Int
   r::Float64
@@ -31,7 +31,7 @@ type Line
 end
 Line() = Line(0,0,0.,0.,0.,0.,0.,0.,0.,0.,0,0.,0.)
 
-type Gener
+mutable struct Gener
   # .gen fields
   bus::Int
   Pg::Float64
@@ -58,7 +58,7 @@ type Gener
   coeff::Array
 end
 
-type Admittances
+mutable struct Admittances
     YffR::Array{Float64}
     YffI::Array{Float64}
     YttR::Array{Float64}
@@ -71,7 +71,7 @@ type Admittances
     YshI::Array{Float64}
 end
 
-type OPFData
+mutable struct OPFData
   buses::Array{Bus}
   nbuses::Int
   N
@@ -115,7 +115,7 @@ function opf_loaddata(case_name, lineOff=Line())
   # bus_arr = readdlm("data/" * case_name * ".bus")
   bus_arr = readdlm(data_path * string(case_name) * ".bus")
   num_buses = size(bus_arr,1)
-  buses = Array{Bus}(num_buses)
+  buses = Array{Bus}(undef,num_buses)
   bus_ref=-1
   for i in 1:num_buses
     @assert bus_arr[i,1]>0  #don't support nonpositive bus ids
@@ -137,18 +137,18 @@ function opf_loaddata(case_name, lineOff=Line())
   # branch_arr = readdlm("data/" * case_name * ".branch")
   branch_arr = readdlm(data_path * string(case_name) * ".branch")
   num_lines = size(branch_arr,1)
-  lines_on = find((branch_arr[:,11].>0) .& ((branch_arr[:,1].!=lineOff.from) .| (branch_arr[:,2].!=lineOff.to)) )
+  lines_on = findall(x->x!=0, (branch_arr[:,11].>0) .& ((branch_arr[:,1].!=lineOff.from) .| (branch_arr[:,2].!=lineOff.to)) )
   num_on   = length(lines_on)
 
   if lineOff.from>0 && lineOff.to>0
     println("opf_loaddata: was asked to remove line from,to=", lineOff.from, ",", lineOff.to)
     #println(lines_on, branch_arr[:,1].!=lineOff.from, branch_arr[:,2].!=lineOff.to)
   end
-  if length(find(branch_arr[:,11].==0))>0
-    println("opf_loaddata: ", num_lines-length(find(branch_arr[:,11].>0)), " lines are off and will be discarded (out of ", num_lines, ")")
+  if length(findall(x->x!=0, branch_arr[:,11].==0))>0
+    println("opf_loaddata: ", num_lines-length(findall(x->x!=0, branch_arr[:,11].>0)), " lines are off and will be discarded (out of ", num_lines, ")")
   end
 
-  lines = Array{Line}(num_on)
+  lines = Array{Line}(undef,num_on)
 
   lit=0
   for i in lines_on
@@ -175,16 +175,16 @@ function opf_loaddata(case_name, lineOff=Line())
 
   @assert num_gens == size(costgen_arr,1)
 
-  gens_on=find(gen_arr[:,8]); num_on=length(gens_on)
+  gens_on=findall(x->x!=0, gen_arr[:,8]); num_on=length(gens_on)
   if num_gens-num_on>0
     println("loaddata: ", num_gens-num_on, " generators are off and will be discarded (out of ", num_gens, ")")
   end
 
-  generators = Array{Gener}(num_on)
+  generators = Array{Gener}(undef,num_on)
   i=0
   for git in gens_on
     i += 1
-    generators[i] = Gener(0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, Array{Int}(0)) #gen_arr[i,1:end]...)
+    generators[i] = Gener(0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, Array{Int}(undef,0)) #gen_arr[i,1:end]...)
 
     generators[i].bus      = gen_arr[git,1]
     generators[i].Pg       = gen_arr[git,2] / baseMVA
@@ -275,14 +275,14 @@ end
 
 function  computeAdmittances(lines, buses, baseMVA, relaxType=0)
   nlines = length(lines)
-  YffR=Array{Float64}(nlines)
-  YffI=Array{Float64}(nlines)
-  YttR=Array{Float64}(nlines)
-  YttI=Array{Float64}(nlines)
-  YftR=Array{Float64}(nlines)
-  YftI=Array{Float64}(nlines)
-  YtfR=Array{Float64}(nlines)
-  YtfI=Array{Float64}(nlines)
+  YffR=Array{Float64}(undef,nlines)
+  YffI=Array{Float64}(undef,nlines)
+  YttR=Array{Float64}(undef,nlines)
+  YttI=Array{Float64}(undef,nlines)
+  YftR=Array{Float64}(undef,nlines)
+  YftI=Array{Float64}(undef,nlines)
+  YtfR=Array{Float64}(undef,nlines)
+  YtfI=Array{Float64}(undef,nlines)
 
   for i in 1:nlines
     @assert lines[i].status == 1
@@ -291,7 +291,7 @@ function  computeAdmittances(lines, buses, baseMVA, relaxType=0)
       Ys = 1/(0.0 + lines[i].x*im)  #using DC, line resistances are set to zero
     end
     #assign nonzero tap ratio
-    tap = lines[i].ratio==0?1.0:lines[i].ratio
+    tap = lines[i].ratio==0 ? 1.0 : lines[i].ratio
 
     #add phase shifters
     tap *= exp(lines[i].angle * pi/180 * im)
@@ -313,24 +313,24 @@ function  computeAdmittances(lines, buses, baseMVA, relaxType=0)
   end
 
   nbuses = length(buses)
-  YshR = Array{Float64}(nbuses)
-  YshI = Array{Float64}(nbuses)
+  YshR = Array{Float64}(undef,nbuses)
+  YshI = Array{Float64}(undef,nbuses)
   for i in 1:nbuses
     YshR[i] = buses[i].Gs / baseMVA
     YshI[i] = buses[i].Bs / baseMVA
     #@printf("[%4d]   Ysh  %15.12f + %15.12f i \n", i, YshR[i], YshI[i])
   end
 
-  @assert 0==length(find(isnan.(YffR)))+length(find(isinf.(YffR)))
-  @assert 0==length(find(isnan.(YffI)))+length(find(isinf.(YffI)))
-  @assert 0==length(find(isnan.(YttR)))+length(find(isinf.(YttR)))
-  @assert 0==length(find(isnan.(YttI)))+length(find(isinf.(YttI)))
-  @assert 0==length(find(isnan.(YftR)))+length(find(isinf.(YftR)))
-  @assert 0==length(find(isnan.(YftI)))+length(find(isinf.(YftI)))
-  @assert 0==length(find(isnan.(YtfR)))+length(find(isinf.(YtfR)))
-  @assert 0==length(find(isnan.(YtfI)))+length(find(isinf.(YtfI)))
-  @assert 0==length(find(isnan.(YshR)))+length(find(isinf.(YshR)))
-  @assert 0==length(find(isnan.(YshI)))+length(find(isinf.(YshI)))
+  @assert 0==length(findall(x->x!=0, isnan.(YffR)))+length(findall(x->x!=0, isinf.(YffR)))
+  @assert 0==length(findall(x->x!=0, isnan.(YffI)))+length(findall(x->x!=0, isinf.(YffI)))
+  @assert 0==length(findall(x->x!=0, isnan.(YttR)))+length(findall(x->x!=0, isinf.(YttR)))
+  @assert 0==length(findall(x->x!=0, isnan.(YttI)))+length(findall(x->x!=0, isinf.(YttI)))
+  @assert 0==length(findall(x->x!=0, isnan.(YftR)))+length(findall(x->x!=0, isinf.(YftR)))
+  @assert 0==length(findall(x->x!=0, isnan.(YftI)))+length(findall(x->x!=0, isinf.(YftI)))
+  @assert 0==length(findall(x->x!=0, isnan.(YtfR)))+length(findall(x->x!=0, isinf.(YtfR)))
+  @assert 0==length(findall(x->x!=0, isnan.(YtfI)))+length(findall(x->x!=0, isinf.(YtfI)))
+  @assert 0==length(findall(x->x!=0, isnan.(YshR)))+length(findall(x->x!=0, isinf.(YshR)))
+  @assert 0==length(findall(x->x!=0, isnan.(YshI)))+length(findall(x->x!=0, isinf.(YshI)))
 
   return Admittances(YffR, YffI, YttR, YttI, YftR, YftI, YtfR, YtfI, YshR, YshI)
 end

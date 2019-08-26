@@ -9,14 +9,18 @@ Brian Dandurand
 using JuMP
 using CPLEX, Ipopt, SCS 
 using Mosek
-#using Arpack
-#using Printf
-using MathProgBase
+using Arpack
+using DelimitedFiles
+using Printf
+using SparseArrays
+#using MathProgBase
+using LinearAlgebra
+using ReverseDiffSparse
+
 
 include("opfdata.jl")
 #CASE_NUM in {9,30,57,118,300,1354pegase,2869pegase}
 MAX_TIME = 24*3600 # in seconds
-
 
 #TOL = 1e-8  #feasibility tolerance for lazy constraints
 useLocalCuts = false
