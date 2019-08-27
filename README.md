@@ -20,3 +20,17 @@ min c^T x + F^k(x) + (1/2t^k) * ||x-x^k||^2
 s.t. Ax <= b
      G^k(x) <= 0
 where F and G are cutting plane models of f and g, respectively.
+
+
+...
+
+To run (on moonshot)
+
+> ./runMoonshotProxPtSDP CASE K H
+
+where CASE is the case instance, K is a nonnegative integer budget, and H=0,1,2 encodes a heuristic, with H=0 indicating no heuristic.
+For example,
+
+> ./runMoonshotProxPtSDP 30 4 0
+
+runs the Case 30 instance with an attacker budget of 4 lines, and no heuristic. For more details on what is being done, see Main.jl and ProxPtSDP.jl
