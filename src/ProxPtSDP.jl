@@ -8,19 +8,12 @@ Brian Dandurand
 
 include("utils.jl")
 
-maxNSG = 100000
 CP,PROX0,PROX,LVL1,LVL2,LVLINF,FEAS=0,1,2,3,4,5,6
-tMin = 0.01
-tMax = 20
-tVal = 0.5
-ssc=0.5
 
 
 
-
-function solveNodeProxPt(opfdata,nodeinfo,bundles,ctr_bundles,agg_bundles,K,HEUR,ctr,CTR_PARAM,
+function solveNodeProxPt(opfdata,nodeinfo,params,bundles,ctr_bundles,agg_bundles,K,HEUR,ctr,CTR_PARAM,
 			mpsoln)
-  global tVal
   # OBTAIN SHORTHAND PROBLEM INFORMATION FROM opfdata
     nbuses, nlines, ngens = opfdata.nbuses, opfdata.nlines, opfdata.ngens
     N, L, G = opfdata.N, opfdata.L, opfdata.G 
@@ -124,14 +117,14 @@ function solveNodeProxPt(opfdata,nodeinfo,bundles,ctr_bundles,agg_bundles,K,HEUR
     end
    # METHOD-SPECIFIC SETUP
     if CTR_PARAM == PROX0
-      @objective(mMP, Max, linobj - 0.5*tVal*(
+      @objective(mMP, Max, linobj - 0.5*params.tVal*(
 	  sum( (ctr.soln.α[i] - α[i])^2 + (ctr.soln.β[i] - β[i])^2 + (ctr.soln.γ[i] - γ[i])^2 + (ctr.soln.δ[i] - δ[i])^2 for i in N)
 	  +sum( (ctr.soln.ζpLB[g] - ζpLB[g])^2 + (ctr.soln.ζpUB[g] - ζpUB[g])^2 + (ctr.soln.ζqLB[g] - ζqLB[g])^2 + (ctr.soln.ζqUB[g] - ζqUB[g])^2 for g in G)
 	  +sum( (ctr.soln.x[l]-x[l])^2 + (ctr.soln.λF[l] - λF[l])^2 + (ctr.soln.λT[l] - λT[l])^2 + (ctr.soln.μF[l] - μF[l])^2 + (ctr.soln.μT[l] - μT[l])^2 for l in L)
 	)
       )
     elseif CTR_PARAM == PROX 
-        @objective(mMP, Min, psi + 0.5*tVal*(
+        @objective(mMP, Min, psi + 0.5*params.tVal*(
 	  sum( (ctr.soln.α[i] - α[i])^2 + (ctr.soln.β[i] - β[i])^2 + (ctr.soln.γ[i] - γ[i])^2 + (ctr.soln.δ[i] - δ[i])^2 for i in N)
 	  +sum( (ctr.soln.ζpLB[g] - ζpLB[g])^2 + (ctr.soln.ζpUB[g] - ζpUB[g])^2 + (ctr.soln.ζqLB[g] - ζqLB[g])^2 + (ctr.soln.ζqUB[g] - ζqUB[g])^2 for g in G)
 	  +sum( (ctr.soln.x[l]-x[l])^2 + (ctr.soln.λF[l] - λF[l])^2 + (ctr.soln.λT[l] - λT[l])^2 + (ctr.soln.μF[l] - μF[l])^2 + (ctr.soln.μT[l] - μT[l])^2 for l in L)
@@ -160,7 +153,7 @@ function solveNodeProxPt(opfdata,nodeinfo,bundles,ctr_bundles,agg_bundles,K,HEUR
         @constraint(mMP, gammaLBSlack[i=N], ctr.soln.γ[i] - γ[i] >= -gammaSlack[i])
         @constraint(mMP, deltaUBSlack[i=N], ctr.soln.δ[i] - δ[i] <= deltaSlack[i])
         @constraint(mMP, deltaLBSlack[i=N], ctr.soln.δ[i] - δ[i] >= -deltaSlack[i])
-        @objective(mMP, Max, linobj - tVal*sum(alphaSlack[i] + betaSlack[i] + gammaSlack[i] + deltaSlack[i] for i in N))
+        @objective(mMP, Max, linobj - params.tVal*sum(alphaSlack[i] + betaSlack[i] + gammaSlack[i] + deltaSlack[i] for i in N))
       elseif CTR_PARAM==LVLINF
         @variable(mMP, Slack >= 0)
         @constraint(mMP, alphaUBSlack[i=N], ctr.soln.α[i] - α[i] <= Slack)
@@ -171,9 +164,9 @@ function solveNodeProxPt(opfdata,nodeinfo,bundles,ctr_bundles,agg_bundles,K,HEUR
         @constraint(mMP, gammaLBSlack[i=N], ctr.soln.γ[i] - γ[i] >= -Slack)
         @constraint(mMP, deltaUBSlack[i=N], ctr.soln.δ[i] - δ[i] <= Slack)
         @constraint(mMP, deltaLBSlack[i=N], ctr.soln.δ[i] - δ[i] >= -Slack)
-        @objective(mMP, Max, linobj - tVal*Slack)
+        @objective(mMP, Max, linobj - params.tVal*Slack)
       else
-        @objective(mMP, Max, linobj - 0.5*tVal*sum( ( ctr.soln.α[i] - α[i])^2 + (ctr.soln.β[i] - β[i])^2 + (ctr.soln.γ[i] - γ[i])^2 + (ctr.soln.δ[i] - δ[i])^2 for i in N))
+        @objective(mMP, Max, linobj - 0.5*params.tVal*sum( ( ctr.soln.α[i] - α[i])^2 + (ctr.soln.β[i] - β[i])^2 + (ctr.soln.γ[i] - γ[i])^2 + (ctr.soln.δ[i] - δ[i])^2 for i in N))
       end
     elseif CTR_PARAM == CP
       @objective(mMP, Max, linobj)
@@ -299,8 +292,7 @@ function solveNodeProxPt(opfdata,nodeinfo,bundles,ctr_bundles,agg_bundles,K,HEUR
   return mpsoln.status
 end
 
-function testProxTraj(opfdata,K,HEUR)
-    global tVal, tMin, tMax
+function testProxTraj(opfdata,params,K,HEUR)
     TOL = 1e-5
     time_Start = time_ns()
   # OBTAIN SHORTHAND PROBLEM INFORMATION FROM opfdata
@@ -313,7 +305,7 @@ function testProxTraj(opfdata,K,HEUR)
   # INITIAL ITERATION
     bundles=Dict()
     ncuts=0
-    rho = 0
+    params.rho = 0
     mpsoln=create_bundle(opfdata)
     ctr=create_bundle(opfdata)
     agg_bundles=Dict()
@@ -323,28 +315,28 @@ function testProxTraj(opfdata,K,HEUR)
 
     v_est,ssc_cntr,agg_norm = 1e20,0,0.0
   # MAIN LOOP
-    for kk=1:maxNSG
+    for kk=1:params.maxNSG
      # PHASE I
       tMax = max(tMin,0.5*(comp_norm(opfdata,ctr.eta_sg)^2)/(1+abs(ctr.eta)))
       println("Penalty will be in [",tMin,",",tMax,"].")
-      tVal = (tMax+tMin)/2
+      params.tVal = (tMax+tMin)/2
      # PHASE II
       while true
      # STEP 1
         mpsoln=create_bundle(opfdata)
         while mpsoln.status != MOI.OPTIMAL && mpsoln.status != MOI.LOCALLY_SOLVED
-	  tVal /= 2
-          println("Resolving with reduced prox parameter value: ",tVal)
-          status = solveNodeProxPt(opfdata,node_data,bundles,ctr_bundles,agg_bundles,K,HEUR,ctr,PROX0,mpsoln)
+	  params.tVal /= 2
+          println("Resolving with reduced prox parameter value: ",params.tVal)
+          status = solveNodeProxPt(opfdata,node_data,params,bundles,ctr_bundles,agg_bundles,K,HEUR,ctr,PROX0,mpsoln)
         end	
         if status == MOI.OPTIMAL || status == MOI.LOCALLY_SOLVED
 	  ncuts=length(bundles)
 	  naggcuts=length(bundles)
 	  if ncuts > 0
-	    rho = sum(bundles[n].cut_dual for n in 1:ncuts) + sum(agg_bundles[n].cut_dual for n in 1:naggcuts) 
+	    params.rho = sum(bundles[n].cut_dual for n in 1:ncuts) + sum(agg_bundles[n].cut_dual for n in 1:naggcuts) 
            # COMPUTING LINEARIZATION ERRORS
-	    agg_norm,epshat,rho=update_agg(opfdata,bundles,ctr,mpsoln,sg_agg,ctr_bundles,agg_bundles,agg_bundle)
-            if rho*mpsoln.eta <= ssc*(1/tVal)*agg_norm^2 
+	    agg_norm,epshat,params.rho=update_agg(opfdata,bundles,ctr,mpsoln,sg_agg,ctr_bundles,agg_bundles,agg_bundle)
+            if params.rho*mpsoln.eta <= params.ssc*(1/params.tVal)*agg_norm^2 
 	      break
 	    end
 	  end
@@ -356,7 +348,7 @@ function testProxTraj(opfdata,K,HEUR)
         end
       end
       updateCenter(opfdata,mpsoln,ctr,bundles)
-      @show "Traj",kk,mpsoln.linobjval,mpsoln.eta,ncuts,agg_norm,tVal
+      @show "Traj",kk,mpsoln.linobjval,mpsoln.eta,ncuts,agg_norm,params
       if agg_norm < 1e-2
         println("Convergence to within tolerance: obj, feas ",mpsoln.linobjval," ",mpsoln.eta)
 	break
@@ -366,9 +358,8 @@ function testProxTraj(opfdata,K,HEUR)
     println("Done after ",time_End," seconds.")
 end
 
-function testProxPt0(opfdata,K,HEUR,node_data)
+function testProxPt0(opfdata,params,K,HEUR,node_data)
     println("Applying the algorithm of Delfino and de Oliveira 2018....")
-    global tVal
     time_Start = time_ns()
   # OBTAIN SHORTHAND PROBLEM INFORMATION FROM opfdata
     nbuses, nlines, ngens = opfdata.nbuses, opfdata.nlines, opfdata.ngens
@@ -382,14 +373,14 @@ function testProxPt0(opfdata,K,HEUR,node_data)
     ctr_bundles=Dict()
     agg_bundles=Dict()
     ncuts=0
-    rho,rhoUB = 0,0
+    params.rho,params.rhoUB = 0,0
     mpsoln=create_bundle(opfdata)
     ctr=create_bundle(opfdata)
-    status = solveNodeProxPt(opfdata,node_data,trl_bundles,ctr_bundles,agg_bundles,K,HEUR,ctr,PROX0,mpsoln)
+    status = solveNodeProxPt(opfdata,node_data,params,trl_bundles,ctr_bundles,agg_bundles,K,HEUR,ctr,PROX0,mpsoln)
     while mpsoln.status != MOI.OPTIMAL && mpsoln.status != MOI.LOCALLY_SOLVED
-      tVal /= 2
-      println("Resolving with reduced prox parameter value: ",tVal)
-      status = solveNodeProxPt(opfdata,node_data,trl_bundles,ctr_bundles,agg_bundles,K,HEUR,ctr,PROX0,mpsoln)
+      params.tVal /= 2
+      println("Resolving with reduced prox parameter value: ",params.tVal)
+      status = solveNodeProxPt(opfdata,node_data,params,trl_bundles,ctr_bundles,agg_bundles,K,HEUR,ctr,PROX0,mpsoln)
     end	
     updateCenter(opfdata,mpsoln,ctr,trl_bundles,ctr_bundles,agg_bundles)
     ctr_bundles[1]=mpsoln
@@ -400,49 +391,46 @@ function testProxPt0(opfdata,K,HEUR,node_data)
     v_est,ssc_cntr = 1e20,0
     TOL = 1e-5
   # MAIN LOOP
-    for kk=1:maxNSG
+    for kk=1:params.maxNSG
      # STEP 1
-      #tVal = 10/(10+length(trl_bundles))
       mpsoln=create_bundle(opfdata)
-      status = solveNodeProxPt(opfdata,node_data,trl_bundles,ctr_bundles,agg_bundles,K,HEUR,ctr,PROX0,mpsoln)
+      status = solveNodeProxPt(opfdata,node_data,params,trl_bundles,ctr_bundles,agg_bundles,K,HEUR,ctr,PROX0,mpsoln)
       while mpsoln.status != MOI.OPTIMAL && mpsoln.status != MOI.LOCALLY_SOLVED
-	tVal /= 2
-        println("Resolving with reduced prox parameter value: ",tVal)
-        status = solveNodeProxPt(opfdata,node_data,trl_bundles,ctr_bundles,agg_bundles,K,HEUR,ctr,PROX0,mpsoln)
+	params.tVal /= 2
+        println("Resolving with reduced prox parameter value: ",params.tVal)
+        status = solveNodeProxPt(opfdata,node_data,params,trl_bundles,ctr_bundles,agg_bundles,K,HEUR,ctr,PROX0,mpsoln)
       end	
       if status == MOI.OPTIMAL || status == MOI.LOCALLY_SOLVED
        # STEP 2
         ncuts,nctrcuts,naggcuts = length(trl_bundles),length(ctr_bundles),length(agg_bundles)
 	 # UPDATING RHO AS NECESSARY TO CORRESPOND TO EXACT PENALTY
          # COMPUTING AGGREGATION INFORMATION
-	  agg_norm,epshat,rho=update_agg(opfdata,trl_bundles,ctr,mpsoln,sg_agg,ctr_bundles,agg_bundles,agg_bundle)
-	  if rhoUB < rho
-	    rhoUB = rho + 1
+	  agg_norm,epshat,params.rho=update_agg(opfdata,params,trl_bundles,ctr,mpsoln,sg_agg,ctr_bundles,agg_bundles,agg_bundle)
+	  if params.rhoUB < params.rho
+	    params.rhoUB = params.rho + 1
 	  end
           agg_bundles[1]=aggregateSG(opfdata,trl_bundles,mpsoln,ctr,ctr_bundles,agg_bundles)
           if ctr.eta < TOL && agg_norm < 1e-3 && epshat < 1e-3 
 	    println("Convergence to within tolerance: ")
-	    @show kk,ncuts,ssc_cntr,tVal,rho,rhoUB
+	    @show kk,ncuts,ssc_cntr,params.tVal,params.rho
 	    @show mpsoln.linobjval,mpsoln.eta,agg_norm,epshat
 	    break
           end
          # STEP 3
-	  sscval = ((mpsoln.linobjval - rhoUB*mpsoln.eta)-(ctr.linobjval - rhoUB*ctr.eta))/(mpsoln.linobjval-(ctr.linobjval - rhoUB*ctr.eta)) 
-	  vval = (mpsoln.linobjval-(ctr.linobjval - rhoUB*ctr.eta)) 
-          if sscval >= ssc 
+	  sscval = ((mpsoln.linobjval - params.rhoUB*mpsoln.eta)-(ctr.linobjval - params.rhoUB*ctr.eta))/(mpsoln.linobjval-(ctr.linobjval - params.rhoUB*ctr.eta)) 
+	  vval = (mpsoln.linobjval-(ctr.linobjval - params.rhoUB*ctr.eta)) 
+          if sscval >= params.ssc 
          # UPDATE CENTER VALUES
 	    updateCenter(opfdata,mpsoln,ctr,trl_bundles,ctr_bundles,agg_bundles)
 	    nctrcuts=purgeSG(opfdata,ctr_bundles)
 	    ctr_bundles[nctrcuts+1]=mpsoln
-	    @show kk,ncuts,ssc_cntr,tVal,rho,rhoUB
+	    @show kk,ncuts,ssc_cntr,params.tVal,params.rho
 	    @show mpsoln.linobjval,mpsoln.eta,agg_norm,epshat
 	  else
 	    ncuts=purgeSG(opfdata,trl_bundles)
             trl_bundles[ncuts+1]=mpsoln
           end
-	  #@show kk,mpsoln.linobjval,mpsoln.eta,ncuts,agg_norm,epshat,ssc_cntr,tVal
-          tVal,v_est,ssc_cntr=KiwielRhoUpdate(opfdata,mpsoln,sscval,vval,agg_norm,epshat,rho,tVal,v_est,ssc_cntr)
-	  #tVal = min(tVal,tMax)
+          params.tVal,v_est,ssc_cntr=KiwielRhoUpdate(opfdata,params,mpsoln,sscval,vval,agg_norm,epshat,v_est,ssc_cntr)
       else
 	println("Solver returned: $status")
       end
@@ -452,8 +440,7 @@ function testProxPt0(opfdata,K,HEUR,node_data)
 end
 
 # Implements the approach of Sagastizabal and Solodov 2005
-function testProxPt(opfdata,K,HEUR,node_data)
-    global tVal
+function testProxPt(opfdata,params,K,HEUR,node_data)
     time_Start = time_ns()
   # OBTAIN SHORTHAND PROBLEM INFORMATION FROM opfdata
     nbuses, nlines, ngens = opfdata.nbuses, opfdata.nlines, opfdata.ngens
@@ -471,20 +458,20 @@ function testProxPt(opfdata,K,HEUR,node_data)
 
     v_est,ssc_cntr = 1e20,0
   # MAIN LOOP
-    for kk=1:maxNSG
+    for kk=1:params.maxNSG
      # STEP 1
       mpsoln=create_bundle(opfdata)
-      status = solveNodeProxPt(opfdata,node_data,bundles,K,HEUR,ctr,PROX,mpsoln)
+      status = solveNodeProxPt(opfdata,node_data,params,bundles,K,HEUR,ctr,PROX,mpsoln)
       while status != :Optimal
-	tVal /= 2
-        println("Resolving with reduced prox parameter value: ",tVal)
-        status = solveNodeProxPt(opfdata,node_data,bundles,K,HEUR,ctr,PROX,mpsoln)
+	params.tVal /= 2
+        println("Resolving with reduced prox parameter value: ",params.tVal)
+        status = solveNodeProxPt(opfdata,node_data,params,bundles,K,HEUR,ctr,PROX,mpsoln)
       end	
       if status == :Optimal 
 	comp_agg(opfdata,ctr.soln,mpsoln.soln,sg_agg)
 	agg_norm=comp_norm(opfdata,sg_agg)
-	epshat=max(0,ctr.eta)-mpsoln.psival-(1.0/tVal)*agg_norm^2
-	#del=epshat+0.5*(1.0/tVal)*agg_norm^2
+	epshat=max(0,ctr.eta)-mpsoln.psival-(1.0/params.tVal)*agg_norm^2
+	#del=epshat+0.5*(1.0/params.tVal)*agg_norm^2
         del=ctr.eta-mpsoln.objval
        # STEP 2
         if del < 1e-6 
@@ -494,7 +481,7 @@ function testProxPt(opfdata,K,HEUR,node_data)
        # STEP 3
 	hk = max(ctr.linobjval-mpsoln.linobjval,mpsoln.eta)
 	sscval = max(0,ctr.eta) - hk
-        if hk <= max(0,ctr.eta) - ssc*del || kk==1
+        if hk <= max(0,ctr.eta) - params.ssc*del || kk==1
           # UPDATE CENTER VALUES
 	    updateCenter(opfdata,mpsoln,ctr,bundles)
 	    #purgeSG(opfdata,bundles)
@@ -511,13 +498,13 @@ function testProxPt(opfdata,K,HEUR,node_data)
 	      ncuts = length(bundles)
               bundles[ncuts+1]=mpsoln
 	    end
-            @show "Sagadov",kk,ctr.linobjval,ctr.eta,epshat,del,hk,length(bundles),tVal
+            @show "Sagadov",kk,ctr.linobjval,ctr.eta,epshat,del,hk,length(bundles),params
 	else
 	  ncuts = length(bundles)
           bundles[ncuts+1]=mpsoln
         end
        # STEP 4
-        #tVal,v_est,ssc_cntr = KiwielRhoUpdate(opfdata,mpsoln,sscval,del,agg_norm,epshat,tVal,v_est,ssc_cntr)
+        #tVal,v_est,ssc_cntr = KiwielRhoUpdate(opfdata,params,mpsoln,sscval,del,agg_norm,epshat,v_est,ssc_cntr)
       else
 	#println("Solve status: $status")
 	#break
@@ -528,8 +515,7 @@ function testProxPt(opfdata,K,HEUR,node_data)
 end
 
 #Implements the approach of De Oliveira 2016
-function testLevelBM(opfdata,K,HEUR)
-  global tVal
+function testLevelBM(opfdata,params,K,HEUR)
     time_Start = time_ns()
   # OBTAIN SHORTHAND PROBLEM INFORMATION FROM opfdata
     nbuses, nlines, ngens = opfdata.nbuses, opfdata.nlines, opfdata.ngens
@@ -548,7 +534,7 @@ function testLevelBM(opfdata,K,HEUR)
     prox_term=LVLINF
 
     cpsoln=create_bundle(opfdata)
-    solveNodeProxPt(opfdata,node_data,bundles,K,HEUR,ctr,CP,cpsoln)
+    solveNodeProxPt(opfdata,node_data,params,bundles,K,HEUR,ctr,CP,cpsoln)
     if cpsoln.status == :Optimal 
 	optUB = cpsoln.objval
         hkctr = max(optUB,0)
@@ -557,7 +543,7 @@ function testLevelBM(opfdata,K,HEUR)
   # MAIN LOOP
     hkctr_updated = false
     optub_updated = false
-    for kk=1:maxNSG
+    for kk=1:params.maxNSG
      # STEP 1
       hkval = max(optUB - ctr.linobjval,ctr.eta)
       bestsoln = ctr
@@ -570,14 +556,14 @@ function testLevelBM(opfdata,K,HEUR)
 	  bestIdx=pp
 	end
       end
-      node_data.nodeBd = optUB - ssc*hkval
+      node_data.nodeBd = optUB - params.ssc*hkval
       if hkval < 1e-6
 	println("Convergence to within tolerance.")
 	break
       end
 
      # STEP 2
-        if hkval <= (1-ssc)*hkctr 
+        if hkval <= (1-params.ssc)*hkctr 
           hkctr = hkval
           hkctr_updated = true
           # UPDATE CENTER VALUES
@@ -588,18 +574,18 @@ function testLevelBM(opfdata,K,HEUR)
         end
 
      # STEP 3
-      cpstatus = solveNodeProxPt(opfdata,node_data,bundles,K,HEUR,ctr,CP,cpsoln)
+      cpstatus = solveNodeProxPt(opfdata,node_data,params,bundles,K,HEUR,ctr,CP,cpsoln)
       if cpsoln.status != :Optimal
 	println("FLAG! cpsoln.status = ",cpsoln.status)
       end
       if node_data.nodeBd-cpsoln.linobjval <= 0.0
-	tVal = 0.1
+	params.tVal = 0.1
         mpsoln=create_bundle(opfdata)
-        status=solveNodeProxPt(opfdata,node_data,bundles,K,HEUR,ctr,prox_term,mpsoln)
+        status=solveNodeProxPt(opfdata,node_data,params,bundles,K,HEUR,ctr,prox_term,mpsoln)
         while status != :Optimal
-	  tVal /= 2
-          println("Resolving with reduced prox parameter value: ",tVal)
-          status=solveNodeProxPt(opfdata,node_data,bundles,K,HEUR,ctr,prox_term,mpsoln)
+	  params.tVal /= 2
+          println("Resolving with reduced prox parameter value: ",params.tVal)
+          status=solveNodeProxPt(opfdata,node_data,params,bundles,K,HEUR,ctr,prox_term,mpsoln)
         end	
 	if mpsoln.status != :Optimal
 	  println("Taking recourse since mpsoln does not have an optimal solution for MP. Feas: ",node_data.nodeBd - mpsoln.linobjval," val: ",node_data.nodeBd - cpsoln.linobjval)

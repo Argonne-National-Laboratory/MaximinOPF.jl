@@ -84,6 +84,8 @@ x_val=zeros(opfdata.nlines)
 x_lbs[L]=x_val[L]
 x_ubs[L]=x_val[L]
 node_data=NodeInfo(x_lbs,x_ubs,1e20)
+params=Params(100000,0.01,20,0.5,0.0,0.0,0.5,1e-5)
+
 
 if FORM == ECP 
   include("lECP.jl")
@@ -92,7 +94,7 @@ elseif FORM == ProxPtSDP
   include("ProxPtSDP.jl")
   #testLevelBM(opfdata,K,HEUR,node_data)
   #testProxPt(opfdata,K,HEUR,node_data)
-  testProxPt0(opfdata,K,HEUR,node_data)
+  testProxPt0(opfdata,params,K,HEUR,node_data)
   #testProxTraj(opfdata,K,HEUR,node_data)
 elseif FORM == AC
   include("DualAC.jl")

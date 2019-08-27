@@ -5,6 +5,16 @@ mutable struct NodeInfo
   x_ubs::Array{Float64}
   nodeBd::Float64
 end
+mutable struct Params
+  maxNSG::Int
+  tMin::Float64
+  tMax::Float64
+  tVal::Float64
+  rho::Float64
+  rhoUB::Float64
+  ssc::Float64
+  tol::Float64
+end
 mutable struct Soln
   α::Array{Float64}
   β::Array{Float64}
@@ -43,22 +53,21 @@ function cpy_soln(opfdata,fromSoln,toSoln)
   toSoln.μT[L] = fromSoln.μT[L]
 end
 
-function comp_agg(opfdata,ctr,trl,agg)
-  global tVal
+function comp_agg(opfdata,params,ctr,trl,agg)
   nbuses, nlines, ngens, N, L, G = opfdata.nbuses, opfdata.nlines, opfdata.ngens, opfdata.N, opfdata.L, opfdata.G 
-  agg.α[N] = tVal*(ctr.α[N]-trl.α[N])
-  agg.β[N] = tVal*(ctr.β[N]-trl.β[N])
-  agg.γ[N] = tVal*(ctr.γ[N]-trl.γ[N])
-  agg.δ[N] = tVal*(ctr.δ[N]-trl.δ[N])
-  agg.ζpLB[G] = tVal*(ctr.ζpLB[G]-trl.ζpLB[G])
-  agg.ζpUB[G] = tVal*(ctr.ζpUB[G]-trl.ζpUB[G])
-  agg.ζqLB[G] = tVal*(ctr.ζqLB[G]-trl.ζqLB[G])
-  agg.ζqUB[G] = tVal*(ctr.ζqUB[G]-trl.ζqUB[G])
-  agg.x[L] = tVal*(ctr.x[L]-trl.x[L])
-  agg.λF[L] = tVal*(ctr.λF[L]-trl.λF[L])
-  agg.λT[L] = tVal*(ctr.λT[L]-trl.λT[L])
-  agg.μF[L] = tVal*(ctr.μF[L]-trl.μF[L])
-  agg.μT[L] = tVal*(ctr.μT[L]-trl.μT[L])
+  agg.α[N] = params.tVal*(ctr.α[N]-trl.α[N])
+  agg.β[N] = params.tVal*(ctr.β[N]-trl.β[N])
+  agg.γ[N] = params.tVal*(ctr.γ[N]-trl.γ[N])
+  agg.δ[N] = params.tVal*(ctr.δ[N]-trl.δ[N])
+  agg.ζpLB[G] = params.tVal*(ctr.ζpLB[G]-trl.ζpLB[G])
+  agg.ζpUB[G] = params.tVal*(ctr.ζpUB[G]-trl.ζpUB[G])
+  agg.ζqLB[G] = params.tVal*(ctr.ζqLB[G]-trl.ζqLB[G])
+  agg.ζqUB[G] = params.tVal*(ctr.ζqUB[G]-trl.ζqUB[G])
+  agg.x[L] = params.tVal*(ctr.x[L]-trl.x[L])
+  agg.λF[L] = params.tVal*(ctr.λF[L]-trl.λF[L])
+  agg.λT[L] = params.tVal*(ctr.λT[L]-trl.λT[L])
+  agg.μF[L] = params.tVal*(ctr.μF[L]-trl.μF[L])
+  agg.μT[L] = params.tVal*(ctr.μT[L]-trl.μT[L])
 end
 function comp_norm(opfdata,soln)
   nbuses, nlines, ngens, N, L, G = opfdata.nbuses, opfdata.nlines, opfdata.ngens, opfdata.N, opfdata.L, opfdata.G 

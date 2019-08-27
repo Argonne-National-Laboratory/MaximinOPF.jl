@@ -67,59 +67,57 @@ function get_chordal_extension_complex(opfdata)
     return C
 end
 
-function KiwielRhoUpdate(opfdata,mpsoln,sscval,vval,agg_norm,epshat,rho,tVal,v_est,ssc_cntr)
-  global ssc
-  nextTVal=tVal
-  oldTVal=tVal
-  if sscval >= ssc
-    if sscval >= 0.5 && ssc_cntr > 0
-      nextTVal = 2*tVal*(1-sscval)
+function KiwielRhoUpdate(opfdata,params,mpsoln,sscval,vval,agg_norm,epshat,v_est,ssc_cntr)
+  nextTVal=params.tVal
+  oldTVal=params.tVal
+  if sscval >= params.ssc
+    if sscval >= max(params.ssc,0.5) && ssc_cntr > 0
+      nextTVal = 2*params.tVal*(1-sscval)
     elseif ssc_cntr > 3
-      nextTVal = tVal/2
+      nextTVal = params.tVal/2
     end
-    tVal = max(nextTVal, tVal/10, tMin)
+    params.tVal = max(nextTVal, params.tVal/10, params.tMin)
     v_est = max(v_est,2*vval)
     ssc_cntr = max(ssc_cntr+1,1)
-    if oldTVal != tVal
+    if oldTVal != params.tVal
       ssc_cntr = 1
     end
   else
     v_est=min(v_est,agg_norm+epshat)
-#@show rho*mpsoln.linerr,max(v_est,10*vval),ssc_cntr
-    if rho*mpsoln.linerr > max(v_est,10*vval) && ssc_cntr < -3
-      nextTVal = 2*tVal*(1-sscval)
+    if params.rho*mpsoln.linerr > max(v_est,10*vval) && ssc_cntr < -3
+      nextTVal = 2*params.tVal*(1-sscval)
     end
-    tVal = min(nextTVal,10*tVal)
+    params.tVal = min(nextTVal,10*params.tVal)
     ssc_cntr = min(ssc_cntr-1,-1)
-    if oldTVal != tVal
+    if oldTVal != params.tVal
       ssc_cntr = -1	
     end
   end
-  return tVal,v_est,ssc_cntr
+  return params.tVal,v_est,ssc_cntr
 end
 
-function update_agg(opfdata,bundles,ctr,mpsoln,sg_agg,ctr_bundles,agg_bundles,agg_bundle)
+function update_agg(opfdata,params,bundles,ctr,mpsoln,sg_agg,ctr_bundles,agg_bundles,agg_bundle)
   nbuses, nlines, ngens = opfdata.nbuses, opfdata.nlines, opfdata.ngens
   N, L, G = opfdata.N, opfdata.L, opfdata.G 
-  comp_agg(opfdata,ctr.soln,mpsoln.soln,sg_agg)
+  comp_agg(opfdata,params,ctr.soln,mpsoln.soln,sg_agg)
   agg_norm=comp_norm(opfdata,sg_agg)
-  rho = 0 #ctr.cut_dual
+  params.rho = 0 #ctr.cut_dual
   ncuts,naggcuts=length(bundles),length(agg_bundles)
   if ncuts > 0
     #@show sum(bundles[n].cut_dual for n in 1:ncuts) 
-    rho += sum(bundles[n].cut_dual for n in 1:ncuts) 
+    params.rho += sum(bundles[n].cut_dual for n in 1:ncuts) 
   end
   if naggcuts > 0
     #@show sum(agg_bundles[n].cut_dual for n in 1:naggcuts)
-    rho += sum(agg_bundles[n].cut_dual for n in 1:naggcuts)
+    params.rho += sum(agg_bundles[n].cut_dual for n in 1:naggcuts)
   end
-  epshat = mpsoln.linobjval - (ctr.linobjval - rho*ctr.eta)
+  epshat = mpsoln.linobjval - (ctr.linobjval - params.rho*ctr.eta)
   - (dot(sg_agg.α[N],(mpsoln.soln.α[N]-ctr.soln.α[N])) - dot(sg_agg.β[N],(mpsoln.soln.β[N]-ctr.soln.β[N])) 
   + dot(sg_agg.γ[N],(mpsoln.soln.γ[N]-ctr.soln.γ[N])) - dot(sg_agg.δ[N],(mpsoln.soln.δ[N]-ctr.soln.δ[N])) 
   + dot(sg_agg.λF[L],(mpsoln.soln.λF[L] - ctr.soln.λF[L])) - dot(sg_agg.λT[L],(mpsoln.soln.λT[L] - ctr.soln.λT[L]))
   + dot(sg_agg.x[L], (mpsoln.soln.x[L] - ctr.soln.x[L]))
   + dot(sg_agg.μF[L],(mpsoln.soln.μF[L] - ctr.soln.μF[L])) - dot(sg_agg.μT[L],(mpsoln.soln.μT[L] - ctr.soln.μT[L])) )
-  return agg_norm,epshat,rho
+  return agg_norm,epshat,params.rho
 end
 
 function updateCenter(opfdata,mpsoln,ctr,trl_bundles,ctr_bundles,agg_bundles)
