@@ -20,12 +20,14 @@ using ReverseDiffSparse
 
 
 include("opfdata.jl")
+include("typedefs.jl")
 #CASE_NUM in {9,30,57,118,300,1354pegase,2869pegase}
 MAX_TIME = 24*3600 # in seconds
 
 #TOL = 1e-8  #feasibility tolerance for lazy constraints
 useLocalCuts = false
 verboseOut = false
+
 
 ######### READING ARGS #############
 ## Default arguments
@@ -55,9 +57,10 @@ end
 ############# DONE READING ARGS ###############
 
 print("Loading data ... "); start_load = time_ns()
-  # Load the bus system topology
-    opfdata = opf_loaddata(CASE_NUM)
-print("finished after ",(time_ns()-start_load)/1e9," seconds.\n")
+# Load the bus system topology
+  opfdata = opf_loaddata(CASE_NUM)
+print("finished loading the data after ",(time_ns()-start_load)/1e9," seconds.\n")
+println("Now computing...")
 
 include("EvalDSP.jl") ### Initialize the defender subproblems with power flow balance enforced
 
@@ -71,56 +74,30 @@ function printX(opfdata,x_soln)
   end
 end
 
-  # Import the appropriate subproblem formulation
+# Import the appropriate subproblem formulation
+N, L, G = opfdata.N, opfdata.L, opfdata.G 
+x_val=zeros(opfdata.nlines)
+    #x_val[41],x_val[80]=1,1
+    x_val[8],x_val[9],x_val[10],x_val[40]=1,1,1,1
+    x_lbs=zeros(opfdata.nlines)
+    x_ubs=ones(opfdata.nlines)
+x_lbs[L]=x_val[L]
+x_ubs[L]=x_val[L]
+node_data=NodeInfo(x_lbs,x_ubs,1e20)
+
 if FORM == ECP 
   include("lECP.jl")
   solveLECP(opfdata,K,HEUR)
 elseif FORM == ProxPtSDP
   include("ProxPtSDP.jl")
-  #testLevelBM(opfdata,K,HEUR)
-  #testProxPt(opfdata,K,HEUR)
-  testProxPt0(opfdata,K,HEUR)
-  #testProxTraj(opfdata,K,HEUR)
+  #testLevelBM(opfdata,K,HEUR,node_data)
+  #testProxPt(opfdata,K,HEUR,node_data)
+  testProxPt0(opfdata,K,HEUR,node_data)
+  #testProxTraj(opfdata,K,HEUR,node_data)
 elseif FORM == AC
   include("DualAC.jl")
 elseif FORM == SOCP
   include("DualSOCP.jl")
 else
-   x_val = zeros(opfdata.nlines)
-   x_val .= 0; x_val[45]=1
-   @show solveFullModelSDP(opfdata,x_val,true)
-   x_val .= 0; x_val[63]=1; x_val[65]=1
-   @show solveFullModelSDP(opfdata,x_val,true)
-   x_val .= 0; x_val[38]=1; x_val[41]=1; x_val[80]=1
-   @show solveFullModelSDP(opfdata,x_val,true)
-   x_val .= 0; x_val[33]=1; x_val[41]=1; x_val[48]=1; x_val[80]=1
-   @show solveFullModelSDP(opfdata,x_val,true)
-
-   x_val .= 0; x_val[45]=1
-   @show solveFullModelSOCP(opfdata,x_val)
-   x_val .= 0; x_val[63]=1; x_val[65]=1
-   @show solveFullModelSOCP(opfdata,x_val)
-   x_val .= 0; x_val[38]=1; x_val[41]=1; x_val[80]=1
-   @show solveFullModelSOCP(opfdata,x_val)
-   x_val .= 0; x_val[33]=1; x_val[41]=1; x_val[48]=1; x_val[80]=1
-   @show solveFullModelSOCP(opfdata,x_val)
-
-   x_val .= 0; x_val[41]=1
-   @show solveFullModelSDP(opfdata,x_val,false)
-   x_val .= 0; x_val[41]=1; x_val[80]=1
-   @show solveFullModelSDP(opfdata,x_val,false)
-   x_val .= 0; x_val[33]=1; x_val[41]=1; x_val[80]=1
-   @show solveFullModelSDP(opfdata,x_val,false)
-   x_val .= 0; x_val[60]=1; x_val[65]=1; x_val[66]=1; x_val[72]=1
-   @show solveFullModelSDP(opfdata,x_val,false)
-
-   x_val .= 0; x_val[41]=1
-   @show solveFullModelSDP(opfdata,x_val,true)
-   x_val .= 0; x_val[41]=1; x_val[80]=1
-   @show solveFullModelSDP(opfdata,x_val,true)
-   x_val .= 0; x_val[33]=1; x_val[41]=1; x_val[80]=1
-   @show solveFullModelSDP(opfdata,x_val,true)
-   x_val .= 0; x_val[60]=1; x_val[65]=1; x_val[66]=1; x_val[72]=1
-   @show solveFullModelSDP(opfdata,x_val,true)
 end
 
