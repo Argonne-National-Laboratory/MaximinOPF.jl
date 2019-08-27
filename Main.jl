@@ -7,8 +7,9 @@ Brian Dandurand
 =#
 
 using JuMP
-using CPLEX, Ipopt, SCS 
-using Mosek
+#using CPLEX, Ipopt, SCS 
+using Ipopt 
+#using Mosek
 using Arpack
 using DelimitedFiles
 using Printf
@@ -56,7 +57,7 @@ end
 print("Loading data ... "); start_load = time_ns()
   # Load the bus system topology
     opfdata = opf_loaddata(CASE_NUM)
-@printf("%.2f seconds\n", (time_ns()-start_load)/1e9)
+print("finished after ",(time_ns()-start_load)/1e9," seconds.\n")
 
 include("EvalDSP.jl") ### Initialize the defender subproblems with power flow balance enforced
 

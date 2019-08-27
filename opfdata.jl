@@ -243,7 +243,6 @@ function opf_loaddata(case_name, lineOff=Line())
         Pmin[g] = generators[g].Pmin; Pmax[g] = generators[g].Pmax
         Qmin[g] = generators[g].Qmin; Qmax[g] = generators[g].Qmax
       end
-    println("Done with initial setup.")
   # build a dictionary between buses ids and their indexes
     busIdx = mapBusIdToIdx(buses)
   # set up the fromLines and toLines for each bus
