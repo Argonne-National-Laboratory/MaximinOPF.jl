@@ -96,28 +96,35 @@ function KiwielRhoUpdate(opfdata,params,mpsoln,sscval,vval,agg_norm,epshat,v_est
   return params.tVal,v_est,ssc_cntr
 end
 
-function update_agg(opfdata,params,bundles,ctr,mpsoln,sg_agg,ctr_bundles,agg_bundles,agg_bundle)
-  nbuses, nlines, ngens = opfdata.nbuses, opfdata.nlines, opfdata.ngens
+function update_agg(opfdata,params,ctr,mpsoln,sg_agg)
   N, L, G = opfdata.N, opfdata.L, opfdata.G 
   comp_agg(opfdata,params,ctr.soln,mpsoln.soln,sg_agg)
   agg_norm=comp_norm(opfdata,sg_agg)
-  params.rho = 0 #ctr.cut_dual
-  ncuts,naggcuts=length(bundles),length(agg_bundles)
-  if ncuts > 0
-    #@show sum(bundles[n].cut_dual for n in 1:ncuts) 
-    params.rho += sum(bundles[n].cut_dual for n in 1:ncuts) 
+  return agg_norm
+end
+
+function update_rho(params,trl_bundles,ctr_bundles,agg_bundles)
+  params.rho = 0 
+  ntrlcuts,nctrcuts,naggcuts=length(trl_bundles),length(ctr_bundles),length(agg_bundles)
+  if ntrlcuts > 0
+    params.rho += sum(trl_bundles[n].cut_dual for n in 1:ntrlcuts) 
+  end
+  if nctrcuts > 0
+    params.rho += sum(ctr_bundles[n].cut_dual for n in 1:nctrcuts) 
   end
   if naggcuts > 0
-    #@show sum(agg_bundles[n].cut_dual for n in 1:naggcuts)
     params.rho += sum(agg_bundles[n].cut_dual for n in 1:naggcuts)
   end
-  epshat = mpsoln.linobjval - (ctr.linobjval - params.rho*ctr.eta)
+end
+
+function compute_epshat(opfdata,params,mpsoln,ctr,sg_agg)
+  N, L, G = opfdata.N, opfdata.L, opfdata.G 
+  return mpsoln.linobjval - (ctr.linobjval - params.rho*ctr.eta)
   - (dot(sg_agg.α[N],(mpsoln.soln.α[N]-ctr.soln.α[N])) - dot(sg_agg.β[N],(mpsoln.soln.β[N]-ctr.soln.β[N])) 
   + dot(sg_agg.γ[N],(mpsoln.soln.γ[N]-ctr.soln.γ[N])) - dot(sg_agg.δ[N],(mpsoln.soln.δ[N]-ctr.soln.δ[N])) 
   + dot(sg_agg.λF[L],(mpsoln.soln.λF[L] - ctr.soln.λF[L])) - dot(sg_agg.λT[L],(mpsoln.soln.λT[L] - ctr.soln.λT[L]))
   + dot(sg_agg.x[L], (mpsoln.soln.x[L] - ctr.soln.x[L]))
   + dot(sg_agg.μF[L],(mpsoln.soln.μF[L] - ctr.soln.μF[L])) - dot(sg_agg.μT[L],(mpsoln.soln.μT[L] - ctr.soln.μT[L])) )
-  return agg_norm,epshat,params.rho
 end
 
 function updateCenter(opfdata,mpsoln,ctr,trl_bundles,ctr_bundles,agg_bundles)
@@ -185,7 +192,7 @@ function solveEta0Eigs(opfdata,soln,vR,vI)
       fromBus,toBus = opfdata.fromBus, opfdata.toBus
       H=spzeros(2*nbuses,2*nbuses)
       updateHess(opfdata,soln,H)
-      E=eigs(H,nev=1,which=:SR, maxiter=100000, tol=1e-6)
+      E=eigs(H,nev=1,which=:SR, maxiter=100000, tol=1e-10)
       η0Val = E[1][1]
       for i in N
         vR[i] = E[2][i,1]; vI[i] = E[2][nbuses+i,1]

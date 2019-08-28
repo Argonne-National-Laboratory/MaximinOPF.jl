@@ -9,7 +9,7 @@ Brian Dandurand
 using JuMP
 #using CPLEX, Ipopt, SCS 
 using Ipopt 
-#using Mosek
+using Mosek,MosekTools
 using Arpack
 using DelimitedFiles
 using Printf

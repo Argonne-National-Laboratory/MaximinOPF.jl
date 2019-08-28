@@ -39,6 +39,8 @@ function solveNodeProxPt(opfdata,nodeinfo,params,bundles,ctr_bundles,agg_bundles
       )
 =#
     mMP = Model(with_optimizer(Ipopt.Optimizer))
+    #mMP = Model(with_optimizer(Mosek.Optimizer,MSK_IPAR_LOG=0,MSK_IPAR_NUM_THREADS=4))
+	### Got error indicating lack of support for quadratic objective ???
 
     # each x[l] is either 0 (line l active) or 1 (line l is cut)
       @variable(mMP, nodeinfo.x_lbs[l] <= x[l=L] <= nodeinfo.x_ubs[l])
@@ -228,15 +230,16 @@ function solveNodeProxPt(opfdata,nodeinfo,params,bundles,ctr_bundles,agg_bundles
       end
 
       computeSG(opfdata,mpsoln) #This computes mpsoln.eta 
-      mpsoln.linerr = -ctr.eta + mpsoln.eta 
-	  - dot( mpsoln.eta_sg.α[N], (ctr.soln.α[N]-mpsoln.soln.α[N]) )
-	  - dot( mpsoln.eta_sg.β[N], (ctr.soln.β[N]-mpsoln.soln.β[N]) )
-	  - dot( mpsoln.eta_sg.γ[N], (ctr.soln.γ[N]-mpsoln.soln.γ[N]) )
-	  - dot( mpsoln.eta_sg.δ[N], (ctr.soln.δ[N]-mpsoln.soln.δ[N]) )
-          - dot( mpsoln.eta_sg.λF[L],(ctr.soln.λF[L]-mpsoln.soln.λF[L]) )
-          - dot( mpsoln.eta_sg.λT[L],(ctr.soln.λT[L]-mpsoln.soln.λT[L]) )
-          - dot( mpsoln.eta_sg.μF[L],(ctr.soln.μF[L]-mpsoln.soln.μF[L]) )
-          - dot( mpsoln.eta_sg.μT[L],(ctr.soln.μT[L]-mpsoln.soln.μT[L]) )
+      mpsoln.linerr = ctr.eta - mpsoln.eta 
+	  + dot( mpsoln.eta_sg.α[N], (ctr.soln.α[N]-mpsoln.soln.α[N]) )
+	  + dot( mpsoln.eta_sg.β[N], (ctr.soln.β[N]-mpsoln.soln.β[N]) )
+	  + dot( mpsoln.eta_sg.γ[N], (ctr.soln.γ[N]-mpsoln.soln.γ[N]) )
+	  + dot( mpsoln.eta_sg.δ[N], (ctr.soln.δ[N]-mpsoln.soln.δ[N]) )
+          + dot( mpsoln.eta_sg.λF[L],(ctr.soln.λF[L]-mpsoln.soln.λF[L]) )
+          + dot( mpsoln.eta_sg.λT[L],(ctr.soln.λT[L]-mpsoln.soln.λT[L]) )
+          + dot( mpsoln.eta_sg.μF[L],(ctr.soln.μF[L]-mpsoln.soln.μF[L]) )
+          + dot( mpsoln.eta_sg.μT[L],(ctr.soln.μT[L]-mpsoln.soln.μT[L]) )
+@show mpsoln.linerr
 
       for n=1:length(bundles)
         etaval=-getvalue(-bundles[n].eta 
@@ -405,7 +408,9 @@ function testProxPt0(opfdata,params,K,HEUR,node_data)
         ncuts,nctrcuts,naggcuts = length(trl_bundles),length(ctr_bundles),length(agg_bundles)
 	 # UPDATING RHO AS NECESSARY TO CORRESPOND TO EXACT PENALTY
          # COMPUTING AGGREGATION INFORMATION
-	  agg_norm,epshat,params.rho=update_agg(opfdata,params,trl_bundles,ctr,mpsoln,sg_agg,ctr_bundles,agg_bundles,agg_bundle)
+          agg_norm = update_agg(opfdata,params,ctr,mpsoln,sg_agg)
+          update_rho(params,trl_bundles,ctr_bundles,agg_bundles)
+          epshat = compute_epshat(opfdata,params,mpsoln,ctr,sg_agg)
 	  if params.rhoUB < params.rho
 	    params.rhoUB = params.rho + 1
 	  end
@@ -413,24 +418,24 @@ function testProxPt0(opfdata,params,K,HEUR,node_data)
           if ctr.eta < TOL && agg_norm < 1e-3 && epshat < 1e-3 
 	    println("Convergence to within tolerance: ")
 	    @show kk,ncuts,ssc_cntr,params.tVal,params.rho
-	    @show mpsoln.linobjval,mpsoln.eta,agg_norm,epshat
+	    @show mpsoln.linobjval,mpsoln.eta,agg_norm,epshat,mpsoln.linerr
 	    break
           end
          # STEP 3
 	  sscval = ((mpsoln.linobjval - params.rhoUB*mpsoln.eta)-(ctr.linobjval - params.rhoUB*ctr.eta))/(mpsoln.linobjval-(ctr.linobjval - params.rhoUB*ctr.eta)) 
 	  vval = (mpsoln.linobjval-(ctr.linobjval - params.rhoUB*ctr.eta)) 
+          params.tVal,v_est,ssc_cntr=KiwielRhoUpdate(opfdata,params,mpsoln,sscval,vval,agg_norm,epshat,v_est,ssc_cntr)
           if sscval >= params.ssc 
          # UPDATE CENTER VALUES
 	    updateCenter(opfdata,mpsoln,ctr,trl_bundles,ctr_bundles,agg_bundles)
 	    nctrcuts=purgeSG(opfdata,ctr_bundles)
 	    ctr_bundles[nctrcuts+1]=mpsoln
 	    @show kk,ncuts,ssc_cntr,params.tVal,params.rho
-	    @show mpsoln.linobjval,mpsoln.eta,agg_norm,epshat
+	    @show mpsoln.linobjval,mpsoln.eta,agg_norm,epshat,mpsoln.linerr
 	  else
 	    ncuts=purgeSG(opfdata,trl_bundles)
             trl_bundles[ncuts+1]=mpsoln
           end
-          params.tVal,v_est,ssc_cntr=KiwielRhoUpdate(opfdata,params,mpsoln,sscval,vval,agg_norm,epshat,v_est,ssc_cntr)
       else
 	println("Solver returned: $status")
       end
