@@ -19,8 +19,8 @@ using LinearAlgebra
 using ReverseDiffSparse
 
 
-include("opfdata.jl")
-include("typedefs.jl")
+include("../src/opfdata.jl")
+include("../src/typedefs.jl")
 #CASE_NUM in {9,30,57,118,300,1354pegase,2869pegase}
 MAX_TIME = 24*3600 # in seconds
 
@@ -62,7 +62,7 @@ print("Loading data ... "); start_load = time_ns()
 print("finished loading the data after ",(time_ns()-start_load)/1e9," seconds.\n")
 println("Now computing...")
 
-include("EvalDSP.jl") ### Initialize the defender subproblems with power flow balance enforced
+include("../src/EvalDSP.jl") ### Initialize the defender subproblems with power flow balance enforced
 
 
 
@@ -84,22 +84,22 @@ x_val=zeros(opfdata.nlines)
 #x_lbs[L]=x_val[L]
 #x_ubs[L]=x_val[L]
 node_data=NodeInfo(x_lbs,x_ubs,1e20)
-params=Params(100000,0.01,20,0.5,0.0,0.0,0.5,1e-5)
+params=Params(100000,0.01,20,0.5,0.0,0.0,0.25,0,1e-5)
 
 
 if FORM == ECP 
-  include("lECP.jl")
+  include("../src/lECP.jl")
   solveLECP(opfdata,K,HEUR)
 elseif FORM == ProxPtSDP
-  include("ProxPtSDP.jl")
+  include("../src/ProxPtSDP.jl")
   #testLevelBM(opfdata,K,HEUR,node_data)
   #testProxPt(opfdata,K,HEUR,node_data)
   testProxPt0(opfdata,params,K,HEUR,node_data)
   #testProxTraj(opfdata,K,HEUR,node_data)
 elseif FORM == AC
-  include("DualAC.jl")
+  include("../src/DualAC.jl")
 elseif FORM == SOCP
-  include("DualSOCP.jl")
+  include("../src/DualSOCP.jl")
 else
 end
 

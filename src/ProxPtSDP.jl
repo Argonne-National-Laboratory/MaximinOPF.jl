@@ -6,7 +6,7 @@ Kibaek Kim
 Brian Dandurand
 =#
 
-include("utils.jl")
+include("../src/utils.jl")
 
 CP,PROX0,PROX,LVL1,LVL2,LVLINF,FEAS=0,1,2,3,4,5,6
 
@@ -424,31 +424,40 @@ function testProxPt0(opfdata,params,K,HEUR,node_data)
          # STEP 3
 	  sscval = ((mpsoln.linobjval - params.rhoUB*mpsoln.eta)-(ctr.linobjval - params.rhoUB*ctr.eta))/(mpsoln.linobjval-(ctr.linobjval - params.rhoUB*ctr.eta)) 
 	  vval = (mpsoln.linobjval-(ctr.linobjval - params.rhoUB*ctr.eta)) 
-          #params.tVal,v_est,ssc_cntr=KiwielRhoUpdate(opfdata,params,ctr,mpsoln,sscval,vval,agg_norm,epshat,agg_bundles[1],v_est,ssc_cntr)
+          params.tVal,v_est,ssc_cntr=KiwielRhoUpdate(opfdata,params,ctr,mpsoln,sscval,vval,agg_norm,epshat,agg_bundles[1],v_est,ssc_cntr)
+	  if mpsoln.linerr < 1e-5 || mpsoln.eta < 1e-5
+	    params.tVal /= 2
+	  end
           if sscval >= params.ssc 
          # UPDATE CENTER VALUES
-	    if testSchrammZoweSSII(opfdata,params,ctr,mpsoln)
-	      nctrcuts=purgeSG(opfdata,ctr_bundles)
-	      ctr_bundles[nctrcuts+1]=mpsoln
-	      updateCenter(opfdata,mpsoln,ctr,trl_bundles,ctr_bundles,agg_bundles)
+#=
+	    if testSchrammZoweSSII(opfdata,params,ctr,mpsoln) || ssc_cntr > 20
     	      tL,tU=params.tMin,params.tMax
-	      @show kk,ncuts,ssc_cntr,params.tVal,params.rho
-	      @show mpsoln.linobjval,mpsoln.eta,agg_norm,epshat
 	    else
 	      tU = params.tVal    
 	      params.tVal = (tU+tL)/2.0
-	      #@show params.tVal
+	      ssc_cntr += 1
+	      @show params.tVal
 	    end
+=#
+	    nctrcuts=purgeSG(opfdata,ctr_bundles)
+	    ctr_bundles[nctrcuts+1]=mpsoln
+	    updateCenter(opfdata,mpsoln,ctr,trl_bundles,ctr_bundles,agg_bundles)
+	    @show kk,ncuts,ssc_cntr,params.tVal,params.rho
+	    @show mpsoln.linobjval,mpsoln.eta,agg_norm,epshat,mpsoln.linerr
 	  else
-	    if testSchrammZoweNSII(opfdata,params,ctr,mpsoln,agg_bundles)
-	      ncuts=purgeSG(opfdata,trl_bundles)
-              trl_bundles[ncuts+1]=mpsoln
+#=
+	    if testSchrammZoweNSII(opfdata,params,ctr,mpsoln,agg_bundles) || ssc_cntr > 20
     	      tL,tU=params.tMin,params.tMax
 	    else
 	      tL = params.tVal    
 	      params.tVal = (tU+tL)/2.0
-	      #@show params.tVal
+	      ssc_cntr += 1
+	      @show params.tVal
 	    end
+=#
+	    ncuts=purgeSG(opfdata,trl_bundles)
+            trl_bundles[ncuts+1]=mpsoln
           end
       else
 	println("Solver returned: $status")

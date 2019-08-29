@@ -250,7 +250,7 @@ function solveEta0SDP(opfdata,soln,vR,vI)
       fromBus,toBus = opfdata.fromBus, opfdata.toBus
 
       #The QP subproblem
-      mSDP = Model(solver=IpoptSolver())
+      mSDP = Model(with_optimizer(Ipopt.Optimizer))
       @variable(mSDP, e[i=N], start=0); @variable(mSDP, f[i=N], start=0)
       η0Val = 0
 
@@ -266,8 +266,9 @@ function solveEta0SDP(opfdata,soln,vR,vI)
         + 2*sum( H[fromBus[l],toBus[l]]*(e[fromBus[l]]*e[toBus[l]]+f[fromBus[l]]*f[toBus[l]])   for l in L)
         - 2*sum( H[fromBus[l],nbuses+toBus[l]]*(f[fromBus[l]]*e[toBus[l]]-e[fromBus[l]]*f[toBus[l]])   for l in L)
       )
-      status = solve(mSDP)
-      if status == :Optimal || status == :UserLimit
+      JuMP.optimize!(mSDP)
+      status=JuMP.termination_status(mSDP)
+      if status == MOI.OPTIMAL || status == MOI.LOCALLY_SOLVED
         η0Val = getobjectivevalue(mSDP)
         for i in N
           vR[i],vI[i]=getvalue(e[i]),getvalue(f[i])

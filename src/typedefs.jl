@@ -13,6 +13,7 @@ mutable struct Params
   rho::Float64
   rhoUB::Float64
   ssc::Float64
+  ssc_cntr::Int
   tol::Float64
 end
 mutable struct Soln
