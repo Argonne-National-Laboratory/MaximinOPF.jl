@@ -77,12 +77,12 @@ end
 # Import the appropriate subproblem formulation
 N, L, G = opfdata.N, opfdata.L, opfdata.G 
 x_val=zeros(opfdata.nlines)
-    x_val[41],x_val[80]=1,1
+    #x_val[41],x_val[80]=1,1
     #x_val[8],x_val[9],x_val[10],x_val[40]=1,1,1,1
     x_lbs=zeros(opfdata.nlines)
     x_ubs=ones(opfdata.nlines)
-x_lbs[L]=x_val[L]
-x_ubs[L]=x_val[L]
+#x_lbs[L]=x_val[L]
+#x_ubs[L]=x_val[L]
 node_data=NodeInfo(x_lbs,x_ubs,1e20)
 params=Params(100000,0.01,20,0.5,0.0,0.0,0.5,1e-5)
 
