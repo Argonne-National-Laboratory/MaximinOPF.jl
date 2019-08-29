@@ -67,7 +67,7 @@ function get_chordal_extension_complex(opfdata)
     return C
 end
 
-function KiwielRhoUpdate(opfdata,params,mpsoln,sscval,vval,agg_norm,epshat,v_est,ssc_cntr)
+function KiwielRhoUpdate(opfdata,params,ctr,mpsoln,sscval,vval,agg_norm,epshat,agg_bundle,v_est,ssc_cntr)
   nextTVal=params.tVal
   oldTVal=params.tVal
   if sscval >= params.ssc
@@ -83,7 +83,10 @@ function KiwielRhoUpdate(opfdata,params,mpsoln,sscval,vval,agg_norm,epshat,v_est
       ssc_cntr = 1
     end
   else
-    v_est=min(v_est,agg_norm+epshat)
+    #v_est=min(v_est,agg_norm+epshat)
+    #v_est=min(v_est,agg_norm+agg_bundle.linerr)
+    epstilde = -ctr.linobjval + params.rho*ctr.eta + mpsoln.linobjval - (1/params.tVal)*agg_norm^2
+    v_est=min(v_est,agg_norm + epstilde)
     if params.rho*mpsoln.linerr > max(v_est,10*vval) && ssc_cntr < -3
       nextTVal = 2*params.tVal*(1-sscval)
     end
@@ -94,6 +97,15 @@ function KiwielRhoUpdate(opfdata,params,mpsoln,sscval,vval,agg_norm,epshat,v_est
     end
   end
   return params.tVal,v_est,ssc_cntr
+end
+function testSchrammZoweSSII(opfdata,params,ctr,mpsoln)
+  #mpsoln.linerr >= 0
+  #mpsoln.linerr - (ctr.eta - mpsoln.eta) <= -0.5*(ctr.eta - mpsoln.eta)
+  #mpsoln.linerr <= 0.5*(ctr.eta - mpsoln.eta)
+  return mpsoln.linerr >= 0.5*abs(ctr.eta - mpsoln.eta) || params.tVal < max(1e-4,params.tMin)
+end
+function testSchrammZoweNSII(opfdata,params,ctr,mpsoln,agg_bundles)
+  return (mpsoln.linerr <= 0.5*agg_bundles[1].linerr) || ( abs(ctr.eta-mpsoln.eta) <= comp_norm(opfdata,agg_bundles[1].eta_sg) + agg_bundles[1].linerr )
 end
 
 function update_agg(opfdata,params,ctr,mpsoln,sg_agg)
@@ -119,12 +131,16 @@ end
 
 function compute_epshat(opfdata,params,mpsoln,ctr,sg_agg)
   N, L, G = opfdata.N, opfdata.L, opfdata.G 
-  return mpsoln.linobjval - (ctr.linobjval - params.rho*ctr.eta)
-  - (dot(sg_agg.α[N],(mpsoln.soln.α[N]-ctr.soln.α[N])) - dot(sg_agg.β[N],(mpsoln.soln.β[N]-ctr.soln.β[N])) 
-  + dot(sg_agg.γ[N],(mpsoln.soln.γ[N]-ctr.soln.γ[N])) - dot(sg_agg.δ[N],(mpsoln.soln.δ[N]-ctr.soln.δ[N])) 
-  + dot(sg_agg.λF[L],(mpsoln.soln.λF[L] - ctr.soln.λF[L])) - dot(sg_agg.λT[L],(mpsoln.soln.λT[L] - ctr.soln.λT[L]))
-  + dot(sg_agg.x[L], (mpsoln.soln.x[L] - ctr.soln.x[L]))
-  + dot(sg_agg.μF[L],(mpsoln.soln.μF[L] - ctr.soln.μF[L])) - dot(sg_agg.μT[L],(mpsoln.soln.μT[L] - ctr.soln.μT[L])) )
+  epshat = mpsoln.linobjval - (ctr.linobjval - params.rho*ctr.eta)
+  epshat += params.rho*dot(sg_agg.α[N],(ctr.soln.α[N]-mpsoln.soln.α[N]))
+  epshat += params.rho*dot(sg_agg.β[N],(ctr.soln.β[N]-mpsoln.soln.β[N]))
+  epshat += params.rho*dot(sg_agg.γ[N],(ctr.soln.γ[N]-mpsoln.soln.γ[N]))
+  epshat += params.rho*dot(sg_agg.δ[N],(ctr.soln.δ[N]-mpsoln.soln.δ[N]))
+  epshat += params.rho*dot(sg_agg.λF[L],(ctr.soln.λF[L]-mpsoln.soln.λF[L]))
+  epshat += params.rho*dot(sg_agg.λT[L],(ctr.soln.λT[L]-mpsoln.soln.λT[L]))
+  epshat += params.rho*dot(sg_agg.μF[L],(ctr.soln.μF[L]-mpsoln.soln.μF[L]))
+  epshat += params.rho*dot(sg_agg.μT[L],(ctr.soln.μT[L]-mpsoln.soln.μT[L]))
+  return epshat
 end
 
 function updateCenter(opfdata,mpsoln,ctr,trl_bundles,ctr_bundles,agg_bundles)
@@ -145,14 +161,14 @@ end
 function updateLinErr(opfdata,ctr,bundle)
   nbuses, nlines, ngens, N, L, G = opfdata.nbuses, opfdata.nlines, opfdata.ngens, opfdata.N, opfdata.L, opfdata.G 
   bundle.linerr = ctr.eta - bundle.eta 
-    - dot(bundle.eta_sg.α[N],(bundle.soln.α[N] - ctr.soln.α[N]))
-    - dot(bundle.eta_sg.β[N],(bundle.soln.β[N] - ctr.soln.β[N]))
-    - dot(bundle.eta_sg.γ[N],(bundle.soln.γ[N] - ctr.soln.γ[N]))
-    - dot(bundle.eta_sg.δ[N],(bundle.soln.δ[N] - ctr.soln.δ[N]))
-    - dot(bundle.eta_sg.λF[L],(bundle.soln.λF[L] - ctr.soln.λF[L]))
-    - dot(bundle.eta_sg.λT[L],(bundle.soln.λT[L] - ctr.soln.λT[L]))
-    - dot(bundle.eta_sg.μF[L],(bundle.soln.μF[L] - ctr.soln.μF[L]))
-    - dot(bundle.eta_sg.μT[L],(bundle.soln.μT[L] - ctr.soln.μT[L]))
+      bundle.linerr += dot( bundle.eta_sg.α[N], (ctr.soln.α[N]-bundle.soln.α[N]) ) 
+      bundle.linerr += dot( bundle.eta_sg.β[N], (ctr.soln.β[N]-bundle.soln.β[N]) ) 
+      bundle.linerr += dot( bundle.eta_sg.γ[N], (ctr.soln.γ[N]-bundle.soln.γ[N]) ) 
+      bundle.linerr += dot( bundle.eta_sg.δ[N], (ctr.soln.δ[N]-bundle.soln.δ[N]) ) 
+      bundle.linerr += dot( bundle.eta_sg.λF[L],(ctr.soln.λF[L]-bundle.soln.λF[L]) ) 
+      bundle.linerr += dot( bundle.eta_sg.λT[L],(ctr.soln.λT[L]-bundle.soln.λT[L]) ) 
+      bundle.linerr += dot( bundle.eta_sg.μF[L],(ctr.soln.μF[L]-bundle.soln.μF[L]) ) 
+      bundle.linerr += dot( bundle.eta_sg.μT[L],(ctr.soln.μT[L]-bundle.soln.μT[L]) )
 end
 
 function computeSG(opfdata,mpsoln)
@@ -321,6 +337,7 @@ function aggregateSG(opfdata,trl_bundles,mpsoln,ctr,ctr_bundles,agg_bundles)
       agg_bundle.linobjval = 0
       agg_bundle.penval = 0
       agg_bundle.psival = 0
+      agg_bundle.linerr = 0
 
       if ncuts > 0
         agg_bundle.eta_sg.α[N] += (1/sumDuals)*( sum( trl_bundles[n].cut_dual*trl_bundles[n].eta_sg.α[N] for n in 1:ncuts) )
@@ -341,6 +358,7 @@ function aggregateSG(opfdata,trl_bundles,mpsoln,ctr,ctr_bundles,agg_bundles)
         agg_bundle.linobjval += (1/sumDuals)*( sum( trl_bundles[n].cut_dual*trl_bundles[n].linobjval for n in 1:ncuts) )
         agg_bundle.penval += (1/sumDuals)*( sum( trl_bundles[n].cut_dual*trl_bundles[n].penval for n in 1:ncuts) )
         agg_bundle.psival += (1/sumDuals)*( sum( trl_bundles[n].cut_dual*trl_bundles[n].psival for n in 1:ncuts) )
+        agg_bundle.linerr += (1/sumDuals)*( sum( trl_bundles[n].cut_dual*trl_bundles[n].linerr for n in 1:ncuts) )
 
         agg_bundle.etahat -= (1/sumDuals)*sum( trl_bundles[n].cut_dual*(trl_bundles[n].eta 
 	+ dot(trl_bundles[n].eta_sg.α[N],trl_bundles[n].soln.α[N]) + dot(trl_bundles[n].eta_sg.β[N],trl_bundles[n].soln.β[N])
@@ -367,6 +385,7 @@ function aggregateSG(opfdata,trl_bundles,mpsoln,ctr,ctr_bundles,agg_bundles)
         agg_bundle.linobjval += (1/sumDuals)*( sum( ctr_bundles[n].cut_dual*ctr_bundles[n].linobjval for n in 1:nctrcuts) )
         agg_bundle.penval += (1/sumDuals)*( sum( ctr_bundles[n].cut_dual*ctr_bundles[n].penval for n in 1:nctrcuts) )
         agg_bundle.psival += (1/sumDuals)*( sum( ctr_bundles[n].cut_dual*ctr_bundles[n].psival for n in 1:nctrcuts) )
+        agg_bundle.linerr += (1/sumDuals)*( sum( ctr_bundles[n].cut_dual*ctr_bundles[n].linerr for n in 1:nctrcuts) )
 
         agg_bundle.etahat -= (1/sumDuals)*sum( ctr_bundles[n].cut_dual*(ctr_bundles[n].eta 
 	+ dot(ctr_bundles[n].eta_sg.α[N],ctr_bundles[n].soln.α[N]) + dot(ctr_bundles[n].eta_sg.β[N],ctr_bundles[n].soln.β[N])
@@ -393,6 +412,7 @@ function aggregateSG(opfdata,trl_bundles,mpsoln,ctr,ctr_bundles,agg_bundles)
         agg_bundle.linobjval += (1/sumDuals)*( sum( agg_bundles[n].cut_dual*agg_bundles[n].linobjval for n in 1:naggcuts) )
         agg_bundle.penval += (1/sumDuals)*( sum( agg_bundles[n].cut_dual*agg_bundles[n].penval for n in 1:naggcuts) )
         agg_bundle.psival += (1/sumDuals)*( sum( agg_bundles[n].cut_dual*agg_bundles[n].psival for n in 1:naggcuts) )
+        agg_bundle.linerr += (1/sumDuals)*( sum( agg_bundles[n].cut_dual*agg_bundles[n].linerr for n in 1:naggcuts) )
 
         agg_bundle.etahat -= (1/sumDuals)*sum( agg_bundles[n].cut_dual*(agg_bundles[n].eta 
 	+ dot(agg_bundles[n].eta_sg.α[N],agg_bundles[n].soln.α[N]) + dot(agg_bundles[n].eta_sg.β[N],agg_bundles[n].soln.β[N])

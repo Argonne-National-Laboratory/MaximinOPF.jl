@@ -208,7 +208,6 @@ function solveNodeProxPt(opfdata,nodeinfo,params,bundles,ctr_bundles,agg_bundles
 
   ### END DEFINING THE LaGRANGIAN DUAL PROBLEM
 
-  #status=solve(mMP)
   JuMP.optimize!(mMP)
   mpsoln.status=JuMP.termination_status(mMP)
   if mpsoln.status == MOI.OPTIMAL || mpsoln.status == MOI.LOCALLY_SOLVED
@@ -230,7 +229,16 @@ function solveNodeProxPt(opfdata,nodeinfo,params,bundles,ctr_bundles,agg_bundles
       end
 
       computeSG(opfdata,mpsoln) #This computes mpsoln.eta 
-      mpsoln.linerr = ctr.eta - mpsoln.eta + dot( mpsoln.eta_sg.α[N], (ctr.soln.α[N]-mpsoln.soln.α[N]) ) + dot( mpsoln.eta_sg.β[N], (ctr.soln.β[N]-mpsoln.soln.β[N]) ) + dot( mpsoln.eta_sg.γ[N], (ctr.soln.γ[N]-mpsoln.soln.γ[N]) ) + dot( mpsoln.eta_sg.δ[N], (ctr.soln.δ[N]-mpsoln.soln.δ[N]) ) + dot( mpsoln.eta_sg.λF[L],(ctr.soln.λF[L]-mpsoln.soln.λF[L]) ) + dot( mpsoln.eta_sg.λT[L],(ctr.soln.λT[L]-mpsoln.soln.λT[L]) ) + dot( mpsoln.eta_sg.μF[L],(ctr.soln.μF[L]-mpsoln.soln.μF[L]) ) + dot( mpsoln.eta_sg.μT[L],(ctr.soln.μT[L]-mpsoln.soln.μT[L]) )
+
+      mpsoln.linerr = ctr.eta - mpsoln.eta 
+      mpsoln.linerr += dot( mpsoln.eta_sg.α[N], (ctr.soln.α[N]-mpsoln.soln.α[N]) ) 
+      mpsoln.linerr += dot( mpsoln.eta_sg.β[N], (ctr.soln.β[N]-mpsoln.soln.β[N]) ) 
+      mpsoln.linerr += dot( mpsoln.eta_sg.γ[N], (ctr.soln.γ[N]-mpsoln.soln.γ[N]) ) 
+      mpsoln.linerr += dot( mpsoln.eta_sg.δ[N], (ctr.soln.δ[N]-mpsoln.soln.δ[N]) ) 
+      mpsoln.linerr += dot( mpsoln.eta_sg.λF[L],(ctr.soln.λF[L]-mpsoln.soln.λF[L]) ) 
+      mpsoln.linerr += dot( mpsoln.eta_sg.λT[L],(ctr.soln.λT[L]-mpsoln.soln.λT[L]) ) 
+      mpsoln.linerr += dot( mpsoln.eta_sg.μF[L],(ctr.soln.μF[L]-mpsoln.soln.μF[L]) ) 
+      mpsoln.linerr += dot( mpsoln.eta_sg.μT[L],(ctr.soln.μT[L]-mpsoln.soln.μT[L]) )
 
       for n=1:length(bundles)
         etaval=-getvalue(-bundles[n].eta 
@@ -383,6 +391,7 @@ function testProxPt0(opfdata,params,K,HEUR,node_data)
     sg_agg=create_soln(opfdata)
 
     v_est,ssc_cntr = 1e20,0
+    tL,tU=params.tMin,params.tMax
     TOL = 1e-5
   # MAIN LOOP
     for kk=1:params.maxNSG
@@ -415,17 +424,29 @@ function testProxPt0(opfdata,params,K,HEUR,node_data)
          # STEP 3
 	  sscval = ((mpsoln.linobjval - params.rhoUB*mpsoln.eta)-(ctr.linobjval - params.rhoUB*ctr.eta))/(mpsoln.linobjval-(ctr.linobjval - params.rhoUB*ctr.eta)) 
 	  vval = (mpsoln.linobjval-(ctr.linobjval - params.rhoUB*ctr.eta)) 
-          params.tVal,v_est,ssc_cntr=KiwielRhoUpdate(opfdata,params,mpsoln,sscval,vval,agg_norm,epshat,v_est,ssc_cntr)
+          #params.tVal,v_est,ssc_cntr=KiwielRhoUpdate(opfdata,params,ctr,mpsoln,sscval,vval,agg_norm,epshat,agg_bundles[1],v_est,ssc_cntr)
           if sscval >= params.ssc 
          # UPDATE CENTER VALUES
-	    updateCenter(opfdata,mpsoln,ctr,trl_bundles,ctr_bundles,agg_bundles)
-	    nctrcuts=purgeSG(opfdata,ctr_bundles)
-	    ctr_bundles[nctrcuts+1]=mpsoln
+	    if testSchrammZoweSSII(opfdata,params,ctr,mpsoln)
+	      nctrcuts=purgeSG(opfdata,ctr_bundles)
+	      ctr_bundles[nctrcuts+1]=mpsoln
+	      updateCenter(opfdata,mpsoln,ctr,trl_bundles,ctr_bundles,agg_bundles)
+    	      tL,tU=params.tMin,params.tMax
+	    else
+	      tU = params.tVal    
+	      params.tVal = (tU+tL)/2.0
+	    end
 	    @show kk,ncuts,ssc_cntr,params.tVal,params.rho
-	    @show mpsoln.linobjval,mpsoln.eta,agg_norm,epshat,mpsoln.linerr
+	    @show mpsoln.linobjval,mpsoln.eta,agg_norm,epshat
 	  else
-	    ncuts=purgeSG(opfdata,trl_bundles)
-            trl_bundles[ncuts+1]=mpsoln
+	    if testSchrammZoweNSII(opfdata,params,ctr,mpsoln,agg_bundles)
+	      ncuts=purgeSG(opfdata,trl_bundles)
+              trl_bundles[ncuts+1]=mpsoln
+    	      tL,tU=params.tMin,params.tMax
+	    else
+	      tL = params.tVal    
+	      params.tVal = (tU+tL)/2.0
+	    end
           end
       else
 	println("Solver returned: $status")
