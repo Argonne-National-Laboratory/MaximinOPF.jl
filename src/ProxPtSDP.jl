@@ -381,7 +381,7 @@ function testProxPt0(opfdata,params,K,HEUR,node_data)
     status = solveNodeProxPt(opfdata,node_data,params,trl_bundles,ctr_bundles,agg_bundles,K,HEUR,ctr,PROX0,mpsoln)
     while mpsoln.status != MOI.OPTIMAL && mpsoln.status != MOI.LOCALLY_SOLVED
       params.tVal /= 2
-      println("Resolving with reduced prox parameter value: ",params.tVal)
+      println("Status was: ",mpsoln.status,". Resolving with reduced prox parameter value: ",params.tVal)
       status = solveNodeProxPt(opfdata,node_data,params,trl_bundles,ctr_bundles,agg_bundles,K,HEUR,ctr,PROX0,mpsoln)
     end	
     updateCenter(opfdata,mpsoln,ctr,trl_bundles,ctr_bundles,agg_bundles)
@@ -400,7 +400,7 @@ function testProxPt0(opfdata,params,K,HEUR,node_data)
       status = solveNodeProxPt(opfdata,node_data,params,trl_bundles,ctr_bundles,agg_bundles,K,HEUR,ctr,PROX0,mpsoln)
       while mpsoln.status != MOI.OPTIMAL && mpsoln.status != MOI.LOCALLY_SOLVED
 	params.tVal /= 2
-        println("Resolving with reduced prox parameter value: ",params.tVal)
+        println("Status was: ",mpsoln.status,". Resolving with reduced prox parameter value: ",params.tVal)
         status = solveNodeProxPt(opfdata,node_data,params,trl_bundles,ctr_bundles,agg_bundles,K,HEUR,ctr,PROX0,mpsoln)
       end	
       if status == MOI.OPTIMAL || status == MOI.LOCALLY_SOLVED
