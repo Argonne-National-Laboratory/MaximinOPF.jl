@@ -425,37 +425,14 @@ function testProxPt0(opfdata,params,K,HEUR,node_data)
 	  sscval = ((mpsoln.linobjval - params.rhoUB*mpsoln.eta)-(ctr.linobjval - params.rhoUB*ctr.eta))/(mpsoln.linobjval-(ctr.linobjval - params.rhoUB*ctr.eta)) 
 	  vval = (mpsoln.linobjval-(ctr.linobjval - params.rhoUB*ctr.eta)) 
           params.tVal,v_est,ssc_cntr=KiwielRhoUpdate(opfdata,params,ctr,mpsoln,sscval,vval,agg_norm,epshat,agg_bundles[1],v_est,ssc_cntr)
-	  if mpsoln.linerr < 1e-5 || mpsoln.eta < 1e-5
-	    params.tVal /= 2
-	  end
           if sscval >= params.ssc 
          # UPDATE CENTER VALUES
-#=
-	    if testSchrammZoweSSII(opfdata,params,ctr,mpsoln) || ssc_cntr > 20
-    	      tL,tU=params.tMin,params.tMax
-	    else
-	      tU = params.tVal    
-	      params.tVal = (tU+tL)/2.0
-	      ssc_cntr += 1
-	      @show params.tVal
-	    end
-=#
 	    nctrcuts=purgeSG(opfdata,ctr_bundles)
 	    ctr_bundles[nctrcuts+1]=mpsoln
 	    updateCenter(opfdata,mpsoln,ctr,trl_bundles,ctr_bundles,agg_bundles)
 	    @show kk,ncuts,ssc_cntr,params.tVal,params.rho
 	    @show mpsoln.linobjval,mpsoln.eta,agg_norm,epshat,mpsoln.linerr
 	  else
-#=
-	    if testSchrammZoweNSII(opfdata,params,ctr,mpsoln,agg_bundles) || ssc_cntr > 20
-    	      tL,tU=params.tMin,params.tMax
-	    else
-	      tL = params.tVal    
-	      params.tVal = (tU+tL)/2.0
-	      ssc_cntr += 1
-	      @show params.tVal
-	    end
-=#
 	    ncuts=purgeSG(opfdata,trl_bundles)
             trl_bundles[ncuts+1]=mpsoln
           end
