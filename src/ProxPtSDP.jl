@@ -432,12 +432,13 @@ function testProxPt0(opfdata,params,K,HEUR,node_data)
 	      ctr_bundles[nctrcuts+1]=mpsoln
 	      updateCenter(opfdata,mpsoln,ctr,trl_bundles,ctr_bundles,agg_bundles)
     	      tL,tU=params.tMin,params.tMax
+	      @show kk,ncuts,ssc_cntr,params.tVal,params.rho
+	      @show mpsoln.linobjval,mpsoln.eta,agg_norm,epshat
 	    else
 	      tU = params.tVal    
 	      params.tVal = (tU+tL)/2.0
+	      #@show params.tVal
 	    end
-	    @show kk,ncuts,ssc_cntr,params.tVal,params.rho
-	    @show mpsoln.linobjval,mpsoln.eta,agg_norm,epshat
 	  else
 	    if testSchrammZoweNSII(opfdata,params,ctr,mpsoln,agg_bundles)
 	      ncuts=purgeSG(opfdata,trl_bundles)
@@ -446,6 +447,7 @@ function testProxPt0(opfdata,params,K,HEUR,node_data)
 	    else
 	      tL = params.tVal    
 	      params.tVal = (tU+tL)/2.0
+	      #@show params.tVal
 	    end
           end
       else

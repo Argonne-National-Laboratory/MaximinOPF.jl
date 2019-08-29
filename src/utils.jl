@@ -102,7 +102,7 @@ function testSchrammZoweSSII(opfdata,params,ctr,mpsoln)
   #mpsoln.linerr >= 0
   #mpsoln.linerr - (ctr.eta - mpsoln.eta) <= -0.5*(ctr.eta - mpsoln.eta)
   #mpsoln.linerr <= 0.5*(ctr.eta - mpsoln.eta)
-  return mpsoln.linerr >= 0.5*abs(ctr.eta - mpsoln.eta) || params.tVal < max(1e-4,params.tMin)
+  return (mpsoln.linerr >= 0.5*abs(ctr.eta - mpsoln.eta)) || params.tVal < max(1e-4,params.tMin+1e-4)
 end
 function testSchrammZoweNSII(opfdata,params,ctr,mpsoln,agg_bundles)
   return (mpsoln.linerr <= 0.5*agg_bundles[1].linerr) || ( abs(ctr.eta-mpsoln.eta) <= comp_norm(opfdata,agg_bundles[1].eta_sg) + agg_bundles[1].linerr )
