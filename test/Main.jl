@@ -78,17 +78,19 @@ N, L, G = opfdata.N, opfdata.L, opfdata.G
 x_lbs=zeros(opfdata.nlines)
 x_ubs=ones(opfdata.nlines)
 node_data=NodeInfo(x_lbs,x_ubs,1e20)
-params=Params(100000,0.01,20,1.0,0.0,0.0,0.25,0,1e-5)
+params=Params(100000,0.01,20,1000.0,0.0,0.0,0.25,0,1e-5)
 
 
 if FORM == ECP 
   include("../src/lECP.jl")
   solveLECP(opfdata,K,HEUR)
 elseif FORM == ProxPtSDP
-  include("../src/ProxPtSDP.jl")
   #testLevelBM(opfdata,K,HEUR,node_data)
+  #include("../src/PBM-SagastizabalSolodov.jl")
+  #PBM_SagastizabalSolodov(opfdata,params,K,HEUR,node_data)
   #testProxPt(opfdata,K,HEUR,node_data)
-  testProxPt0(opfdata,params,K,HEUR,node_data)
+  include("../src/PBM-DelfinoOliveira.jl")
+  PBM_DelfinoOliveira(opfdata,params,K,HEUR,node_data)
   #testProxTraj(opfdata,K,HEUR,node_data)
 elseif FORM == AC
   include("../src/DualAC.jl")
