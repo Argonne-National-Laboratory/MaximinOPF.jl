@@ -6,6 +6,7 @@ mutable struct NodeInfo
   nodeBd::Float64
 end
 mutable struct Params
+  ALG::Int
   maxNSG::Int
   tMin::Float64
   tMax::Float64

@@ -1,6 +1,14 @@
 using LightGraphs
 
 #USEFUL SUBROUTINES
+function printX(opfdata,x_soln)
+  for l in opfdata.L
+   if x_soln[l] > 0.5 
+	@printf(" %d",l)
+   end
+  end
+end
+
 function get_graph(mat::SparseMatrixCSC{Float64,Int64})
     rows = rowvals(mat)
     vals = nonzeros(mat)

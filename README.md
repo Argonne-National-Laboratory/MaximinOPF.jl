@@ -37,3 +37,9 @@ For example,
 > julia --project=. -O3 test/Main.jl CASE 30 4 0 3
 
 runs the Case 30 instance with an attacker budget of 4 lines, and no heuristic. For more details on what is being done, see Main.jl, MP.jl, and PBM-DelfinoOliveira.jl
+
+There is a script for the above, in which case it is recommended to run, say,
+
+> ./runPBM 30 4
+
+where for our purpose, we want to always set H=0

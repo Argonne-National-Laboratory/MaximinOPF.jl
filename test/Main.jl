@@ -65,20 +65,25 @@ include("../src/EvalDSP.jl") ### Initialize the defender subproblems with power 
 
 
 
-function printX(opfdata,x_soln)
-  for l in opfdata.L
-   if x_soln[l] > 0.5 
-	@printf(" %d",l)
-   end
-  end
-end
 
 # Import the appropriate subproblem formulation
 N, L, G = opfdata.N, opfdata.L, opfdata.G 
 x_lbs=zeros(opfdata.nlines)
 x_ubs=ones(opfdata.nlines)
 node_data=NodeInfo(x_lbs,x_ubs,1e20)
-params=Params(100000,0.01,20,1000.0,0.0,0.0,0.25,0,1e-5)
+### Params
+  #ALG::Int
+  #maxNSG::Int
+  #tMin::Float64
+  #tMax::Float64
+  #tVal::Float64
+  #rho::Float64
+  #rhoUB::Float64
+  #ssc::Float64
+  #ssc_cntr::Int
+  #tol::Float64
+###
+params=Params(3,100000,0.01,20,1000.0,0.0,0.0,0.25,0,1e-5)
 
 
 if FORM == ECP 
