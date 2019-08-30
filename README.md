@@ -27,6 +27,7 @@ where F and G are cutting plane models of f and g, respectively.
 To run (on moonshot)
 
 > cd <proj_root>
+
 > julia --project=. -O3 test/Main.jl CASE K H 3
 
 where CASE is the case instance, K is a nonnegative integer budget, and H=0,1,2 encodes a heuristic, with H=0 indicating no heuristic.
