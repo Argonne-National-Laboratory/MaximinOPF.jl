@@ -26,11 +26,13 @@ where F and G are cutting plane models of f and g, respectively.
 
 To run (on moonshot)
 
-> ./runMoonshotProxPtSDP CASE K H
+> cd <proj_root>
+> julia --project=. -O3 test/Main.jl CASE K H 3
 
 where CASE is the case instance, K is a nonnegative integer budget, and H=0,1,2 encodes a heuristic, with H=0 indicating no heuristic.
+The last argument specifies the particular algorithm of interest to run.
 For example,
 
-> ./runMoonshotProxPtSDP 30 4 0
+> julia --project=. -O3 test/Main.jl CASE 30 4 0 3
 
-runs the Case 30 instance with an attacker budget of 4 lines, and no heuristic. For more details on what is being done, see Main.jl and ProxPtSDP.jl
+runs the Case 30 instance with an attacker budget of 4 lines, and no heuristic. For more details on what is being done, see Main.jl, MP.jl, and PBM-DelfinoOliveira.jl
