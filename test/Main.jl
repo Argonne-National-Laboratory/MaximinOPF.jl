@@ -60,7 +60,6 @@ print("Loading data ... "); start_load = time_ns()
 # Load the bus system topology
   opfdata = opf_loaddata(CASE_NUM)
 print("finished loading the data after ",(time_ns()-start_load)/1e9," seconds.\n")
-println("Now computing...")
 
 include("../src/EvalDSP.jl") ### Initialize the defender subproblems with power flow balance enforced
 
@@ -79,7 +78,7 @@ N, L, G = opfdata.N, opfdata.L, opfdata.G
 x_lbs=zeros(opfdata.nlines)
 x_ubs=ones(opfdata.nlines)
 node_data=NodeInfo(x_lbs,x_ubs,1e20)
-params=Params(100000,0.01,20,0.5,0.0,0.0,0.25,0,1e-5)
+params=Params(100000,0.01,20,1.0,0.0,0.0,0.25,0,1e-5)
 
 
 if FORM == ECP 
