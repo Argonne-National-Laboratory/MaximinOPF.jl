@@ -83,7 +83,7 @@ node_data=NodeInfo(x_lbs,x_ubs,1e20)
   #ssc_cntr::Int
   #tol::Float64
 ###
-params=Params(3,100000,0.01,20,1000.0,0.0,0.0,0.25,0,1e-5)
+params=Params(3,100000,0.01,20,10.0,0.0,0.0,0.25,0,1e-5)
 
 
 if FORM == ECP 
