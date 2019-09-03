@@ -38,7 +38,6 @@ function PBM_DelfinoOliveira(opfdata,params,K,HEUR,node_data)
 
     v_est,ssc_cntr = 1e20,0
     tL,tU=params.tMin,params.tMax
-    TOL = 1e-5
   # MAIN LOOP
     for kk=1:params.maxNSG
      # STEP 1
@@ -59,7 +58,7 @@ function PBM_DelfinoOliveira(opfdata,params,K,HEUR,node_data)
           epshat = compute_epshat(opfdata,params,mpsoln,ctr,sg_agg)
 	  params.rhoUB = params.rho
           agg_bundles[1]=aggregateSG(opfdata,trl_bundles,mpsoln,ctr,ctr_bundles,agg_bundles)
-          if ctr.eta < TOL && agg_norm < 1e-3 && epshat < 1e-3 
+          if ctr.eta < params.tol1 && agg_norm < params.tol2 && epshat < params.tol3 
 	    println("Convergence to within tolerance: ")
 	    @show kk,ntrlcuts,ssc_cntr,params.tVal,params.rho
 	    @show ctr.linobjval,ctr.eta,agg_norm,epshat
@@ -76,20 +75,17 @@ function PBM_DelfinoOliveira(opfdata,params,K,HEUR,node_data)
 	    nctrcuts=purgeSG(opfdata,ctr_bundles,5,20)
 	    ctr_bundles[nctrcuts+1]=mpsoln
 	    updateCenter(opfdata,mpsoln,ctr,trl_bundles,ctr_bundles,agg_bundles)
-	    if ctr.eta < min(agg_norm,epshat)
-	      params.tVal /= 1.05
-	    end
-	    if ctr.eta < TOL
+	    if ctr.eta < params.tol1
+	      params.tVal /= 2.0
+	    elseif epshat<params.tol3
 	      params.tVal /= 1.05
 	    end
 	    @show kk,nctrcuts,ntrlcuts,ssc_cntr,params.tVal,params.rho
 	    @show mpsoln.linobjval,mpsoln.eta,agg_norm,epshat
 	  else
             trl_bundles[ntrlcuts+1]=mpsoln
-	    if min(epshat,agg_norm) < ctr.eta
+	    if 2*agg_norm-params.tol2 <= epshat-params.tol3
 	      params.tVal *= 1.05 
-	    elseif ctr.eta >= TOL
-	      params.tVal *= 1.01 
 	    end
           end
 	  #@show kk,nctrcuts,ntrlcuts,ssc_cntr,params.tVal,params.rho

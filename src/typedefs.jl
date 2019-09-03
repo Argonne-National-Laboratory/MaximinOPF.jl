@@ -15,7 +15,9 @@ mutable struct Params
   rhoUB::Float64
   ssc::Float64
   ssc_cntr::Int
-  tol::Float64
+  tol1::Float64
+  tol2::Float64
+  tol3::Float64
 end
 mutable struct Soln
   α::Array{Float64}

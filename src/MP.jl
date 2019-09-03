@@ -225,7 +225,10 @@ function solveNodeMP(opfdata,nodeinfo,params,bundles,ctr_bundles,agg_bundles,K,H
         mpsoln.psival = getvalue(psi)
       end
 
-      computeSG(opfdata,mpsoln) #This computes mpsoln.eta 
+      mpsoln.eta,stat = computeSG(opfdata,mpsoln) #This computes mpsoln.eta 
+      if !stat
+	params.tVal /= 2.0
+      end
 
       mpsoln.linerr = ctr.eta - mpsoln.eta 
       mpsoln.linerr += dot( mpsoln.eta_sg.α[N], (ctr.soln.α[N]-mpsoln.soln.α[N]) ) 
