@@ -9,14 +9,14 @@ Brian Dandurand
 using JuMP
 #using CPLEX, Ipopt, SCS 
 using Ipopt 
-using Mosek,MosekTools
+#using Mosek,MosekTools
 using Arpack
 using DelimitedFiles
 using Printf
 using SparseArrays
-#using MathProgBase
+##using MathProgBase
 using LinearAlgebra
-using ReverseDiffSparse
+#using ReverseDiffSparse
 
 
 include("../src/opfdata.jl")
