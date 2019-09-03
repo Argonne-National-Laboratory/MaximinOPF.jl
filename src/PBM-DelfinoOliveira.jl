@@ -51,39 +51,49 @@ function PBM_DelfinoOliveira(opfdata,params,K,HEUR,node_data)
       end	
       if status == MOI.OPTIMAL || status == MOI.LOCALLY_SOLVED
        # STEP 2
-        ncuts,nctrcuts,naggcuts = length(trl_bundles),length(ctr_bundles),length(agg_bundles)
+        ntrlcuts,nctrcuts,naggcuts = length(trl_bundles),length(ctr_bundles),length(agg_bundles)
 	 # UPDATING RHO AS NECESSARY TO CORRESPOND TO EXACT PENALTY
          # COMPUTING AGGREGATION INFORMATION
           agg_norm = update_agg(opfdata,params,ctr,mpsoln,sg_agg)
           update_rho(params,trl_bundles,ctr_bundles,agg_bundles)
           epshat = compute_epshat(opfdata,params,mpsoln,ctr,sg_agg)
-	  if params.rhoUB < params.rho
-	    params.rhoUB = params.rho + 1
-	  end
+	  params.rhoUB = params.rho
           agg_bundles[1]=aggregateSG(opfdata,trl_bundles,mpsoln,ctr,ctr_bundles,agg_bundles)
           if ctr.eta < TOL && agg_norm < 1e-3 && epshat < 1e-3 
 	    println("Convergence to within tolerance: ")
-	    @show kk,ncuts,ssc_cntr,params.tVal,params.rho
+	    @show kk,ntrlcuts,ssc_cntr,params.tVal,params.rho
 	    @show ctr.linobjval,ctr.eta,agg_norm,epshat
 	    break
+	  else
+	    #@show ctr.eta,agg_norm,epshat,params.tVal
           end
          # STEP 3
 	  sscval = ((mpsoln.linobjval - params.rhoUB*mpsoln.eta)-(ctr.linobjval - params.rhoUB*ctr.eta))/(mpsoln.linobjval-(ctr.linobjval - params.rhoUB*ctr.eta)) 
 	  vval = (mpsoln.linobjval-(ctr.linobjval - params.rhoUB*ctr.eta)) 
+	  ntrlcuts=purgeSG(opfdata,trl_bundles)
           if sscval >= params.ssc 
          # UPDATE CENTER VALUES
-	    nctrcuts=purgeSG(opfdata,ctr_bundles)
+	    nctrcuts=purgeSG(opfdata,ctr_bundles,5,20)
 	    ctr_bundles[nctrcuts+1]=mpsoln
 	    updateCenter(opfdata,mpsoln,ctr,trl_bundles,ctr_bundles,agg_bundles)
-	    if mpsoln.eta < 1e-5
-	      params.tVal *= 0.8
+	    if ctr.eta < min(agg_norm,epshat)
+	      params.tVal /= 1.05
 	    end
-	    @show kk,ncuts,ssc_cntr,params.tVal,params.rho
+	    if ctr.eta < TOL
+	      params.tVal /= 1.05
+	    end
+	    @show kk,nctrcuts,ntrlcuts,ssc_cntr,params.tVal,params.rho
 	    @show mpsoln.linobjval,mpsoln.eta,agg_norm,epshat
 	  else
-	    ncuts=purgeSG(opfdata,trl_bundles)
-            trl_bundles[ncuts+1]=mpsoln
+            trl_bundles[ntrlcuts+1]=mpsoln
+	    if min(epshat,agg_norm) < ctr.eta
+	      params.tVal *= 1.05 
+	    elseif ctr.eta >= TOL
+	      params.tVal *= 1.01 
+	    end
           end
+	  #@show kk,nctrcuts,ntrlcuts,ssc_cntr,params.tVal,params.rho
+	  #@show mpsoln.linobjval,mpsoln.eta,agg_norm,epshat
       else
 	println("Solver returned: $status")
       end

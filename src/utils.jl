@@ -299,7 +299,7 @@ function purgeSG(opfdata,bundle,minAge=20,maxAge=80)
       orig_ncuts = length(bundle)
       ncuts = orig_ncuts
       for n=orig_ncuts:-1:1
-        if (abs(bundle[n].cut_dual) < 1e-8 && bundle[n].age > minAge) || bundle[n].age > maxAge
+        if (abs(bundle[n].cut_dual) < 1e-8 && bundle[n].age > minAge) || (bundle[n].age > maxAge)
 	  bundle[n]=bundle[ncuts]
 	  delete!(bundle,ncuts)
 	  ncuts -= 1
