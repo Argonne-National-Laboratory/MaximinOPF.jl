@@ -20,7 +20,6 @@ function solveNodeMP(opfdata,nodeinfo,params,bundles,ctr_bundles,agg_bundles,K,H
 
 
   # The master problem MP
-      #mMP = Model(solver=CplexSolver(
 #=
       mMP = Model(with_optimizer(CPLEX.Optimizer,
         CPX_PARAM_SCRIND=0,
@@ -95,8 +94,8 @@ function solveNodeMP(opfdata,nodeinfo,params,bundles,ctr_bundles,agg_bundles,K,H
     
     @variable(mMP, psi)
     if CTR_PARAM != PROX
-      setlowerbound(psi,0)
-      setupperbound(psi,0)
+      JuMP.set_lower_bound(psi,0)
+      JuMP.set_upper_bound(psi,0)
     end
   #These constraints are not quite valid, but their inclusion often results in much faster time to near optimal solution.
     if HEUR == 1
@@ -209,20 +208,19 @@ function solveNodeMP(opfdata,nodeinfo,params,bundles,ctr_bundles,agg_bundles,K,H
   mpsoln.status=JuMP.termination_status(mMP)
   if mpsoln.status == MOI.OPTIMAL || mpsoln.status == MOI.LOCALLY_SOLVED
       for i in N
-          mpsoln.soln.α[i],mpsoln.soln.β[i],mpsoln.soln.γ[i],mpsoln.soln.δ[i] = getvalue(α[i]), getvalue(β[i]), getvalue(γ[i]), getvalue(δ[i])
+          mpsoln.soln.α[i],mpsoln.soln.β[i],mpsoln.soln.γ[i],mpsoln.soln.δ[i] = JuMP.value(α[i]), JuMP.value(β[i]), JuMP.value(γ[i]), JuMP.value(δ[i])
       end
       for g in G
-          mpsoln.soln.ζpLB[g],mpsoln.soln.ζpUB[g],mpsoln.soln.ζqLB[g],mpsoln.soln.ζqUB[g] = getvalue(ζpLB[g]), getvalue(ζpUB[g]), getvalue(ζqLB[g]), getvalue(ζqUB[g])
+          mpsoln.soln.ζpLB[g],mpsoln.soln.ζpUB[g],mpsoln.soln.ζqLB[g],mpsoln.soln.ζqUB[g] = JuMP.value(ζpLB[g]), JuMP.value(ζpUB[g]), JuMP.value(ζqLB[g]), JuMP.value(ζqUB[g])
       end
       for l in L
-        mpsoln.soln.x[l] = getvalue(x[l])
-        mpsoln.soln.λF[l], mpsoln.soln.λT[l], mpsoln.soln.μF[l], mpsoln.soln.μT[l] = getvalue(λF[l]), getvalue(λT[l]), getvalue(μF[l]), getvalue(μT[l])
+        mpsoln.soln.x[l] = JuMP.value(x[l])
+        mpsoln.soln.λF[l], mpsoln.soln.λT[l], mpsoln.soln.μF[l], mpsoln.soln.μT[l] = JuMP.value(λF[l]), JuMP.value(λT[l]), JuMP.value(μF[l]), JuMP.value(μT[l])
       end
-      #mpsoln.objval,mpsoln.solvetime = getobjectivevalue(mMP), getsolvetime(mMP)
-      mpsoln.objval = getobjectivevalue(mMP)
-      mpsoln.linobjval = getvalue(linobj)
+      mpsoln.objval = JuMP.objective_value(mMP)
+      mpsoln.linobjval = JuMP.value(linobj)
       if CTR_PARAM == PROX
-        mpsoln.psival = getvalue(psi)
+        mpsoln.psival = JuMP.value(psi)
       end
 
       mpsoln.eta,stat = computeSG(opfdata,mpsoln) #This computes mpsoln.eta 
@@ -241,7 +239,7 @@ function solveNodeMP(opfdata,nodeinfo,params,bundles,ctr_bundles,agg_bundles,K,H
       mpsoln.linerr += dot( mpsoln.eta_sg.μT[L],(ctr.soln.μT[L]-mpsoln.soln.μT[L]) )
 
       for n=1:length(bundles)
-        etaval=-getvalue(-bundles[n].eta 
+        etaval=-JuMP.value(-bundles[n].eta 
 	  + sum( bundles[n].eta_sg.α[i]*(α[i]-bundles[n].soln.α[i]) + bundles[n].eta_sg.β[i]*(β[i]-bundles[n].soln.β[i])
 	    + bundles[n].eta_sg.γ[i]*(γ[i]-bundles[n].soln.γ[i]) + bundles[n].eta_sg.δ[i]*(δ[i]-bundles[n].soln.δ[i]) for i in N)
           + sum( bundles[n].eta_sg.λF[l]*(λF[l]-bundles[n].soln.λF[l]) + bundles[n].eta_sg.λT[l]*(λT[l]-bundles[n].soln.λT[l]) 
@@ -252,7 +250,7 @@ function solveNodeMP(opfdata,nodeinfo,params,bundles,ctr_bundles,agg_bundles,K,H
 	end
       end
       for n=1:length(ctr_bundles)
-        etaval=-getvalue(-ctr_bundles[n].eta 
+        etaval=-JuMP.value(-ctr_bundles[n].eta 
 	  + sum( ctr_bundles[n].eta_sg.α[i]*(α[i]-ctr_bundles[n].soln.α[i]) + ctr_bundles[n].eta_sg.β[i]*(β[i]-ctr_bundles[n].soln.β[i])
 	    + ctr_bundles[n].eta_sg.γ[i]*(γ[i]-ctr_bundles[n].soln.γ[i]) + ctr_bundles[n].eta_sg.δ[i]*(δ[i]-ctr_bundles[n].soln.δ[i]) for i in N)
           + sum( ctr_bundles[n].eta_sg.λF[l]*(λF[l]-ctr_bundles[n].soln.λF[l]) + ctr_bundles[n].eta_sg.λT[l]*(λT[l]-ctr_bundles[n].soln.λT[l]) 
@@ -263,7 +261,7 @@ function solveNodeMP(opfdata,nodeinfo,params,bundles,ctr_bundles,agg_bundles,K,H
 	end
       end
       for n=1:length(agg_bundles)
-        etaval=-getvalue(-agg_bundles[n].etahat 
+        etaval=-JuMP.value(-agg_bundles[n].etahat 
 	  + sum( agg_bundles[n].eta_sg.α[i]*(α[i]-agg_bundles[n].soln.α[i]) + agg_bundles[n].eta_sg.β[i]*(β[i]-agg_bundles[n].soln.β[i])
 	    + agg_bundles[n].eta_sg.γ[i]*(γ[i]-agg_bundles[n].soln.γ[i]) + agg_bundles[n].eta_sg.δ[i]*(δ[i]-agg_bundles[n].soln.δ[i]) for i in N)
           + sum( agg_bundles[n].eta_sg.λF[l]*(λF[l]-agg_bundles[n].soln.λF[l]) + agg_bundles[n].eta_sg.λT[l]*(λT[l]-agg_bundles[n].soln.λT[l]) 
@@ -276,13 +274,13 @@ function solveNodeMP(opfdata,nodeinfo,params,bundles,ctr_bundles,agg_bundles,K,H
 
       if mpsoln.status == MOI.OPTIMAL || mpsoln.status == MOI.LOCALLY_SOLVED
 	for n=1:length(bundles)
-	  bundles[n].cut_dual = abs(getdual(CutPlanes[n]))
+	  bundles[n].cut_dual = abs(JuMP.dual(CutPlanes[n]))
 	end
 	for n=1:length(ctr_bundles)
-	  ctr_bundles[n].cut_dual = abs(getdual(CutPlanesCtr[n]))
+	  ctr_bundles[n].cut_dual = abs(JuMP.dual(CutPlanesCtr[n]))
 	end
 	for n=1:length(agg_bundles)
-	  agg_bundles[n].cut_dual = abs(getdual(CutPlanesAgg[n]))
+	  agg_bundles[n].cut_dual = abs(JuMP.dual(CutPlanesAgg[n]))
 	end
       end
       if mpsoln.status == MOI.OPTIMAL && (CTR_PARAM==LVL1 || CTR_PARAM == LVL2 || CTR_PARAM == LVLINF )

@@ -84,7 +84,7 @@ function PBM_DelfinoOliveira(opfdata,params,K,HEUR,node_data)
 	    @show mpsoln.linobjval,mpsoln.eta,agg_norm,epshat
 	  else
             trl_bundles[ntrlcuts+1]=mpsoln
-	    if 2*agg_norm-params.tol2 <= epshat-params.tol3
+	    if agg_norm-params.tol2 <= epshat-params.tol3
 	      params.tVal *= 1.05 
 	    end
           end
