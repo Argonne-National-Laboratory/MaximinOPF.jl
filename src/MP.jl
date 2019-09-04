@@ -8,35 +8,15 @@ include("utils.jl")
 CP,PROX0,PROX,LVL1,LVL2,LVLINF,FEAS=0,1,2,3,4,5,6
 
 
-
-function solveNodeMP(opfdata,nodeinfo,params,bundles,ctr_bundles,agg_bundles,K,HEUR,ctr,CTR_PARAM,
-			mpsoln)
+function createBasicMP(opfdata,nodeinfo,K,CTR_PARAM)
   # OBTAIN SHORTHAND PROBLEM INFORMATION FROM opfdata
     nbuses, nlines, ngens = opfdata.nbuses, opfdata.nlines, opfdata.ngens
     N, L, G = opfdata.N, opfdata.L, opfdata.G 
     fromLines,toLines,fromBus,toBus = opfdata.fromLines, opfdata.toLines, opfdata.fromBus, opfdata.toBus
     BusGeners, Y = opfdata.BusGeners, opfdata.Y_AC
-  # DONE OBTAINING PROBLEM INFORMATION FROM opfdata
 
-
-  # The master problem MP
-#=
-      mMP = Model(with_optimizer(CPLEX.Optimizer,
-        CPX_PARAM_SCRIND=0,
-        CPX_PARAM_TILIM=MAX_TIME,
-      # CPX_PARAM_MIPDISPLAY=4,
-      # CPX_PARAM_MIPINTERVAL=1,
-      # CPX_PARAM_NODELIM=1,
-      # CPX_PARAM_HEURFREQ=-1,
-        CPX_PARAM_THREADS=1
-      #CPXPARAM_LPMethod=4  ###BARRIER ALG
-      #CPX_PARAM_ADVIND=0
-	)
-      )
-=#
+  # CREATE MODEL
     mMP = Model(with_optimizer(Ipopt.Optimizer))
-    #mMP = Model(with_optimizer(Mosek.Optimizer,MSK_IPAR_LOG=0,MSK_IPAR_NUM_THREADS=4))
-	### Got error indicating lack of support for quadratic objective ???
 
     # each x[l] is either 0 (line l active) or 1 (line l is cut)
       @variable(mMP, nodeinfo.x_lbs[l] <= x[l=L] <= nodeinfo.x_ubs[l])
@@ -80,6 +60,10 @@ function solveNodeMP(opfdata,nodeinfo,params,bundles,ctr_bundles,agg_bundles,K,H
     @constraint(mMP, BMct3[l in L], -(1 - x[l]) <= μT[l])
     @constraint(mMP, BMct4[l in L], (1 - x[l]) >= μT[l])
 
+    if CTR_PARAM == PROX 
+        @variable(mMP, psi)
+    end
+
   # Lagrangian objective, after vanishing terms are removed under the assumption of dual feasibility
     lin_cfs = create_soln(opfdata)
     for i in N
@@ -91,28 +75,23 @@ function solveNodeMP(opfdata,nodeinfo,params,bundles,ctr_bundles,agg_bundles,K,H
     @expression(mMP, linobj, sum(lin_cfs.ζpLB[g]*ζpLB[g] + lin_cfs.ζpUB[g]*ζpUB[g] + lin_cfs.ζqLB[g]*ζqLB[g] + lin_cfs.ζqUB[g]*ζqUB[g]  for g in G)
     			+ sum( lin_cfs.γ[i]*γ[i] + lin_cfs.δ[i]*δ[i] + lin_cfs.α[i]*α[i] + lin_cfs.β[i]*β[i] for i in N) 
     )
-    
-    @variable(mMP, psi)
-    if CTR_PARAM != PROX
-      JuMP.set_lower_bound(psi,0)
-      JuMP.set_upper_bound(psi,0)
-    end
-  #These constraints are not quite valid, but their inclusion often results in much faster time to near optimal solution.
-    if HEUR == 1
-      @constraint(mMP, LambdaMuConstr1[l in L], λF[l]*Y["ftI"][l] - λT[l]*Y["tfI"][l] + μF[l]*Y["ftR"][l] - μT[l]*Y["tfR"][l] == 0.0)
-    elseif HEUR == 2
-      @constraint(mMP, LambdaFequalsT[l in L], λF[l] - λT[l]  == 0)
-      @constraint(mMP, muFequalsT[l in L], μF[l] - μT[l]  == 0)
-    elseif HEUR == 3
-      lRelax=rand(Bool,nlines)
-      @show lRelax
-      for l in L
-        if lRelax[l]
-          @constraint(mMP, λF[l] - λT[l]  == 0)
-          @constraint(mMP, μF[l] - μT[l]  == 0)
-        end
-      end
-    end
+
+    return mMP
+end
+
+function setObjMP(opfdata,mMP,nodeinfo,params,ctr,CTR_PARAM)
+  # OBTAIN SHORTHAND PROBLEM INFORMATION FROM opfdata
+    nbuses, nlines, ngens = opfdata.nbuses, opfdata.nlines, opfdata.ngens
+    N, L, G = opfdata.N, opfdata.L, opfdata.G 
+    fromLines,toLines,fromBus,toBus = opfdata.fromLines, opfdata.toLines, opfdata.fromBus, opfdata.toBus
+    BusGeners, Y = opfdata.BusGeners, opfdata.Y_AC
+
+    α,β,γ,δ=mMP[:α],mMP[:β],mMP[:γ],mMP[:δ]
+    x,λF,λT,μF,μT=mMP[:x],mMP[:λF],mMP[:λT],mMP[:μF],mMP[:μT]
+    ζpLB,ζpUB,ζqLB,ζqUB=mMP[:ζpLB],mMP[:ζpUB],mMP[:ζqLB],mMP[:ζqUB]
+    linobj=mMP[:linobj]
+
+
    # METHOD-SPECIFIC SETUP
     if CTR_PARAM == PROX0
       @objective(mMP, Max, linobj - 0.5*params.tVal*(
@@ -129,13 +108,6 @@ function solveNodeMP(opfdata,nodeinfo,params,bundles,ctr_bundles,agg_bundles,K,H
 	  )
 	)
 	@constraint(mMP, ctr.linobjval - linobj - psi <= 0)
-	if length(bundles) > 0
-          @constraint(mMP, CutPlanes[n=1:length(bundles)],bundles[n].eta - sum( bundles[n].eta_sg.α[i]*(α[i]-bundles[n].soln.α[i]) + bundles[n].eta_sg.β[i]*(β[i]-bundles[n].soln.β[i]) 
-	    + bundles[n].eta_sg.γ[i]*(γ[i]-bundles[n].soln.γ[i]) + bundles[n].eta_sg.δ[i]*(δ[i]-bundles[n].soln.δ[i]) for i in N)
-            - sum( bundles[n].eta_sg.λF[l]*(λF[l]-bundles[n].soln.λF[l]) + bundles[n].eta_sg.λT[l]*(λT[l]-bundles[n].soln.λT[l]) 
-	    + bundles[n].eta_sg.μF[l]*(μF[l]-bundles[n].soln.μF[l]) + bundles[n].eta_sg.μT[l]*(μT[l]-bundles[n].soln.μT[l]) for l in L) - psi <= 0.0
-          )
-	end
     elseif CTR_PARAM == LVL2 || CTR_PARAM == LVL2 || CTR_PARAM == LVLINF
       @constraint(mMP, LVLConstr, linobj >= nodeinfo.nodeBd)
       if CTR_PARAM==LVL1
@@ -175,6 +147,49 @@ function solveNodeMP(opfdata,nodeinfo,params,bundles,ctr_bundles,agg_bundles,K,H
     else
       @objective(mMP, Min, 0)
     end
+end
+
+function addHeurConstr(opfdata,mMP,HEUR)
+  # OBTAIN SHORTHAND PROBLEM INFORMATION FROM opfdata
+    nbuses, nlines, ngens = opfdata.nbuses, opfdata.nlines, opfdata.ngens
+    N, L, G = opfdata.N, opfdata.L, opfdata.G 
+    fromLines,toLines,fromBus,toBus = opfdata.fromLines, opfdata.toLines, opfdata.fromBus, opfdata.toBus
+    BusGeners, Y = opfdata.BusGeners, opfdata.Y_AC
+    λF,λT,μF,μT=mMP[:λF],mMP[:λT],mMP[:μF],mMP[:μT]
+  #These constraints are not quite valid, but their inclusion often results in much faster time to near optimal solution.
+    if HEUR == 1
+      @constraint(mMP, LambdaMuConstr1[l in L], λF[l]*Y["ftI"][l] - λT[l]*Y["tfI"][l] + μF[l]*Y["ftR"][l] - μT[l]*Y["tfR"][l] == 0.0)
+    elseif HEUR == 2
+      @constraint(mMP, LambdaFequalsT[l in L], λF[l] - λT[l]  == 0)
+      @constraint(mMP, muFequalsT[l in L], μF[l] - μT[l]  == 0)
+    elseif HEUR == 3
+      lRelax=rand(Bool,nlines)
+      @show lRelax
+      for l in L
+        if lRelax[l]
+          @constraint(mMP, λF[l] - λT[l]  == 0)
+          @constraint(mMP, μF[l] - μT[l]  == 0)
+        end
+      end
+    end
+end
+
+function solveNodeMP(opfdata,mMP,params,trl_bundles,ctr_bundles,agg_bundles,ctr,CTR_PARAM,
+			mpsoln)
+  # OBTAIN SHORTHAND PROBLEM INFORMATION FROM opfdata
+    nbuses, nlines, ngens = opfdata.nbuses, opfdata.nlines, opfdata.ngens
+    N, L, G = opfdata.N, opfdata.L, opfdata.G 
+    fromLines,toLines,fromBus,toBus = opfdata.fromLines, opfdata.toLines, opfdata.fromBus, opfdata.toBus
+    BusGeners, Y = opfdata.BusGeners, opfdata.Y_AC
+
+    α,β,γ,δ=mMP[:α],mMP[:β],mMP[:γ],mMP[:δ]
+    x,λF,λT,μF,μT=mMP[:x],mMP[:λF],mMP[:λT],mMP[:μF],mMP[:μT]
+    ζpLB,ζpUB,ζqLB,ζqUB=mMP[:ζpLB],mMP[:ζpUB],mMP[:ζqLB],mMP[:ζqUB]
+    linobj=mMP[:linobj]
+    psi = 0
+    if CTR_PARAM == PROX
+      psi = mMP[:psi]
+    end
 
   # Adding the extra cuts
     if length(agg_bundles) > 0
@@ -185,12 +200,12 @@ function solveNodeMP(opfdata,nodeinfo,params,bundles,ctr_bundles,agg_bundles,K,H
 	+ agg_bundles[n].eta_sg.μF[l]*(μF[l]-agg_bundles[n].soln.μF[l]) + agg_bundles[n].eta_sg.μT[l]*(μT[l]-agg_bundles[n].soln.μT[l]) for l in L)
       )
     end
-    if length(bundles) > 0
-      @constraint(mMP, CutPlanes[n=1:length(bundles)], 0 <= psi - bundles[n].eta 
-	+ sum( bundles[n].eta_sg.α[i]*(α[i]-bundles[n].soln.α[i]) + bundles[n].eta_sg.β[i]*(β[i]-bundles[n].soln.β[i])
-	+ bundles[n].eta_sg.γ[i]*(γ[i]-bundles[n].soln.γ[i]) + bundles[n].eta_sg.δ[i]*(δ[i]-bundles[n].soln.δ[i]) for i in N)
-        + sum( bundles[n].eta_sg.λF[l]*(λF[l]-bundles[n].soln.λF[l]) + bundles[n].eta_sg.λT[l]*(λT[l]-bundles[n].soln.λT[l]) 
-	+ bundles[n].eta_sg.μF[l]*(μF[l]-bundles[n].soln.μF[l]) + bundles[n].eta_sg.μT[l]*(μT[l]-bundles[n].soln.μT[l]) for l in L)
+    if length(trl_bundles) > 0
+      @constraint(mMP, CutPlanesTrl[n=1:length(trl_bundles)], 0 <= psi - trl_bundles[n].eta 
+	+ sum( trl_bundles[n].eta_sg.α[i]*(α[i]-trl_bundles[n].soln.α[i]) + trl_bundles[n].eta_sg.β[i]*(β[i]-trl_bundles[n].soln.β[i])
+	+ trl_bundles[n].eta_sg.γ[i]*(γ[i]-trl_bundles[n].soln.γ[i]) + trl_bundles[n].eta_sg.δ[i]*(δ[i]-trl_bundles[n].soln.δ[i]) for i in N)
+        + sum( trl_bundles[n].eta_sg.λF[l]*(λF[l]-trl_bundles[n].soln.λF[l]) + trl_bundles[n].eta_sg.λT[l]*(λT[l]-trl_bundles[n].soln.λT[l]) 
+	+ trl_bundles[n].eta_sg.μF[l]*(μF[l]-trl_bundles[n].soln.μF[l]) + trl_bundles[n].eta_sg.μT[l]*(μT[l]-trl_bundles[n].soln.μT[l]) for l in L)
       )
     end
     if length(ctr_bundles) > 0
@@ -238,12 +253,12 @@ function solveNodeMP(opfdata,nodeinfo,params,bundles,ctr_bundles,agg_bundles,K,H
       mpsoln.linerr += dot( mpsoln.eta_sg.μF[L],(ctr.soln.μF[L]-mpsoln.soln.μF[L]) ) 
       mpsoln.linerr += dot( mpsoln.eta_sg.μT[L],(ctr.soln.μT[L]-mpsoln.soln.μT[L]) )
 
-      for n=1:length(bundles)
-        etaval=-JuMP.value(-bundles[n].eta 
-	  + sum( bundles[n].eta_sg.α[i]*(α[i]-bundles[n].soln.α[i]) + bundles[n].eta_sg.β[i]*(β[i]-bundles[n].soln.β[i])
-	    + bundles[n].eta_sg.γ[i]*(γ[i]-bundles[n].soln.γ[i]) + bundles[n].eta_sg.δ[i]*(δ[i]-bundles[n].soln.δ[i]) for i in N)
-          + sum( bundles[n].eta_sg.λF[l]*(λF[l]-bundles[n].soln.λF[l]) + bundles[n].eta_sg.λT[l]*(λT[l]-bundles[n].soln.λT[l]) 
-	    + bundles[n].eta_sg.μF[l]*(μF[l]-bundles[n].soln.μF[l]) + bundles[n].eta_sg.μT[l]*(μT[l]-bundles[n].soln.μT[l]) for l in L)
+      for n=1:length(trl_bundles)
+        etaval=-JuMP.value(-trl_bundles[n].eta 
+	  + sum( trl_bundles[n].eta_sg.α[i]*(α[i]-trl_bundles[n].soln.α[i]) + trl_bundles[n].eta_sg.β[i]*(β[i]-trl_bundles[n].soln.β[i])
+	    + trl_bundles[n].eta_sg.γ[i]*(γ[i]-trl_bundles[n].soln.γ[i]) + trl_bundles[n].eta_sg.δ[i]*(δ[i]-trl_bundles[n].soln.δ[i]) for i in N)
+          + sum( trl_bundles[n].eta_sg.λF[l]*(λF[l]-trl_bundles[n].soln.λF[l]) + trl_bundles[n].eta_sg.λT[l]*(λT[l]-trl_bundles[n].soln.λT[l]) 
+	    + trl_bundles[n].eta_sg.μF[l]*(μF[l]-trl_bundles[n].soln.μF[l]) + trl_bundles[n].eta_sg.μT[l]*(μT[l]-trl_bundles[n].soln.μT[l]) for l in L)
         )
 	if mpsoln.etahat < etaval
 	  mpsoln.etahat = etaval
@@ -273,8 +288,8 @@ function solveNodeMP(opfdata,nodeinfo,params,bundles,ctr_bundles,agg_bundles,K,H
       end
 
       if mpsoln.status == MOI.OPTIMAL || mpsoln.status == MOI.LOCALLY_SOLVED
-	for n=1:length(bundles)
-	  bundles[n].cut_dual = abs(JuMP.dual(CutPlanes[n]))
+	for n=1:length(trl_bundles)
+	  trl_bundles[n].cut_dual = abs(JuMP.dual(CutPlanesTrl[n]))
 	end
 	for n=1:length(ctr_bundles)
 	  ctr_bundles[n].cut_dual = abs(JuMP.dual(CutPlanesCtr[n]))
@@ -284,7 +299,7 @@ function solveNodeMP(opfdata,nodeinfo,params,bundles,ctr_bundles,agg_bundles,K,H
 	end
       end
       if mpsoln.status == MOI.OPTIMAL && (CTR_PARAM==LVL1 || CTR_PARAM == LVL2 || CTR_PARAM == LVLINF )
-	mpsoln.lvl_dual = -getdual(LVLConstr)
+	mpsoln.lvl_dual = -getdual(mMP[:LVLConstr])
       end
   else
     #println("solveNodeMP: Return status ",mpsoln.status)

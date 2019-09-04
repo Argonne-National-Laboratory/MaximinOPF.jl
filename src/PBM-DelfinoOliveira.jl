@@ -24,11 +24,14 @@ function PBM_DelfinoOliveira(opfdata,params,K,HEUR,node_data)
     params.rho,params.rhoUB = 0,0
     mpsoln=create_bundle(opfdata)
     ctr=create_bundle(opfdata)
-    status = solveNodeMP(opfdata,node_data,params,trl_bundles,ctr_bundles,agg_bundles,K,HEUR,ctr,PROX0,mpsoln)
+    mMP = createBasicMP(opfdata,node_data,K,PROX0)
+    setObjMP(opfdata,mMP,node_data,params,ctr,PROX0)
+    status = solveNodeMP(opfdata,mMP,params,trl_bundles,ctr_bundles,agg_bundles,ctr,PROX0,mpsoln)
     while mpsoln.status != MOI.OPTIMAL && mpsoln.status != MOI.LOCALLY_SOLVED
       params.tVal /= 2
       println("Status was: ",mpsoln.status,". Resolving with reduced prox parameter value: ",params.tVal)
-      status = solveNodeMP(opfdata,node_data,params,trl_bundles,ctr_bundles,agg_bundles,K,HEUR,ctr,PROX0,mpsoln)
+      setObjMP(opfdata,mMP,node_data,params,ctr,PROX0)
+      status = solveNodeMP(opfdata,mMP,params,trl_bundles,ctr_bundles,agg_bundles,ctr,PROX0,mpsoln)
     end	
     updateCenter(opfdata,mpsoln,ctr,trl_bundles,ctr_bundles,agg_bundles)
     ctr_bundles[1]=mpsoln
@@ -38,15 +41,20 @@ function PBM_DelfinoOliveira(opfdata,params,K,HEUR,node_data)
 
     v_est,ssc_cntr = 1e20,0
     tL,tU=params.tMin,params.tMax
+    mMP=nothing
+    GC.gc()
   # MAIN LOOP
     for kk=1:params.maxNSG
      # STEP 1
       mpsoln=create_bundle(opfdata)
-      status = solveNodeMP(opfdata,node_data,params,trl_bundles,ctr_bundles,agg_bundles,K,HEUR,ctr,PROX0,mpsoln)
+      mMP = createBasicMP(opfdata,node_data,K,PROX0)
+      setObjMP(opfdata,mMP,node_data,params,ctr,PROX0)
+      status = solveNodeMP(opfdata,mMP,params,trl_bundles,ctr_bundles,agg_bundles,ctr,PROX0,mpsoln)
       while mpsoln.status != MOI.OPTIMAL && mpsoln.status != MOI.LOCALLY_SOLVED
 	params.tVal /= 2
         println("Status was: ",mpsoln.status,". Resolving with reduced prox parameter value: ",params.tVal)
-        status = solveNodeMP(opfdata,node_data,params,trl_bundles,ctr_bundles,agg_bundles,K,HEUR,ctr,PROX0,mpsoln)
+        setObjMP(opfdata,mMP,node_data,params,ctr,PROX0)
+        status = solveNodeMP(opfdata,mMP,params,trl_bundles,ctr_bundles,agg_bundles,ctr,PROX0,mpsoln)
       end	
       if status == MOI.OPTIMAL || status == MOI.LOCALLY_SOLVED
        # STEP 2
@@ -93,6 +101,8 @@ function PBM_DelfinoOliveira(opfdata,params,K,HEUR,node_data)
       else
 	println("Solver returned: $status")
       end
+      mMP=nothing
+      GC.gc()
     end
     time_End = (time_ns()-time_Start)/1e9
     println("Done after ",time_End," seconds.")
