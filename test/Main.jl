@@ -70,20 +70,33 @@ include("../src/EvalDSP.jl") ### Initialize the defender subproblems with power 
 N, L, G = opfdata.N, opfdata.L, opfdata.G 
 x_lbs=zeros(opfdata.nlines)
 x_ubs=ones(opfdata.nlines)
-node_data=NodeInfo(x_lbs,x_ubs,1e20)
-### Params
-  #ALG::Int
-  #maxNSG::Int
-  #tMin::Float64
-  #tMax::Float64
-  #tVal::Float64
-  #rho::Float64
-  #rhoUB::Float64
-  #ssc::Float64
-  #ssc_cntr::Int
-  #tol::Float64
-###
-params=Params(3,100000,0.01,20,10.0,0.0,0.0,0.25,0,1e-4,1e-2,1e-2)
+#= Node Data
+  x_lbs::Array{Float64}
+  x_ubs::Array{Float64}
+  nodeBd::Float64
+  rho::Float64
+  rhoUB::Float64
+  sscval
+  descent_est::Float64
+  ns_cntr::Int
+  tVal::Float64
+  linerr::Float64
+  agg_sg_norm::Float64
+  epshat::Float64
+  var_est::Float64
+=#
+node_data=NodeInfo(0,0,x_lbs,x_ubs,1e20,0.0,0.0,0.0,0.0,0,10.0,0.0,0.0,0.0,1e20)
+#= Params
+  ALG::Int
+  maxNSG::Int
+  tMin::Float64
+  tMax::Float64
+  ssc::Float64
+  tol1::Float64
+  tol2::Float64
+  tol3::Float64
+=#
+params=Params(3,100000,0.01,200,0.25,1e-4,1e-2,1e-2)
 
 
 if FORM == ECP 

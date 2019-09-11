@@ -79,7 +79,7 @@ function createBasicMP(opfdata,nodeinfo,K,CTR_PARAM)
     return mMP
 end
 
-function setObjMP(opfdata,mMP,nodeinfo,params,ctr,CTR_PARAM)
+function setObjMP(opfdata,mMP,nodeinfo,ctr,CTR_PARAM)
   # OBTAIN SHORTHAND PROBLEM INFORMATION FROM opfdata
     nbuses, nlines, ngens = opfdata.nbuses, opfdata.nlines, opfdata.ngens
     N, L, G = opfdata.N, opfdata.L, opfdata.G 
@@ -94,14 +94,14 @@ function setObjMP(opfdata,mMP,nodeinfo,params,ctr,CTR_PARAM)
 
    # METHOD-SPECIFIC SETUP
     if CTR_PARAM == PROX0
-      @objective(mMP, Max, linobj - 0.5*params.tVal*(
+      @objective(mMP, Max, linobj - 0.5*nodeinfo.tVal*(
 	  sum( (ctr.soln.α[i] - α[i])^2 + (ctr.soln.β[i] - β[i])^2 + (ctr.soln.γ[i] - γ[i])^2 + (ctr.soln.δ[i] - δ[i])^2 for i in N)
 	  +sum( (ctr.soln.ζpLB[g] - ζpLB[g])^2 + (ctr.soln.ζpUB[g] - ζpUB[g])^2 + (ctr.soln.ζqLB[g] - ζqLB[g])^2 + (ctr.soln.ζqUB[g] - ζqUB[g])^2 for g in G)
 	  +sum( (ctr.soln.x[l]-x[l])^2 + (ctr.soln.λF[l] - λF[l])^2 + (ctr.soln.λT[l] - λT[l])^2 + (ctr.soln.μF[l] - μF[l])^2 + (ctr.soln.μT[l] - μT[l])^2 for l in L)
 	)
       )
     elseif CTR_PARAM == PROX 
-        @objective(mMP, Min, psi + 0.5*params.tVal*(
+        @objective(mMP, Min, psi + 0.5*nodeinfo.tVal*(
 	  sum( (ctr.soln.α[i] - α[i])^2 + (ctr.soln.β[i] - β[i])^2 + (ctr.soln.γ[i] - γ[i])^2 + (ctr.soln.δ[i] - δ[i])^2 for i in N)
 	  +sum( (ctr.soln.ζpLB[g] - ζpLB[g])^2 + (ctr.soln.ζpUB[g] - ζpUB[g])^2 + (ctr.soln.ζqLB[g] - ζqLB[g])^2 + (ctr.soln.ζqUB[g] - ζqUB[g])^2 for g in G)
 	  +sum( (ctr.soln.x[l]-x[l])^2 + (ctr.soln.λF[l] - λF[l])^2 + (ctr.soln.λT[l] - λT[l])^2 + (ctr.soln.μF[l] - μF[l])^2 + (ctr.soln.μT[l] - μT[l])^2 for l in L)
@@ -123,7 +123,7 @@ function setObjMP(opfdata,mMP,nodeinfo,params,ctr,CTR_PARAM)
         @constraint(mMP, gammaLBSlack[i=N], ctr.soln.γ[i] - γ[i] >= -gammaSlack[i])
         @constraint(mMP, deltaUBSlack[i=N], ctr.soln.δ[i] - δ[i] <= deltaSlack[i])
         @constraint(mMP, deltaLBSlack[i=N], ctr.soln.δ[i] - δ[i] >= -deltaSlack[i])
-        @objective(mMP, Max, linobj - params.tVal*sum(alphaSlack[i] + betaSlack[i] + gammaSlack[i] + deltaSlack[i] for i in N))
+        @objective(mMP, Max, linobj - nodeinfo.tVal*sum(alphaSlack[i] + betaSlack[i] + gammaSlack[i] + deltaSlack[i] for i in N))
       elseif CTR_PARAM==LVLINF
         @variable(mMP, Slack >= 0)
         @constraint(mMP, alphaUBSlack[i=N], ctr.soln.α[i] - α[i] <= Slack)
@@ -134,9 +134,9 @@ function setObjMP(opfdata,mMP,nodeinfo,params,ctr,CTR_PARAM)
         @constraint(mMP, gammaLBSlack[i=N], ctr.soln.γ[i] - γ[i] >= -Slack)
         @constraint(mMP, deltaUBSlack[i=N], ctr.soln.δ[i] - δ[i] <= Slack)
         @constraint(mMP, deltaLBSlack[i=N], ctr.soln.δ[i] - δ[i] >= -Slack)
-        @objective(mMP, Max, linobj - params.tVal*Slack)
+        @objective(mMP, Max, linobj - nodeinfo.tVal*Slack)
       else
-        @objective(mMP, Max, linobj - 0.5*params.tVal*sum( ( ctr.soln.α[i] - α[i])^2 + (ctr.soln.β[i] - β[i])^2 + (ctr.soln.γ[i] - γ[i])^2 + (ctr.soln.δ[i] - δ[i])^2 for i in N))
+        @objective(mMP, Max, linobj - 0.5*nodeinfo.tVal*sum( ( ctr.soln.α[i] - α[i])^2 + (ctr.soln.β[i] - β[i])^2 + (ctr.soln.γ[i] - γ[i])^2 + (ctr.soln.δ[i] - δ[i])^2 for i in N))
       end
     elseif CTR_PARAM == CP
       @objective(mMP, Max, linobj)
@@ -174,8 +174,8 @@ function addHeurConstr(opfdata,mMP,HEUR)
     end
 end
 
-function solveNodeMP(opfdata,mMP,params,trl_bundles,ctr_bundles,agg_bundles,ctr,CTR_PARAM,
-			mpsoln)
+function solveNodeMP(opfdata,mMP,nodeinfo,trl_bundles,ctr_bundles,agg_bundles,ctr,CTR_PARAM,
+			mpsoln,sg_agg)
   # OBTAIN SHORTHAND PROBLEM INFORMATION FROM opfdata
     nbuses, nlines, ngens = opfdata.nbuses, opfdata.nlines, opfdata.ngens
     N, L, G = opfdata.N, opfdata.L, opfdata.G 
@@ -240,18 +240,9 @@ function solveNodeMP(opfdata,mMP,params,trl_bundles,ctr_bundles,agg_bundles,ctr,
 
       mpsoln.eta,stat = computeSG(opfdata,mpsoln) #This computes mpsoln.eta 
       if !stat
-	params.tVal /= 2.0
+	nodeinfo.tVal /= 2.0
       end
 
-      mpsoln.linerr = ctr.eta - mpsoln.eta 
-      mpsoln.linerr += dot( mpsoln.eta_sg.α[N], (ctr.soln.α[N]-mpsoln.soln.α[N]) ) 
-      mpsoln.linerr += dot( mpsoln.eta_sg.β[N], (ctr.soln.β[N]-mpsoln.soln.β[N]) ) 
-      mpsoln.linerr += dot( mpsoln.eta_sg.γ[N], (ctr.soln.γ[N]-mpsoln.soln.γ[N]) ) 
-      mpsoln.linerr += dot( mpsoln.eta_sg.δ[N], (ctr.soln.δ[N]-mpsoln.soln.δ[N]) ) 
-      mpsoln.linerr += dot( mpsoln.eta_sg.λF[L],(ctr.soln.λF[L]-mpsoln.soln.λF[L]) ) 
-      mpsoln.linerr += dot( mpsoln.eta_sg.λT[L],(ctr.soln.λT[L]-mpsoln.soln.λT[L]) ) 
-      mpsoln.linerr += dot( mpsoln.eta_sg.μF[L],(ctr.soln.μF[L]-mpsoln.soln.μF[L]) ) 
-      mpsoln.linerr += dot( mpsoln.eta_sg.μT[L],(ctr.soln.μT[L]-mpsoln.soln.μT[L]) )
 
       for n=1:length(trl_bundles)
         etaval=-JuMP.value(-trl_bundles[n].eta 
@@ -287,17 +278,71 @@ function solveNodeMP(opfdata,mMP,params,trl_bundles,ctr_bundles,agg_bundles,ctr,
 	end
       end
 
-      if mpsoln.status == MOI.OPTIMAL || mpsoln.status == MOI.LOCALLY_SOLVED
-	for n=1:length(trl_bundles)
-	  trl_bundles[n].cut_dual = abs(JuMP.dual(CutPlanesTrl[n]))
-	end
-	for n=1:length(ctr_bundles)
-	  ctr_bundles[n].cut_dual = abs(JuMP.dual(CutPlanesCtr[n]))
-	end
-	for n=1:length(agg_bundles)
-	  agg_bundles[n].cut_dual = abs(JuMP.dual(CutPlanesAgg[n]))
-	end
+      for n=1:length(trl_bundles)
+        trl_bundles[n].cut_dual = abs(JuMP.dual(CutPlanesTrl[n]))
       end
+      for n=1:length(ctr_bundles)
+        ctr_bundles[n].cut_dual = abs(JuMP.dual(CutPlanesCtr[n]))
+      end
+      for n=1:length(agg_bundles)
+        agg_bundles[n].cut_dual = abs(JuMP.dual(CutPlanesAgg[n]))
+      end
+      update_rho(nodeinfo,trl_bundles,ctr_bundles,agg_bundles)
+      nodeinfo.rhoUB = nodeinfo.rho
+      nodeinfo.sscval = ((mpsoln.linobjval - nodeinfo.rhoUB*mpsoln.eta)-(ctr.linobjval - nodeinfo.rhoUB*ctr.eta))/(mpsoln.linobjval-(ctr.linobjval - nodeinfo.rhoUB*ctr.eta)) 
+
+      node_data.agg_sg_norm = update_agg(opfdata,node_data,ctr,mpsoln,sg_agg)
+      node_data.epshat = compute_epshat(opfdata,node_data,mpsoln,ctr,sg_agg)
+
+     # COMPUTE LINEAR ERRORS
+      node_data.linerr = mpsoln.linobjval - ctr.linobjval + node_data.rho*(ctr.eta - mpsoln.eta) 
+      node_data.linerr -= dot( sg_agg.α[N], (ctr.soln.α[N]-mpsoln.soln.α[N]) ) 
+      node_data.linerr -= dot( sg_agg.β[N], (ctr.soln.β[N]-mpsoln.soln.β[N]) ) 
+      node_data.linerr -= dot( sg_agg.γ[N], (ctr.soln.γ[N]-mpsoln.soln.γ[N]) ) 
+      node_data.linerr -= dot( sg_agg.δ[N], (ctr.soln.δ[N]-mpsoln.soln.δ[N]) ) 
+      node_data.linerr -= dot( sg_agg.ζpLB[G], (ctr.soln.ζpLB[G]-mpsoln.soln.ζpLB[G]) ) 
+      node_data.linerr -= dot( sg_agg.ζpUB[G], (ctr.soln.ζpUB[G]-mpsoln.soln.ζpUB[G]) ) 
+      node_data.linerr -= dot( sg_agg.ζqLB[G], (ctr.soln.ζqLB[G]-mpsoln.soln.ζqLB[G]) ) 
+      node_data.linerr -= dot( sg_agg.ζqUB[G], (ctr.soln.ζqUB[G]-mpsoln.soln.ζqUB[G]) ) 
+      node_data.linerr -= dot( sg_agg.x[L],(ctr.soln.x[L]-mpsoln.soln.x[L]) ) 
+      node_data.linerr -= dot( sg_agg.λF[L],(ctr.soln.λF[L]-mpsoln.soln.λF[L]) ) 
+      node_data.linerr -= dot( sg_agg.λT[L],(ctr.soln.λT[L]-mpsoln.soln.λT[L]) ) 
+      node_data.linerr -= dot( sg_agg.μF[L],(ctr.soln.μF[L]-mpsoln.soln.μF[L]) ) 
+      node_data.linerr -= dot( sg_agg.μT[L],(ctr.soln.μT[L]-mpsoln.soln.μT[L]) )
+      for n=1:length(trl_bundles)
+        node_data.linerr -= trl_bundles[n].cut_dual*sum( trl_bundles[n].eta_sg.α[i]*(ctr.soln.α[i]-mpsoln.soln.α[i]) + trl_bundles[n].eta_sg.β[i]*(ctr.soln.β[i]-mpsoln.soln.β[i])
+	    + trl_bundles[n].eta_sg.γ[i]*(ctr.soln.γ[i]-mpsoln.soln.γ[i]) + trl_bundles[n].eta_sg.δ[i]*(ctr.soln.δ[i]-mpsoln.soln.δ[i]) for i in N)
+        node_data.linerr -= trl_bundles[n].cut_dual*sum(     trl_bundles[n].eta_sg.λF[l]*(ctr.soln.λF[l]-mpsoln.soln.λF[l]) 
+							+ trl_bundles[n].eta_sg.λT[l]*(ctr.soln.λT[l]-mpsoln.soln.λT[l]) 
+	    						+ trl_bundles[n].eta_sg.μF[l]*(ctr.soln.μF[l]-mpsoln.soln.μF[l]) 
+							+ trl_bundles[n].eta_sg.μT[l]*(ctr.soln.μT[l]-mpsoln.soln.μT[l])  for l in L)
+      end
+      for n=1:length(ctr_bundles)
+        node_data.linerr -= ctr_bundles[n].cut_dual*sum( ctr_bundles[n].eta_sg.α[i]*(ctr.soln.α[i]-mpsoln.soln.α[i]) + ctr_bundles[n].eta_sg.β[i]*(ctr.soln.β[i]-mpsoln.soln.β[i])
+	    + ctr_bundles[n].eta_sg.γ[i]*(ctr.soln.γ[i]-mpsoln.soln.γ[i]) + ctr_bundles[n].eta_sg.δ[i]*(ctr.soln.δ[i]-mpsoln.soln.δ[i]) for i in N)
+        node_data.linerr -= ctr_bundles[n].cut_dual*sum( ctr_bundles[n].eta_sg.λF[l]*(ctr.soln.λF[l]-mpsoln.soln.λF[l]) 
+						    + ctr_bundles[n].eta_sg.λT[l]*(ctr.soln.λT[l]-mpsoln.soln.λT[l]) 
+	    					    + ctr_bundles[n].eta_sg.μF[l]*(ctr.soln.μF[l]-mpsoln.soln.μF[l]) 
+						    + ctr_bundles[n].eta_sg.μT[l]*(ctr.soln.μT[l]-mpsoln.soln.μT[l])  for l in L)
+      end
+      for n=1:length(agg_bundles)
+        node_data.linerr -= agg_bundles[n].cut_dual*sum( agg_bundles[n].eta_sg.α[i]*(ctr.soln.α[i]-mpsoln.soln.α[i]) + agg_bundles[n].eta_sg.β[i]*(ctr.soln.β[i]-mpsoln.soln.β[i])
+	    + agg_bundles[n].eta_sg.γ[i]*(ctr.soln.γ[i]-mpsoln.soln.γ[i]) + agg_bundles[n].eta_sg.δ[i]*(ctr.soln.δ[i]-mpsoln.soln.δ[i]) for i in N)
+        node_data.linerr -= agg_bundles[n].cut_dual*sum( agg_bundles[n].eta_sg.λF[l]*(ctr.soln.λF[l]-mpsoln.soln.λF[l]) 
+						    + agg_bundles[n].eta_sg.λT[l]*(ctr.soln.λT[l]-mpsoln.soln.λT[l]) 
+	    					    + agg_bundles[n].eta_sg.μF[l]*(ctr.soln.μF[l]-mpsoln.soln.μF[l]) 
+						    + agg_bundles[n].eta_sg.μT[l]*(ctr.soln.μT[l]-mpsoln.soln.μT[l])  for l in L)
+      end
+      node_data.linerr += node_data.rho*dot( mpsoln.eta_sg.α[N], (ctr.soln.α[N]-mpsoln.soln.α[N]) ) 
+      node_data.linerr += node_data.rho*dot( mpsoln.eta_sg.β[N], (ctr.soln.β[N]-mpsoln.soln.β[N]) ) 
+      node_data.linerr += node_data.rho*dot( mpsoln.eta_sg.γ[N], (ctr.soln.γ[N]-mpsoln.soln.γ[N]) ) 
+      node_data.linerr += node_data.rho*dot( mpsoln.eta_sg.δ[N], (ctr.soln.δ[N]-mpsoln.soln.δ[N]) ) 
+      node_data.linerr += node_data.rho*dot( mpsoln.eta_sg.λF[L],(ctr.soln.λF[L]-mpsoln.soln.λF[L]) ) 
+      node_data.linerr += node_data.rho*dot( mpsoln.eta_sg.λT[L],(ctr.soln.λT[L]-mpsoln.soln.λT[L]) ) 
+      node_data.linerr += node_data.rho*dot( mpsoln.eta_sg.μF[L],(ctr.soln.μF[L]-mpsoln.soln.μF[L]) ) 
+      node_data.linerr += node_data.rho*dot( mpsoln.eta_sg.μT[L],(ctr.soln.μT[L]-mpsoln.soln.μT[L]) )
+
+
       if mpsoln.status == MOI.OPTIMAL && (CTR_PARAM==LVL1 || CTR_PARAM == LVL2 || CTR_PARAM == LVLINF )
 	mpsoln.lvl_dual = -getdual(mMP[:LVLConstr])
       end

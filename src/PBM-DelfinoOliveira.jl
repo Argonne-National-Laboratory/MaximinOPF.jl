@@ -21,83 +21,66 @@ function PBM_DelfinoOliveira(opfdata,params,K,HEUR,node_data)
     ctr_bundles=Dict()
     agg_bundles=Dict()
     ncuts=0
-    params.rho,params.rhoUB = 0,0
     mpsoln=create_bundle(opfdata)
     ctr=create_bundle(opfdata)
+    sg_agg=create_soln(opfdata)
     mMP = createBasicMP(opfdata,node_data,K,PROX0)
-    setObjMP(opfdata,mMP,node_data,params,ctr,PROX0)
-    status = solveNodeMP(opfdata,mMP,params,trl_bundles,ctr_bundles,agg_bundles,ctr,PROX0,mpsoln)
+    setObjMP(opfdata,mMP,node_data,ctr,PROX0)
+    status = solveNodeMP(opfdata,mMP,node_data,trl_bundles,ctr_bundles,agg_bundles,ctr,PROX0,mpsoln,sg_agg)
     while mpsoln.status != MOI.OPTIMAL && mpsoln.status != MOI.LOCALLY_SOLVED
-      params.tVal /= 2
-      println("Status was: ",mpsoln.status,". Resolving with reduced prox parameter value: ",params.tVal)
-      setObjMP(opfdata,mMP,node_data,params,ctr,PROX0)
-      status = solveNodeMP(opfdata,mMP,params,trl_bundles,ctr_bundles,agg_bundles,ctr,PROX0,mpsoln)
+      node_data.tVal /= 2
+      println("Status was: ",mpsoln.status,". Resolving with reduced prox parameter value: ",node_data.tVal)
+      setObjMP(opfdata,mMP,node_data,ctr,PROX0)
+      status = solveNodeMP(opfdata,mMP,node_data,trl_bundles,ctr_bundles,agg_bundles,ctr,PROX0,mpsoln,sg_agg)
     end	
-    updateCenter(opfdata,mpsoln,ctr,trl_bundles,ctr_bundles,agg_bundles)
+    cpy_bundle(opfdata,mpsoln,ctr)
     ctr_bundles[1]=mpsoln
 
     agg_bundle=create_bundle(opfdata)
-    sg_agg=create_soln(opfdata)
 
-    v_est,ssc_cntr = 1e20,0
     tL,tU=params.tMin,params.tMax
     mMP=nothing
     GC.gc()
   # MAIN LOOP
     for kk=1:params.maxNSG
+      node_data.iter=kk
      # STEP 1
       mpsoln=create_bundle(opfdata)
       mMP = createBasicMP(opfdata,node_data,K,PROX0)
-      setObjMP(opfdata,mMP,node_data,params,ctr,PROX0)
-      status = solveNodeMP(opfdata,mMP,params,trl_bundles,ctr_bundles,agg_bundles,ctr,PROX0,mpsoln)
+      setObjMP(opfdata,mMP,node_data,ctr,PROX0)
+      status = solveNodeMP(opfdata,mMP,node_data,trl_bundles,ctr_bundles,agg_bundles,ctr,PROX0,mpsoln,sg_agg)
       while mpsoln.status != MOI.OPTIMAL && mpsoln.status != MOI.LOCALLY_SOLVED
-	params.tVal /= 2
-        println("Status was: ",mpsoln.status,". Resolving with reduced prox parameter value: ",params.tVal)
-        setObjMP(opfdata,mMP,node_data,params,ctr,PROX0)
-        status = solveNodeMP(opfdata,mMP,params,trl_bundles,ctr_bundles,agg_bundles,ctr,PROX0,mpsoln)
+	node_data.tVal /= 2
+        println("Status was: ",mpsoln.status,". Resolving with reduced prox parameter value: ",node_data.tVal)
+        setObjMP(opfdata,mMP,node_data,ctr,PROX0)
+        status = solveNodeMP(opfdata,mMP,node_data,trl_bundles,ctr_bundles,agg_bundles,ctr,PROX0,mpsoln,sg_agg)
       end	
       if status == MOI.OPTIMAL || status == MOI.LOCALLY_SOLVED
        # STEP 2
         ntrlcuts,nctrcuts,naggcuts = length(trl_bundles),length(ctr_bundles),length(agg_bundles)
+	node_data.ncuts = ntrlcuts
 	 # UPDATING RHO AS NECESSARY TO CORRESPOND TO EXACT PENALTY
          # COMPUTING AGGREGATION INFORMATION
-          agg_norm = update_agg(opfdata,params,ctr,mpsoln,sg_agg)
-          update_rho(params,trl_bundles,ctr_bundles,agg_bundles)
-          epshat = compute_epshat(opfdata,params,mpsoln,ctr,sg_agg)
-	  params.rhoUB = params.rho
           agg_bundles[1]=aggregateSG(opfdata,trl_bundles,mpsoln,ctr,ctr_bundles,agg_bundles)
-          if ctr.eta < params.tol1 && agg_norm < params.tol2 && epshat < params.tol3 
+          if ctr.eta < params.tol1 && node_data.agg_sg_norm < params.tol2 && node_data.epshat < params.tol3 
 	    println("Convergence to within tolerance: ")
-	    @show kk,ntrlcuts,ssc_cntr,params.tVal,params.rho
-	    @show ctr.linobjval,ctr.eta,agg_norm,epshat
+	    @printf("iter: %d\t(objval,eta)=(%.4f,%.2e)\t(t,rho)=(%.3f,%.3f)\t(||s||,epshat)=(%.2e,%.2e)\n",kk,ctr.linobjval,ctr.eta,node_data.tVal,node_data.rho,node_data.agg_sg_norm,node_data.epshat)
 	    break
-	  else
-	    #@show ctr.eta,agg_norm,epshat,params.tVal
           end
          # STEP 3
-	  sscval = ((mpsoln.linobjval - params.rhoUB*mpsoln.eta)-(ctr.linobjval - params.rhoUB*ctr.eta))/(mpsoln.linobjval-(ctr.linobjval - params.rhoUB*ctr.eta)) 
-	  vval = (mpsoln.linobjval-(ctr.linobjval - params.rhoUB*ctr.eta)) 
-	  ntrlcuts=purgeSG(opfdata,trl_bundles)
-          if sscval >= params.ssc 
+	  node_data.sscval = ((mpsoln.linobjval - node_data.rhoUB*mpsoln.eta)-(ctr.linobjval - node_data.rhoUB*ctr.eta))/(mpsoln.linobjval-(ctr.linobjval - node_data.rhoUB*ctr.eta)) 
+	  node_data.descent_est = mpsoln.linobjval-(ctr.linobjval - node_data.rhoUB*ctr.eta) 
+          KiwielRhoUpdate(opfdata,params,node_data)
+	  ntrlcuts=purgeSG(opfdata,trl_bundles,20,50)
+          if node_data.sscval >= params.ssc 
          # UPDATE CENTER VALUES
-	    nctrcuts=purgeSG(opfdata,ctr_bundles,5,20)
-	    ctr_bundles[nctrcuts+1]=mpsoln
-	    updateCenter(opfdata,mpsoln,ctr,trl_bundles,ctr_bundles,agg_bundles)
-	    if ctr.eta < params.tol1
-	      params.tVal /= 2.0
-	    elseif epshat<params.tol3
-	      params.tVal /= 1.05
-	    end
-	    @show kk,nctrcuts,ntrlcuts,ssc_cntr,params.tVal,params.rho
-	    @show mpsoln.linobjval,mpsoln.eta,agg_norm,epshat
+	    trl_bundles[ntrlcuts+1]=ctr_bundles[1] #Move old ctr bundle to the collection of trial bundles
+	    ctr_bundles[1]=mpsoln
+            cpy_bundle(opfdata,mpsoln,ctr)
+	    @printf("iter: %d\t(objval,eta)=(%.4f,%.2e)\t(t,rho)=(%.3f,%.3f)\t(||s||,epshat)=(%.2e,%.2e)\n",kk,mpsoln.linobjval,mpsoln.eta,node_data.tVal,node_data.rho,node_data.agg_sg_norm,node_data.epshat)
 	  else
             trl_bundles[ntrlcuts+1]=mpsoln
-	    if agg_norm-params.tol2 <= epshat-params.tol3
-	      params.tVal *= 1.05 
-	    end
           end
-	  #@show kk,nctrcuts,ntrlcuts,ssc_cntr,params.tVal,params.rho
-	  #@show mpsoln.linobjval,mpsoln.eta,agg_norm,epshat
       else
 	println("Solver returned: $status")
       end

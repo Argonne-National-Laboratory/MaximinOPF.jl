@@ -1,20 +1,28 @@
 
 # Defining datatypes
 mutable struct NodeInfo
+  iter::Int
+  ncuts::Int
   x_lbs::Array{Float64}
   x_ubs::Array{Float64}
   nodeBd::Float64
+  rho::Float64
+  rhoUB::Float64
+  sscval
+  descent_est::Float64
+  ns_cntr::Int
+  tVal::Float64
+  linerr::Float64
+  agg_sg_norm::Float64
+  epshat::Float64
+  var_est::Float64
 end
 mutable struct Params
   ALG::Int
   maxNSG::Int
   tMin::Float64
   tMax::Float64
-  tVal::Float64
-  rho::Float64
-  rhoUB::Float64
   ssc::Float64
-  ssc_cntr::Int
   tol1::Float64
   tol2::Float64
   tol3::Float64
@@ -57,21 +65,21 @@ function cpy_soln(opfdata,fromSoln,toSoln)
   toSoln.μT[L] = fromSoln.μT[L]
 end
 
-function comp_agg(opfdata,params,ctr,trl,agg)
+function comp_agg(opfdata,node,ctr,trl,agg)
   nbuses, nlines, ngens, N, L, G = opfdata.nbuses, opfdata.nlines, opfdata.ngens, opfdata.N, opfdata.L, opfdata.G 
-  agg.α[N] = params.tVal*(ctr.α[N]-trl.α[N])
-  agg.β[N] = params.tVal*(ctr.β[N]-trl.β[N])
-  agg.γ[N] = params.tVal*(ctr.γ[N]-trl.γ[N])
-  agg.δ[N] = params.tVal*(ctr.δ[N]-trl.δ[N])
-  agg.ζpLB[G] = params.tVal*(ctr.ζpLB[G]-trl.ζpLB[G])
-  agg.ζpUB[G] = params.tVal*(ctr.ζpUB[G]-trl.ζpUB[G])
-  agg.ζqLB[G] = params.tVal*(ctr.ζqLB[G]-trl.ζqLB[G])
-  agg.ζqUB[G] = params.tVal*(ctr.ζqUB[G]-trl.ζqUB[G])
-  agg.x[L] = params.tVal*(ctr.x[L]-trl.x[L])
-  agg.λF[L] = params.tVal*(ctr.λF[L]-trl.λF[L])
-  agg.λT[L] = params.tVal*(ctr.λT[L]-trl.λT[L])
-  agg.μF[L] = params.tVal*(ctr.μF[L]-trl.μF[L])
-  agg.μT[L] = params.tVal*(ctr.μT[L]-trl.μT[L])
+  agg.α[N] = node.tVal*(ctr.α[N]-trl.α[N])
+  agg.β[N] = node.tVal*(ctr.β[N]-trl.β[N])
+  agg.γ[N] = node.tVal*(ctr.γ[N]-trl.γ[N])
+  agg.δ[N] = node.tVal*(ctr.δ[N]-trl.δ[N])
+  agg.ζpLB[G] = node.tVal*(ctr.ζpLB[G]-trl.ζpLB[G])
+  agg.ζpUB[G] = node.tVal*(ctr.ζpUB[G]-trl.ζpUB[G])
+  agg.ζqLB[G] = node.tVal*(ctr.ζqLB[G]-trl.ζqLB[G])
+  agg.ζqUB[G] = node.tVal*(ctr.ζqUB[G]-trl.ζqUB[G])
+  agg.x[L] = node.tVal*(ctr.x[L]-trl.x[L])
+  agg.λF[L] = node.tVal*(ctr.λF[L]-trl.λF[L])
+  agg.λT[L] = node.tVal*(ctr.λT[L]-trl.λT[L])
+  agg.μF[L] = node.tVal*(ctr.μF[L]-trl.μF[L])
+  agg.μT[L] = node.tVal*(ctr.μT[L]-trl.μT[L])
 end
 function comp_norm(opfdata,soln)
   nbuses, nlines, ngens, N, L, G = opfdata.nbuses, opfdata.nlines, opfdata.ngens, opfdata.N, opfdata.L, opfdata.G 
@@ -91,7 +99,6 @@ mutable struct Bundle
   psival::Float64
   eta::Float64
   etahat::Float64
-  linerr::Float64
   cut_dual::Float64
   lvl_dual::Float64
   age::Float64
@@ -100,7 +107,7 @@ mutable struct Bundle
 end
 function create_bundle(opfdata)
   nbuses, nlines, ngens, N, L, G = opfdata.nbuses, opfdata.nlines, opfdata.ngens, opfdata.N, opfdata.L, opfdata.G 
-  return Bundle(create_soln(opfdata),create_soln(opfdata),0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,1.0,0.0,0)
+  return Bundle(create_soln(opfdata),create_soln(opfdata),0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,1.0,0.0,0)
 end
 function cpy_bundle(opfdata,fromBundle,toBundle)
   nbuses, nlines, ngens, N, L, G = opfdata.nbuses, opfdata.nlines, opfdata.ngens, opfdata.N, opfdata.L, opfdata.G 
@@ -112,7 +119,6 @@ function cpy_bundle(opfdata,fromBundle,toBundle)
   toBundle.psival = fromBundle.psival
   toBundle.eta = fromBundle.eta
   toBundle.etahat = fromBundle.etahat
-  toBundle.linerr = fromBundle.linerr
   toBundle.cut_dual = fromBundle.cut_dual
   toBundle.lvl_dual = fromBundle.lvl_dual
   toBundle.solvetime = fromBundle.solvetime
