@@ -81,11 +81,11 @@ elseif FORM == ProxPtSDP
   #testProxPt(opfdata,K,HEUR,node_data)
   #testProxTraj(opfdata,K,HEUR,node_data)
 
-  #include("../src/PBM-DelfinoOliveira.jl")
-  #PBM_DelfinoOliveira(opfdata,params,K,HEUR,node_data)
+  include("../src/PBM-DelfinoOliveira.jl")
+  PBM_DelfinoOliveira(opfdata,params,K,HEUR,node_data)
 
-  include("../src/CPAlg.jl")
-  CPAlg(opfdata,params,K,HEUR,node_data)
+  #include("../src/CPAlg.jl")
+  #CPAlg(opfdata,params,K,HEUR,node_data)
 elseif FORM == AC
   include("../src/DualAC.jl")
 elseif FORM == SOCP
