@@ -402,17 +402,17 @@ function decT(node)
   end
 end
 
-function computeMPSoln(opfdata,node_data,K,PROX0,ctr,trl_bundles,ctr_bundles,agg_bundles)
+function computeMPSoln(opfdata,node_data,K,PROX_PARAM,ctr,trl_bundles,ctr_bundles,agg_bundles)
   mpsoln=create_bundle(opfdata)
-  mMP = createBasicMP(opfdata,node_data,K,PROX0)
-  setObjMP(opfdata,mMP,node_data,ctr,PROX0)
-  solveNodeMP(opfdata,mMP,node_data,trl_bundles,ctr_bundles,agg_bundles,ctr,PROX0,mpsoln)
+  mMP = createBasicMP(opfdata,node_data,K,PROX_PARAM)
+  setObjMP(opfdata,mMP,node_data,ctr,PROX_PARAM)
+  solveNodeMP(opfdata,mMP,node_data,trl_bundles,ctr_bundles,agg_bundles,ctr,PROX_PARAM,mpsoln)
   while mpsoln.status != MOI.OPTIMAL && mpsoln.status != MOI.LOCALLY_SOLVED
     node_data.tVal /= 2
     println("Status was: ",mpsoln.status,". Resolving with reduced prox parameter value: ",node_data.tVal)
-    mMP = createBasicMP(opfdata,node_data,K,PROX0)
-    setObjMP(opfdata,mMP,node_data,ctr,PROX0)
-    solveNodeMP(opfdata,mMP,node_data,trl_bundles,ctr_bundles,agg_bundles,ctr,PROX0,mpsoln)
+    mMP = createBasicMP(opfdata,node_data,K,PROX_PARAM)
+    setObjMP(opfdata,mMP,node_data,ctr,PROX_PARAM)
+    solveNodeMP(opfdata,mMP,node_data,trl_bundles,ctr_bundles,agg_bundles,ctr,PROXPARAM,mpsoln)
   end	
   mMP=nothing
   GC.gc()
