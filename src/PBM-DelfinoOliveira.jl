@@ -22,7 +22,7 @@ function PBM_DelfinoOliveira(opfdata,params,K,HEUR,node_data)
     agg_bundles=Dict()
     ctr=create_bundle(opfdata)
     mpsoln=computeMPSoln(opfdata,node_data,K,PROX0,ctr,trl_bundles,ctr_bundles,agg_bundles)
-    cpy_bundle(opfdata,mpsoln,ctr)
+    ctr=mpsoln
     ctr_bundles[1]=mpsoln
 
 
@@ -52,9 +52,9 @@ function PBM_DelfinoOliveira(opfdata,params,K,HEUR,node_data)
         if testSchrammZoweSSII(opfdata,params,node_data,mpsoln,ctr) 
           agg_bundles[1]=aggregateSG(opfdata,trl_bundles,mpsoln,ctr,ctr_bundles,agg_bundles)
 	  ntrlcuts=purgeSG(opfdata,trl_bundles,10,40)
-	  trl_bundles[ntrlcuts+1]=ctr_bundles[1] #Move old ctr bundle to the collection of trial bundles
+	  trl_bundles[ntrlcuts+1]=ctr_bundles[1] 	#Move old ctr bundle to the collection of trial bundles
 	  ctr_bundles[1]=mpsoln
-          cpy_bundle(opfdata,mpsoln,ctr)
+	  ctr=mpsoln
           tLow,tHigh=params.tMin,params.tMax
 	  @printf("iter: %d\t(objval,eta)=(%.4f,%.2e)\t(t,rho)=(%.3f,%.3f)\t(err,||s||,epshat)=(%.2e,%.2e,%.2e)\n",
 	      kk,mpsoln.linobjval,mpsoln.eta,node_data.tVal,node_data.rho,node_data.linerr,node_data.agg_sg_norm,node_data.epshat)
