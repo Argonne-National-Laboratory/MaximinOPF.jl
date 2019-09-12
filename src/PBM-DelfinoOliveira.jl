@@ -7,7 +7,7 @@ include("utils.jl")
 include("MP.jl")
 
 function PBM_DelfinoOliveira(opfdata,params,K,HEUR,node_data)
-    println("Applying the algorithm of Delfino and de Oliveira 2018....")
+    println("Applying the algorithm of Delfino and de Oliveira 2018 with the proximal parameter update of Zowe and Schramm 1992....")
     time_Start = time_ns()
   # OBTAIN SHORTHAND PROBLEM INFORMATION FROM opfdata
     nbuses, nlines, ngens = opfdata.nbuses, opfdata.nlines, opfdata.ngens
