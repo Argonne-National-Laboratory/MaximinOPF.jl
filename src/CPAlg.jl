@@ -16,6 +16,9 @@ function CPAlg(opfdata,params,K,HEUR,node_data)
     BusGeners, Y = opfdata.BusGeners, opfdata.Y_AC
   # DONE OBTAINING PROBLEM INFORMATION FROM opfdata
 
+  # FOR STORING EXPERIMENTAL DATA
+    plot_data = zeros(params.maxNSG,2)
+
   # INITIAL ITERATION
     trl_bundles=Dict()
     ctr_bundles=Dict()
@@ -32,6 +35,7 @@ function CPAlg(opfdata,params,K,HEUR,node_data)
       node_data.iter=kk
      # STEP 1
       mpsoln=computeMPSoln(opfdata,node_data,K,CP,ctr,trl_bundles,ctr_bundles,agg_bundles)
+      plot_data[kk,1],plot_data[kk,2]=mpsoln.linobjval,mpsoln.linobjval-100*mpsoln.eta
 
      # STEP 2
       ntrlcuts,nctrcuts,naggcuts = length(trl_bundles),length(ctr_bundles),length(agg_bundles)
@@ -52,5 +56,6 @@ function CPAlg(opfdata,params,K,HEUR,node_data)
     end
     time_End = (time_ns()-time_Start)/1e9
     println("Done after ",time_End," seconds.")
+    return plot_data
 end
 

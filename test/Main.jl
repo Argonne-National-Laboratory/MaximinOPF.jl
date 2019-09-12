@@ -68,7 +68,7 @@ node_data=create_node(opfdata)
   tol2::Float64
   tol3::Float64
 =#
-params=Params(3,100000,0.01,1000,0.25,1e-4,1e-2,1e-2)
+params=Params(3,1000,0.01,1000,0.25,1e-4,1e-2,1e-2)
 
 
 if FORM == ECP 
@@ -81,11 +81,19 @@ elseif FORM == ProxPtSDP
   #testProxPt(opfdata,K,HEUR,node_data)
   #testProxTraj(opfdata,K,HEUR,node_data)
 
-  #include("../src/PBM-DelfinoOliveira.jl")
-  #PBM_DelfinoOliveira(opfdata,params,K,HEUR,node_data)
+  include("../src/PBM-DelfinoOliveira.jl")
+  plot_data=PBM_DelfinoOliveira(opfdata,params,K,HEUR,node_data)
 
-  include("../src/CPAlg.jl")
-  CPAlg(opfdata,params,K,HEUR,node_data)
+  #include("../src/CPAlg.jl")
+  #plot_data=CPAlg(opfdata,params,K,HEUR,node_data)
+  for kk=1:params.maxNSG
+    @printf("(%d,%.2f) ",kk,plot_data[kk,1])
+  end
+  println("\n")
+  for kk=1:params.maxNSG
+    @printf("(%d,%.2f) ",kk,plot_data[kk,2])
+  end
+  println("\n")
 elseif FORM == AC
   include("../src/DualAC.jl")
 elseif FORM == SOCP

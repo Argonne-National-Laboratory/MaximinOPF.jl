@@ -16,6 +16,9 @@ function PBM_DelfinoOliveira(opfdata,params,K,HEUR,node_data)
     BusGeners, Y = opfdata.BusGeners, opfdata.Y_AC
   # DONE OBTAINING PROBLEM INFORMATION FROM opfdata
 
+  # FOR STORING EXPERIMENTAL DATA
+    plot_data = zeros(params.maxNSG,2)
+
   # INITIAL ITERATION
     trl_bundles=Dict()
     ctr_bundles=Dict()
@@ -32,6 +35,7 @@ function PBM_DelfinoOliveira(opfdata,params,K,HEUR,node_data)
       node_data.iter=kk
      # STEP 1
       mpsoln=computeMPSoln(opfdata,node_data,K,PROX0,ctr,trl_bundles,ctr_bundles,agg_bundles)
+      plot_data[kk,1],plot_data[kk,2]=mpsoln.linobjval,mpsoln.linobjval-node_data.rho*mpsoln.eta
 
      # STEP 2
       ntrlcuts,nctrcuts,naggcuts = length(trl_bundles),length(ctr_bundles),length(agg_bundles)
@@ -51,7 +55,8 @@ function PBM_DelfinoOliveira(opfdata,params,K,HEUR,node_data)
         # UPDATE CENTER VALUES
         if testSchrammZoweSSII(opfdata,params,node_data,mpsoln,ctr) 
           agg_bundles[1]=aggregateSG(opfdata,trl_bundles,mpsoln,ctr,ctr_bundles,agg_bundles)
-	  ntrlcuts=purgeSG(opfdata,trl_bundles,10,40)
+	  #ntrlcuts=purgeSG(opfdata,trl_bundles,10,40)
+	  ntrlcuts=length(trl_bundles)
 	  trl_bundles[ntrlcuts+1]=ctr_bundles[1] 	#Move old ctr bundle to the collection of trial bundles
 	  ctr_bundles[1]=mpsoln
 	  ctr=mpsoln
@@ -65,7 +70,8 @@ function PBM_DelfinoOliveira(opfdata,params,K,HEUR,node_data)
       else
 	if testSchrammZoweNSII(opfdata,params,ctr,node_data,mpsoln) 
           agg_bundles[1]=aggregateSG(opfdata,trl_bundles,mpsoln,ctr,ctr_bundles,agg_bundles)
-	  ntrlcuts=purgeSG(opfdata,trl_bundles,10,40)
+	  #ntrlcuts=purgeSG(opfdata,trl_bundles,10,40)
+	  ntrlcuts=length(trl_bundles)
           trl_bundles[ntrlcuts+1]=mpsoln
           tLow,tHigh=params.tMin,params.tMax
 	else 
@@ -76,5 +82,6 @@ function PBM_DelfinoOliveira(opfdata,params,K,HEUR,node_data)
     end
     time_End = (time_ns()-time_Start)/1e9
     println("Done after ",time_End," seconds.")
+    return plot_data
 end
 
