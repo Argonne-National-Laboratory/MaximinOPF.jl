@@ -1,5 +1,14 @@
 using LightGraphs
 using Formatting
+using JuMP
+#using CPLEX, Ipopt, SCS 
+using Ipopt 
+#using Mosek,MosekTools
+using Arpack
+using DelimitedFiles
+using Printf
+using SparseArrays
+using LinearAlgebra
 
 #USEFUL SUBROUTINES
 function printX(opfdata,x_soln)
@@ -104,14 +113,13 @@ function KiwielRhoUpdate(opfdata,params,node)
   end
 end
 
-#=  ############## NEEDS TO BE REIMPLEMENTED ##############
 function testSchrammZoweSSII(opfdata,params,node,mpsoln,ctr)
-  return (node.linerr >= 0.5*abs(ctr.eta - mpsoln.eta)) || node.tVal < max(1e-4,params.tMin+1e-4)
+  return (node.linerr - mpsoln.linobjval + ctr.linobjval + node.rho*(mpsoln.eta-ctr.eta)  >= -0.5*node.descent_est) || node.tVal < max(1.001*params.tMin + 1e-2)
 end
-function testSchrammZoweNSII(opfdata,params,ctr,node,mpsoln,agg_bundles)
-  return (node.linerr <= 0.5*agg_bundles[1].linerr) || ( abs(ctr.eta-mpsoln.eta) <= comp_norm(opfdata,agg_bundles[1].eta_sg) + agg_bundles[1].linerr )
+function testSchrammZoweNSII(opfdata,params,ctr,node,mpsoln)
+  return (node.linerr <= 0.5*node.epshat) ||  abs(ctr.linobjval - mpsoln.linobjval - node.rho*(ctr.eta-mpsoln.eta)) <= node.agg_sg_norm + node.epshat || node.tVal > 0.99*params.tMax
 end
-=#
+
 
 function update_agg(opfdata,node,ctr,mpsoln,sg_agg)
   N, L, G = opfdata.N, opfdata.L, opfdata.G 
@@ -190,7 +198,7 @@ function solveEta0Eigs(opfdata,soln,vR,vI)
       fromBus,toBus = opfdata.fromBus, opfdata.toBus
       H=spzeros(2*nbuses,2*nbuses)
       updateHess(opfdata,soln,H)
-      E=eigs(H,nev=1,which=:SR, maxiter=100000, tol=1e-10)
+      E=eigs(H,nev=1,which=:SR, maxiter=100000, tol=1e-6)
       η0Val = E[1][1]
       for i in N
         vR[i] = E[2][i,1]; vI[i] = E[2][nbuses+i,1]
@@ -266,7 +274,7 @@ function solveEta0SDP(opfdata,soln,vR,vI)
 end
 
 # SUBROUTINE FOR COMPUTING A SUBGRADIENT OF ETA(PI), WHICH IS THE FUNCTION TAKING THE VALUE OF THE MINIMUM EIGENVALUE OF H(PI)
-function purgeSG(opfdata,bundle,minAge=20,maxAge=80)
+function purgeSG(opfdata,bundle,minAge=0,maxAge=1)
       nbuses, nlines, ngens, N, L, G = opfdata.nbuses, opfdata.nlines, opfdata.ngens, opfdata.N, opfdata.L, opfdata.G 
       fromBus,toBus,Y = opfdata.fromBus, opfdata.toBus, opfdata.Y_AC
 
@@ -392,4 +400,21 @@ function decT(node)
     node.tVal = floor(1.0/node.tVal)+1
     node.tVal = 1.0/node.tVal
   end
+end
+
+function computeMPSoln(opfdata,node_data,K,PROX0,ctr,trl_bundles,ctr_bundles,agg_bundles)
+  mpsoln=create_bundle(opfdata)
+  mMP = createBasicMP(opfdata,node_data,K,PROX0)
+  setObjMP(opfdata,mMP,node_data,ctr,PROX0)
+  solveNodeMP(opfdata,mMP,node_data,trl_bundles,ctr_bundles,agg_bundles,ctr,PROX0,mpsoln)
+  while mpsoln.status != MOI.OPTIMAL && mpsoln.status != MOI.LOCALLY_SOLVED
+    node_data.tVal /= 2
+    println("Status was: ",mpsoln.status,". Resolving with reduced prox parameter value: ",node_data.tVal)
+    mMP = createBasicMP(opfdata,node_data,K,PROX0)
+    setObjMP(opfdata,mMP,node_data,ctr,PROX0)
+    solveNodeMP(opfdata,mMP,node_data,trl_bundles,ctr_bundles,agg_bundles,ctr,PROX0,mpsoln)
+  end	
+  mMP=nothing
+  GC.gc()
+  return mpsoln
 end

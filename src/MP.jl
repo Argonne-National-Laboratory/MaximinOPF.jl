@@ -175,7 +175,7 @@ function addHeurConstr(opfdata,mMP,HEUR)
 end
 
 function solveNodeMP(opfdata,mMP,nodeinfo,trl_bundles,ctr_bundles,agg_bundles,ctr,CTR_PARAM,
-			mpsoln,sg_agg)
+			mpsoln)
   # OBTAIN SHORTHAND PROBLEM INFORMATION FROM opfdata
     nbuses, nlines, ngens = opfdata.nbuses, opfdata.nlines, opfdata.ngens
     N, L, G = opfdata.N, opfdata.L, opfdata.G 
@@ -291,24 +291,24 @@ function solveNodeMP(opfdata,mMP,nodeinfo,trl_bundles,ctr_bundles,agg_bundles,ct
       nodeinfo.rhoUB = nodeinfo.rho
       nodeinfo.sscval = ((mpsoln.linobjval - nodeinfo.rhoUB*mpsoln.eta)-(ctr.linobjval - nodeinfo.rhoUB*ctr.eta))/(mpsoln.linobjval-(ctr.linobjval - nodeinfo.rhoUB*ctr.eta)) 
 
-      node_data.agg_sg_norm = update_agg(opfdata,node_data,ctr,mpsoln,sg_agg)
-      node_data.epshat = compute_epshat(opfdata,node_data,mpsoln,ctr,sg_agg)
+      node_data.agg_sg_norm = update_agg(opfdata,node_data,ctr,mpsoln,node_data.sg_agg)
+      node_data.epshat = compute_epshat(opfdata,node_data,mpsoln,ctr,node_data.sg_agg)
 
      # COMPUTE LINEAR ERRORS
       node_data.linerr = mpsoln.linobjval - ctr.linobjval + node_data.rho*(ctr.eta - mpsoln.eta) 
-      node_data.linerr -= dot( sg_agg.α[N], (ctr.soln.α[N]-mpsoln.soln.α[N]) ) 
-      node_data.linerr -= dot( sg_agg.β[N], (ctr.soln.β[N]-mpsoln.soln.β[N]) ) 
-      node_data.linerr -= dot( sg_agg.γ[N], (ctr.soln.γ[N]-mpsoln.soln.γ[N]) ) 
-      node_data.linerr -= dot( sg_agg.δ[N], (ctr.soln.δ[N]-mpsoln.soln.δ[N]) ) 
-      node_data.linerr -= dot( sg_agg.ζpLB[G], (ctr.soln.ζpLB[G]-mpsoln.soln.ζpLB[G]) ) 
-      node_data.linerr -= dot( sg_agg.ζpUB[G], (ctr.soln.ζpUB[G]-mpsoln.soln.ζpUB[G]) ) 
-      node_data.linerr -= dot( sg_agg.ζqLB[G], (ctr.soln.ζqLB[G]-mpsoln.soln.ζqLB[G]) ) 
-      node_data.linerr -= dot( sg_agg.ζqUB[G], (ctr.soln.ζqUB[G]-mpsoln.soln.ζqUB[G]) ) 
-      node_data.linerr -= dot( sg_agg.x[L],(ctr.soln.x[L]-mpsoln.soln.x[L]) ) 
-      node_data.linerr -= dot( sg_agg.λF[L],(ctr.soln.λF[L]-mpsoln.soln.λF[L]) ) 
-      node_data.linerr -= dot( sg_agg.λT[L],(ctr.soln.λT[L]-mpsoln.soln.λT[L]) ) 
-      node_data.linerr -= dot( sg_agg.μF[L],(ctr.soln.μF[L]-mpsoln.soln.μF[L]) ) 
-      node_data.linerr -= dot( sg_agg.μT[L],(ctr.soln.μT[L]-mpsoln.soln.μT[L]) )
+      node_data.linerr -= dot( node_data.sg_agg.α[N], (ctr.soln.α[N]-mpsoln.soln.α[N]) ) 
+      node_data.linerr -= dot( node_data.sg_agg.β[N], (ctr.soln.β[N]-mpsoln.soln.β[N]) ) 
+      node_data.linerr -= dot( node_data.sg_agg.γ[N], (ctr.soln.γ[N]-mpsoln.soln.γ[N]) ) 
+      node_data.linerr -= dot( node_data.sg_agg.δ[N], (ctr.soln.δ[N]-mpsoln.soln.δ[N]) ) 
+      node_data.linerr -= dot( node_data.sg_agg.ζpLB[G], (ctr.soln.ζpLB[G]-mpsoln.soln.ζpLB[G]) ) 
+      node_data.linerr -= dot( node_data.sg_agg.ζpUB[G], (ctr.soln.ζpUB[G]-mpsoln.soln.ζpUB[G]) ) 
+      node_data.linerr -= dot( node_data.sg_agg.ζqLB[G], (ctr.soln.ζqLB[G]-mpsoln.soln.ζqLB[G]) ) 
+      node_data.linerr -= dot( node_data.sg_agg.ζqUB[G], (ctr.soln.ζqUB[G]-mpsoln.soln.ζqUB[G]) ) 
+      node_data.linerr -= dot( node_data.sg_agg.x[L],(ctr.soln.x[L]-mpsoln.soln.x[L]) ) 
+      node_data.linerr -= dot( node_data.sg_agg.λF[L],(ctr.soln.λF[L]-mpsoln.soln.λF[L]) ) 
+      node_data.linerr -= dot( node_data.sg_agg.λT[L],(ctr.soln.λT[L]-mpsoln.soln.λT[L]) ) 
+      node_data.linerr -= dot( node_data.sg_agg.μF[L],(ctr.soln.μF[L]-mpsoln.soln.μF[L]) ) 
+      node_data.linerr -= dot( node_data.sg_agg.μT[L],(ctr.soln.μT[L]-mpsoln.soln.μT[L]) )
       for n=1:length(trl_bundles)
         node_data.linerr -= trl_bundles[n].cut_dual*sum( trl_bundles[n].eta_sg.α[i]*(ctr.soln.α[i]-mpsoln.soln.α[i]) + trl_bundles[n].eta_sg.β[i]*(ctr.soln.β[i]-mpsoln.soln.β[i])
 	    + trl_bundles[n].eta_sg.γ[i]*(ctr.soln.γ[i]-mpsoln.soln.γ[i]) + trl_bundles[n].eta_sg.δ[i]*(ctr.soln.δ[i]-mpsoln.soln.δ[i]) for i in N)

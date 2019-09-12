@@ -1,22 +1,6 @@
 
 # Defining datatypes
-mutable struct NodeInfo
-  iter::Int
-  ncuts::Int
-  x_lbs::Array{Float64}
-  x_ubs::Array{Float64}
-  nodeBd::Float64
-  rho::Float64
-  rhoUB::Float64
-  sscval
-  descent_est::Float64
-  ns_cntr::Int
-  tVal::Float64
-  linerr::Float64
-  agg_sg_norm::Float64
-  epshat::Float64
-  var_est::Float64
-end
+
 mutable struct Params
   ALG::Int
   maxNSG::Int
@@ -87,6 +71,30 @@ function comp_norm(opfdata,soln)
 	+ norm(soln.ζpLB[G])^2 + norm(soln.ζpUB[G])^2 + norm(soln.ζqLB[G])^2 + norm(soln.ζqUB[G])^2
   	+ norm(soln.x[L])^2 
 	+ norm(soln.λF[L])^2 + norm(soln.λT[L])^2 + norm(soln.μF[L])^2 + norm(soln.μT[L])^2)
+end
+
+mutable struct NodeInfo
+  iter::Int
+  ncuts::Int
+  x_lbs::Array{Float64}
+  x_ubs::Array{Float64}
+  nodeBd::Float64
+  rho::Float64
+  rhoUB::Float64
+  sscval
+  descent_est::Float64
+  ns_cntr::Int
+  tVal::Float64
+  linerr::Float64
+  agg_sg_norm::Float64
+  epshat::Float64
+  var_est::Float64
+  sg_agg::Soln
+end
+function create_node(opfdata)
+    x_lbs=zeros(opfdata.nlines)
+    x_ubs=ones(opfdata.nlines)
+    return NodeInfo(0,0,x_lbs,x_ubs,1e20,100.0,100.0,0.0,0.0,0,500.0,0.0,0.0,0.0,1e20,create_soln(opfdata))
 end
 
 

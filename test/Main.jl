@@ -6,17 +6,6 @@ Kibaek Kim
 Brian Dandurand
 =#
 
-using JuMP
-#using CPLEX, Ipopt, SCS 
-using Ipopt 
-#using Mosek,MosekTools
-using Arpack
-using DelimitedFiles
-using Printf
-using SparseArrays
-##using MathProgBase
-using LinearAlgebra
-#using ReverseDiffSparse
 
 
 include("../src/opfdata.jl")
@@ -61,31 +50,14 @@ print("Loading data ... "); start_load = time_ns()
   opfdata = opf_loaddata(CASE_NUM)
 print("finished loading the data after ",(time_ns()-start_load)/1e9," seconds.\n")
 
-include("../src/EvalDSP.jl") ### Initialize the defender subproblems with power flow balance enforced
+#include("../src/EvalDSP.jl") ### Initialize the defender subproblems with power flow balance enforced
 
 
 
 
 # Import the appropriate subproblem formulation
 N, L, G = opfdata.N, opfdata.L, opfdata.G 
-x_lbs=zeros(opfdata.nlines)
-x_ubs=ones(opfdata.nlines)
-#= Node Data
-  x_lbs::Array{Float64}
-  x_ubs::Array{Float64}
-  nodeBd::Float64
-  rho::Float64
-  rhoUB::Float64
-  sscval
-  descent_est::Float64
-  ns_cntr::Int
-  tVal::Float64
-  linerr::Float64
-  agg_sg_norm::Float64
-  epshat::Float64
-  var_est::Float64
-=#
-node_data=NodeInfo(0,0,x_lbs,x_ubs,1e20,0.0,0.0,0.0,0.0,0,10.0,0.0,0.0,0.0,1e20)
+node_data=create_node(opfdata)
 #= Params
   ALG::Int
   maxNSG::Int
@@ -96,7 +68,7 @@ node_data=NodeInfo(0,0,x_lbs,x_ubs,1e20,0.0,0.0,0.0,0.0,0,10.0,0.0,0.0,0.0,1e20)
   tol2::Float64
   tol3::Float64
 =#
-params=Params(3,100000,0.01,200,0.25,1e-4,1e-2,1e-2)
+params=Params(3,100000,0.01,1000,0.25,1e-4,1e-2,1e-2)
 
 
 if FORM == ECP 
