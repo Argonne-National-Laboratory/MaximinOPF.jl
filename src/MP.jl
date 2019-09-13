@@ -8,7 +8,7 @@ include("utils.jl")
 CP,PROX0,PROX,LVL1,LVL2,LVLINF,FEAS=0,1,2,3,4,5,6
 
 
-function createBasicMP(opfdata,nodeinfo,K,CTR_PARAM)
+function createBasicMP(opfdata,nodeinfo,ctr,K,CTR_PARAM)
   # OBTAIN SHORTHAND PROBLEM INFORMATION FROM opfdata
     nbuses, nlines, ngens = opfdata.nbuses, opfdata.nlines, opfdata.ngens
     N, L, G = opfdata.N, opfdata.L, opfdata.G 
@@ -21,13 +21,18 @@ function createBasicMP(opfdata,nodeinfo,K,CTR_PARAM)
     # each x[l] is either 0 (line l active) or 1 (line l is cut)
       @variable(mMP, nodeinfo.x_lbs[l] <= x[l=L] <= nodeinfo.x_ubs[l])
     # dual multipliers associated with active power flow balance constraints
-      @variable(mMP, -1 <= α[i=N] <= 1, start=0)
+      @variable(mMP, -1 <= α[i=N] <= 1)
     # dual multipliers associated with active power flow balance constraints
-      @variable(mMP, -1 <= β[i=N] <= 1, start=0)
+      @variable(mMP, -1 <= β[i=N] <= 1)
     # dual multipliers associated with the voltage magnitude bounds
-      @variable(mMP, δ[i=N] >= 0); @variable(mMP, γ[i=N] >= 0); @constraint(mMP, [i=N], δ[i]+γ[i] <= 1)
+      @variable(mMP, δ[i=N] >= 0)
+      @variable(mMP, γ[i=N] >= 0)
+      @constraint(mMP, [i=N], δ[i]+γ[i] <= 1)
     # dual multipliers associated with the power generation bounds
-      @variable(mMP, 0 <= ζpUB[g=G] <= 1); @variable(mMP, 0 <= ζpLB[g=G] <= 1); @variable(mMP, 0 <= ζqUB[g=G] <= 1); @variable(mMP, 0 <= ζqLB[g=G] <= 1)
+      @variable(mMP, 0 <= ζpUB[g=G] <= 1)
+      @variable(mMP, 0 <= ζpLB[g=G] <= 1)
+      @variable(mMP, 0 <= ζqUB[g=G] <= 1)
+      @variable(mMP, 0 <= ζqLB[g=G] <= 1)
 
     # constraints needed for terms in pG[g] and qG[g] in the Lagrangian to vanish (needed for dual feasibility)
       for i in N
@@ -41,7 +46,10 @@ function createBasicMP(opfdata,nodeinfo,K,CTR_PARAM)
 
  # McCormick inequalities enforcing bilinear equalities
     # auxiliary dual variables due to McCormick reformulation of cross terms appearing in the Lagrangian
-      @variable(mMP, λF[l=L], start=0); @variable(mMP, λT[l=L], start=0); @variable(mMP, μF[l=L], start=0); @variable(mMP, μT[l=L], start=0)
+      @variable(mMP, λF[l=L])
+      @variable(mMP, λT[l=L])
+      @variable(mMP, μF[l=L])
+      @variable(mMP, μT[l=L])
     @constraint(mMP, AMcf1[l in L], α[fromBus[l]] - x[l] <= λF[l]) 
     @constraint(mMP, AMcf2[l in L], α[fromBus[l]] + x[l] >= λF[l])
     @constraint(mMP, AMcf3[l in L], -(1 - x[l]) <= λF[l]) 
@@ -176,6 +184,7 @@ end
 
 function solveNodeMP(opfdata,mMP,nodeinfo,trl_bundles,ctr_bundles,agg_bundles,ctr,CTR_PARAM,
 			mpsoln)
+  init_time_Start = time_ns()
   # OBTAIN SHORTHAND PROBLEM INFORMATION FROM opfdata
     nbuses, nlines, ngens = opfdata.nbuses, opfdata.nlines, opfdata.ngens
     N, L, G = opfdata.N, opfdata.L, opfdata.G 
@@ -216,12 +225,18 @@ function solveNodeMP(opfdata,mMP,nodeinfo,trl_bundles,ctr_bundles,agg_bundles,ct
 	+ ctr_bundles[n].eta_sg.μF[l]*(μF[l]-ctr_bundles[n].soln.μF[l]) + ctr_bundles[n].eta_sg.μT[l]*(μT[l]-ctr_bundles[n].soln.μT[l]) for l in L)
         )
     end
+  mpsoln.init_time += (time_ns()-init_time_Start)/1e9
 
   ### END DEFINING THE LaGRANGIAN DUAL PROBLEM
 
+  solve_time_Start = time_ns()
   JuMP.optimize!(mMP)
+  mpsoln.solve_time += (time_ns()-solve_time_Start)/1e9
+
   mpsoln.status=JuMP.termination_status(mMP)
   if mpsoln.status == MOI.OPTIMAL || mpsoln.status == MOI.LOCALLY_SOLVED
+      pp_time_Start = time_ns()
+
       for i in N
           mpsoln.soln.α[i],mpsoln.soln.β[i],mpsoln.soln.γ[i],mpsoln.soln.δ[i] = JuMP.value(α[i]), JuMP.value(β[i]), JuMP.value(γ[i]), JuMP.value(δ[i])
       end
@@ -237,8 +252,13 @@ function solveNodeMP(opfdata,mMP,nodeinfo,trl_bundles,ctr_bundles,agg_bundles,ct
       if CTR_PARAM == PROX
         mpsoln.psival = JuMP.value(psi)
       end
+      mpsoln.pp_time += (time_ns()-pp_time_Start)/1e9
 
+      sg_time_Start = time_ns()
       mpsoln.eta,stat = computeSG(opfdata,mpsoln) #This computes mpsoln.eta 
+      mpsoln.sg_time += (time_ns()-sg_time_Start)/1e9
+
+      pp_time_Start = time_ns()
       if !stat
 	nodeinfo.tVal /= 2.0
       end
@@ -346,6 +366,7 @@ function solveNodeMP(opfdata,mMP,nodeinfo,trl_bundles,ctr_bundles,agg_bundles,ct
       if mpsoln.status == MOI.OPTIMAL && (CTR_PARAM==LVL1 || CTR_PARAM == LVL2 || CTR_PARAM == LVLINF )
 	mpsoln.lvl_dual = -getdual(mMP[:LVLConstr])
       end
+      mpsoln.pp_time += (time_ns()-pp_time_Start)/1e9
   else
     #println("solveNodeMP: Return status ",mpsoln.status)
   end

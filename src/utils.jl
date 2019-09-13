@@ -403,18 +403,26 @@ function decT(node)
 end
 
 function computeMPSoln(opfdata,node_data,K,PROX_PARAM,ctr,trl_bundles,ctr_bundles,agg_bundles)
+  bundle_time_Start = time_ns()
+
+  init_time_Start = time_ns()
   mpsoln=create_bundle(opfdata)
-  mMP = createBasicMP(opfdata,node_data,K,PROX_PARAM)
+  mMP = createBasicMP(opfdata,node_data,ctr,K,PROX_PARAM)
   setObjMP(opfdata,mMP,node_data,ctr,PROX_PARAM)
+  mpsoln.init_time += (time_ns()-init_time_Start)/1e9
+
   solveNodeMP(opfdata,mMP,node_data,trl_bundles,ctr_bundles,agg_bundles,ctr,PROX_PARAM,mpsoln)
   while mpsoln.status != MOI.OPTIMAL && mpsoln.status != MOI.LOCALLY_SOLVED
     node_data.tVal /= 2
     println("Status was: ",mpsoln.status,". Resolving with reduced prox parameter value: ",node_data.tVal)
-    mMP = createBasicMP(opfdata,node_data,K,PROX_PARAM)
+    init_time_Start = time_ns()
+    mMP = createBasicMP(opfdata,node_data,ctr,K,PROX_PARAM)
     setObjMP(opfdata,mMP,node_data,ctr,PROX_PARAM)
+    mpsoln.init_time += (time_ns()-init_time_Start)/1e9
     solveNodeMP(opfdata,mMP,node_data,trl_bundles,ctr_bundles,agg_bundles,ctr,PROXPARAM,mpsoln)
   end	
-  mMP=nothing
-  GC.gc()
+  #mMP=nothing
+  #GC.gc()
+  mpsoln.bundle_time= (time_ns()-bundle_time_Start)/1e9
   return mpsoln
 end

@@ -110,12 +110,16 @@ mutable struct Bundle
   cut_dual::Float64
   lvl_dual::Float64
   age::Float64
-  solvetime::Float64
+  init_time::Float64
+  solve_time::Float64
+  sg_time::Float64
+  pp_time::Float64
+  bundle_time::Float64
   status
 end
 function create_bundle(opfdata)
   nbuses, nlines, ngens, N, L, G = opfdata.nbuses, opfdata.nlines, opfdata.ngens, opfdata.N, opfdata.L, opfdata.G 
-  return Bundle(create_soln(opfdata),create_soln(opfdata),0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,1.0,0.0,0)
+  return Bundle(create_soln(opfdata),create_soln(opfdata),0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,1.0,0.0,0.0,0.0,0.0,0.0,0)
 end
 function cpy_bundle(opfdata,fromBundle,toBundle)
   nbuses, nlines, ngens, N, L, G = opfdata.nbuses, opfdata.nlines, opfdata.ngens, opfdata.N, opfdata.L, opfdata.G 
@@ -129,7 +133,11 @@ function cpy_bundle(opfdata,fromBundle,toBundle)
   toBundle.etahat = fromBundle.etahat
   toBundle.cut_dual = fromBundle.cut_dual
   toBundle.lvl_dual = fromBundle.lvl_dual
-  toBundle.solvetime = fromBundle.solvetime
+  toBundle.init_time = fromBundle.init_time
+  toBundle.solve_time = fromBundle.solve_time
+  toBundle.sg_time = fromBundle.sg_time
+  toBundle.pp_time = fromBundle.pp_time
+  toBundle.bundle_time = fromBundle.bundle_time
   toBundle.status = fromBundle.status
 end
 

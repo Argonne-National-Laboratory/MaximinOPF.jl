@@ -83,17 +83,43 @@ elseif FORM == ProxPtSDP
 
   include("../src/PBM-DelfinoOliveira.jl")
   plot_data=PBM_DelfinoOliveira(opfdata,params,K,HEUR,node_data)
+  n_data=size(plot_data)[1]
 
   #include("../src/CPAlg.jl")
   #plot_data=CPAlg(opfdata,params,K,HEUR,node_data)
-  for kk=1:params.maxNSG
+  for kk=1:n_data
     @printf("(%d,%.2f) ",kk,plot_data[kk,1])
   end
   println("\n")
-  for kk=1:params.maxNSG
+  for kk=1:n_data
     @printf("(%d,%.2f) ",kk,plot_data[kk,2])
   end
   println("\n")
+  for kk=1:n_data
+    @printf("(%d,%.2f) ",kk,plot_data[kk,3])
+  end
+  println("\n")
+  for kk=1:n_data
+    @printf("(%d,%.2f) ",kk,plot_data[kk,4])
+  end
+  println("\n")
+  for kk=1:n_data
+    @printf("(%d,%.2f) ",kk,plot_data[kk,5])
+  end
+  println("\n")
+  for kk=1:n_data
+    @printf("(%d,%.2f) ",kk,plot_data[kk,6])
+  end
+  println("\n")
+  for kk=1:n_data
+    @printf("(%d,%.2f) ",kk,plot_data[kk,7])
+  end
+  println("\n")
+#=
+  for kk=1:params.maxNSG
+    println(plot_data[kk,:])
+  end
+=#
 elseif FORM == AC
   include("../src/DualAC.jl")
 elseif FORM == SOCP

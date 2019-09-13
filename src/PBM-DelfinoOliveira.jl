@@ -17,7 +17,8 @@ function PBM_DelfinoOliveira(opfdata,params,K,HEUR,node_data)
   # DONE OBTAINING PROBLEM INFORMATION FROM opfdata
 
   # FOR STORING EXPERIMENTAL DATA
-    plot_data = zeros(params.maxNSG,2)
+    last_kk=params.maxNSG
+    plot_data = zeros(params.maxNSG,7)
 
   # INITIAL ITERATION
     trl_bundles=Dict()
@@ -35,7 +36,7 @@ function PBM_DelfinoOliveira(opfdata,params,K,HEUR,node_data)
       node_data.iter=kk
      # STEP 1
       mpsoln=computeMPSoln(opfdata,node_data,K,PROX0,ctr,trl_bundles,ctr_bundles,agg_bundles)
-      plot_data[kk,1],plot_data[kk,2]=mpsoln.linobjval,mpsoln.linobjval-node_data.rho*mpsoln.eta
+      plot_data[kk,1],plot_data[kk,2],plot_data[kk,3],plot_data[kk,4],plot_data[kk,5],plot_data[kk,6],plot_data[kk,7]=mpsoln.linobjval,mpsoln.linobjval-node_data.rho*mpsoln.eta,mpsoln.init_time,mpsoln.solve_time,mpsoln.sg_time,mpsoln.pp_time,mpsoln.bundle_time
 
      # STEP 2
       ntrlcuts,nctrcuts,naggcuts = length(trl_bundles),length(ctr_bundles),length(agg_bundles)
@@ -46,6 +47,7 @@ function PBM_DelfinoOliveira(opfdata,params,K,HEUR,node_data)
 	println("Convergence to within tolerance: ")
 	@printf("iter: %d\t(objval,eta)=(%.4f,%.2e)\t(t,rho)=(%.3f,%.3f)\t(err,||s||,epshat)=(%.2e,%.2e,%.2e)\n",
 	  kk,ctr.linobjval,ctr.eta,node_data.tVal,node_data.rho,node_data.linerr,node_data.agg_sg_norm,node_data.epshat)
+        last_kk=kk
 	break
       end
      # STEP 3
@@ -55,8 +57,8 @@ function PBM_DelfinoOliveira(opfdata,params,K,HEUR,node_data)
         # UPDATE CENTER VALUES
         if testSchrammZoweSSII(opfdata,params,node_data,mpsoln,ctr) 
           agg_bundles[1]=aggregateSG(opfdata,trl_bundles,mpsoln,ctr,ctr_bundles,agg_bundles)
-	  #ntrlcuts=purgeSG(opfdata,trl_bundles,10,40)
-	  ntrlcuts=length(trl_bundles)
+	  ntrlcuts=purgeSG(opfdata,trl_bundles,10,40)
+	  #ntrlcuts=length(trl_bundles)
 	  trl_bundles[ntrlcuts+1]=ctr_bundles[1] 	#Move old ctr bundle to the collection of trial bundles
 	  ctr_bundles[1]=mpsoln
 	  ctr=mpsoln
@@ -70,8 +72,8 @@ function PBM_DelfinoOliveira(opfdata,params,K,HEUR,node_data)
       else
 	if testSchrammZoweNSII(opfdata,params,ctr,node_data,mpsoln) 
           agg_bundles[1]=aggregateSG(opfdata,trl_bundles,mpsoln,ctr,ctr_bundles,agg_bundles)
-	  #ntrlcuts=purgeSG(opfdata,trl_bundles,10,40)
-	  ntrlcuts=length(trl_bundles)
+	  ntrlcuts=purgeSG(opfdata,trl_bundles,10,40)
+	  #ntrlcuts=length(trl_bundles)
           trl_bundles[ntrlcuts+1]=mpsoln
           tLow,tHigh=params.tMin,params.tMax
 	else 
@@ -82,6 +84,6 @@ function PBM_DelfinoOliveira(opfdata,params,K,HEUR,node_data)
     end
     time_End = (time_ns()-time_Start)/1e9
     println("Done after ",time_End," seconds.")
-    return plot_data
+    return plot_data[1:last_kk,:]
 end
 
