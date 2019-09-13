@@ -414,7 +414,5 @@ function computeMPSoln(opfdata,node_data,K,PROX_PARAM,ctr,trl_bundles,ctr_bundle
     setObjMP(opfdata,mMP,node_data,ctr,PROX_PARAM)
     solveNodeMP(opfdata,mMP,node_data,trl_bundles,ctr_bundles,agg_bundles,ctr,PROXPARAM,mpsoln)
   end	
-  mMP=nothing
-  GC.gc()
   return mpsoln
 end
