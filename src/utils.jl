@@ -114,10 +114,13 @@ function KiwielRhoUpdate(opfdata,params,node)
 end
 
 function testSchrammZoweSSII(opfdata,params,node,mpsoln,ctr)
-  return (node.linerr - mpsoln.linobjval + ctr.linobjval + node.rho*(mpsoln.eta-ctr.eta)  >= -0.5*node.descent_est) || node.tVal < max(1.001*params.tMin + 1e-2)
+  #@printf("SSII tval=%.5f: %.5f >=? %.5f\n",node.tVal,node.linerr - mpsoln.linobjval + ctr.linobjval + node.rho*(mpsoln.eta-ctr.eta), -0.5*node.descent_est)
+  return ((node.linerr - mpsoln.linobjval + ctr.linobjval + node.rho*(mpsoln.eta-ctr.eta)  >= -0.5*node.descent_est) ) || node.tVal < max(1.001*params.tMin, 1e-3)
 end
 function testSchrammZoweNSII(opfdata,params,ctr,node,mpsoln)
-  return (node.linerr <= 0.5*node.epshat) ||  abs(ctr.linobjval - mpsoln.linobjval - node.rho*(ctr.eta-mpsoln.eta)) <= node.agg_sg_norm + node.epshat || node.tVal > 0.99*params.tMax
+  linvarcond=abs(ctr.linobjval - mpsoln.linobjval - node.rho*(ctr.eta-mpsoln.eta)) <= node.agg_sg_norm + node.epshat 
+  #@printf("NSII tval=%.5f: %.5f <=? %.5f OR %.5f <=? %.5f\n",node.tVal,node.linerr,0.5*node.epshat,abs(ctr.linobjval - mpsoln.linobjval - node.rho*(ctr.eta-mpsoln.eta)),node.agg_sg_norm + node.epshat)
+  return (node.linerr <= 0.5*node.epshat) ||  linvarcond || node.tVal > 0.99*params.tMax
 end
 
 
@@ -152,6 +155,28 @@ function updateCenter(opfdata,mpsoln,ctr,trl_bundles,ctr_bundles,agg_bundles)
   nbuses, nlines, ngens, N, L, G = opfdata.nbuses, opfdata.nlines, opfdata.ngens, opfdata.N, opfdata.L, opfdata.G 
   fromBus,toBus,Y = opfdata.fromBus, opfdata.toBus, opfdata.Y_AC
   cpy_bundle(opfdata,mpsoln,ctr)
+end
+
+function initialSG(opfdata,bundles)
+  nbuses, nlines, ngens, N, L, G = opfdata.nbuses, opfdata.nlines, opfdata.ngens, opfdata.N, opfdata.L, opfdata.G 
+  fromBus,toBus,Y = opfdata.fromBus, opfdata.toBus, opfdata.Y_AC
+  fromLines,toLines = opfdata.fromLines, opfdata.toLines
+  for ii=N
+    bundles[ii]=create_bundle(opfdata)
+    bundles[ii].eta_sg.α[ii] = Y["shR"][ii] 
+    bundles[ii].eta_sg.β[ii] = -Y["shI"][ii] 
+    bundles[ii].eta_sg.δ[ii] = 1.0
+    bundles[ii].eta_sg.γ[ii] = -1.0
+    for l in fromLines[ii]
+      bundles[ii].eta_sg.λF[l] = Y["ffR"][l] 
+      bundles[ii].eta_sg.μF[l] = -Y["ffI"][l]  
+    end
+    for l in toLines[ii]
+      bundles[ii].eta_sg.λT[l] = Y["ttR"][l] 
+      bundles[ii].eta_sg.μT[l] = -Y["ttI"][l] 
+    end
+  end
+
 end
 
 function computeSG(opfdata,mpsoln)
@@ -198,7 +223,7 @@ function solveEta0Eigs(opfdata,soln,vR,vI)
       fromBus,toBus = opfdata.fromBus, opfdata.toBus
       H=spzeros(2*nbuses,2*nbuses)
       updateHess(opfdata,soln,H)
-      E=eigs(H,nev=1,which=:SR, maxiter=100000, tol=1e-6)
+      E=eigs(H,nev=1,which=:SR, maxiter=100000, tol=1e-10)
       η0Val = E[1][1]
       for i in N
         vR[i] = E[2][i,1]; vI[i] = E[2][nbuses+i,1]
@@ -274,7 +299,7 @@ function solveEta0SDP(opfdata,soln,vR,vI)
 end
 
 # SUBROUTINE FOR COMPUTING A SUBGRADIENT OF ETA(PI), WHICH IS THE FUNCTION TAKING THE VALUE OF THE MINIMUM EIGENVALUE OF H(PI)
-function purgeSG(opfdata,bundle,minAge=0,maxAge=1)
+function purgeSG(opfdata,bundle,minAge=0,maxAge=100000)
       nbuses, nlines, ngens, N, L, G = opfdata.nbuses, opfdata.nlines, opfdata.ngens, opfdata.N, opfdata.L, opfdata.G 
       fromBus,toBus,Y = opfdata.fromBus, opfdata.toBus, opfdata.Y_AC
 

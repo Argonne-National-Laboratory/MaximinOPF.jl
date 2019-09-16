@@ -216,7 +216,7 @@ function solveNodeMP(opfdata,mMP,nodeinfo,trl_bundles,ctr_bundles,agg_bundles,ct
 	+ ctr_bundles[n].eta_sg.μF[l]*(μF[l]-ctr_bundles[n].soln.μF[l]) + ctr_bundles[n].eta_sg.μT[l]*(μT[l]-ctr_bundles[n].soln.μT[l]) for l in L)
         )
     end
-
+    #@constraint(mMP, linobj >= 2.7)
   ### END DEFINING THE LaGRANGIAN DUAL PROBLEM
 
   JuMP.optimize!(mMP)
@@ -239,9 +239,11 @@ function solveNodeMP(opfdata,mMP,nodeinfo,trl_bundles,ctr_bundles,agg_bundles,ct
       end
 
       mpsoln.eta,stat = computeSG(opfdata,mpsoln) #This computes mpsoln.eta 
+#=
       if !stat
 	nodeinfo.tVal /= 2.0
       end
+=#
 
 
       for n=1:length(trl_bundles)

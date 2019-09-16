@@ -94,7 +94,7 @@ end
 function create_node(opfdata)
     x_lbs=zeros(opfdata.nlines)
     x_ubs=ones(opfdata.nlines)
-    return NodeInfo(0,0,x_lbs,x_ubs,1e20,100.0,100.0,0.0,0.0,0,500.0,0.0,0.0,0.0,1e20,create_soln(opfdata))
+    return NodeInfo(0,0,x_lbs,x_ubs,1e20,100.0,100.0,0.0,0.0,0,100.0,0.0,0.0,0.0,1e20,create_soln(opfdata))
 end
 
 
@@ -109,13 +109,13 @@ mutable struct Bundle
   etahat::Float64
   cut_dual::Float64
   lvl_dual::Float64
-  age::Float64
+  age::Int
   solvetime::Float64
   status
 end
 function create_bundle(opfdata)
   nbuses, nlines, ngens, N, L, G = opfdata.nbuses, opfdata.nlines, opfdata.ngens, opfdata.N, opfdata.L, opfdata.G 
-  return Bundle(create_soln(opfdata),create_soln(opfdata),0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,1.0,0.0,0)
+  return Bundle(create_soln(opfdata),create_soln(opfdata),0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0,0.0,0)
 end
 function cpy_bundle(opfdata,fromBundle,toBundle)
   nbuses, nlines, ngens, N, L, G = opfdata.nbuses, opfdata.nlines, opfdata.ngens, opfdata.N, opfdata.L, opfdata.G 

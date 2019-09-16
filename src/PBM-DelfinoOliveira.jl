@@ -20,10 +20,11 @@ function PBM_DelfinoOliveira(opfdata,params,K,HEUR,node_data)
     trl_bundles=Dict()
     ctr_bundles=Dict()
     agg_bundles=Dict()
+    #initialSG(opfdata,trl_bundles)
     ctr=create_bundle(opfdata)
     mpsoln=computeMPSoln(opfdata,node_data,K,PROX0,ctr,trl_bundles,ctr_bundles,agg_bundles)
-    ctr=mpsoln
     ctr_bundles[1]=mpsoln
+    ctr=mpsoln
 
 
   # MAIN LOOP
@@ -32,6 +33,8 @@ function PBM_DelfinoOliveira(opfdata,params,K,HEUR,node_data)
       node_data.iter=kk
      # STEP 1
       mpsoln=computeMPSoln(opfdata,node_data,K,PROX0,ctr,trl_bundles,ctr_bundles,agg_bundles)
+      node_data.sscval = ((mpsoln.linobjval - node_data.rhoUB*mpsoln.eta)-(ctr.linobjval - node_data.rhoUB*ctr.eta))/(mpsoln.linobjval-(ctr.linobjval - node_data.rhoUB*ctr.eta)) 
+      node_data.descent_est = mpsoln.linobjval-(ctr.linobjval - node_data.rhoUB*ctr.eta) 
 
      # STEP 2
       ntrlcuts,nctrcuts,naggcuts = length(trl_bundles),length(ctr_bundles),length(agg_bundles)
@@ -44,35 +47,37 @@ function PBM_DelfinoOliveira(opfdata,params,K,HEUR,node_data)
 	@printf("iter: %d\t(objval,eta)=(%.4f,%.2e)\t(t,rho)=(%.3f,%.3f)\t(err,||s||,epshat)=(%.2e,%.2e,%.2e)\n",
 	  kk,ctr.linobjval,ctr.eta,node_data.tVal,node_data.rho,node_data.linerr,node_data.agg_sg_norm,node_data.epshat)
 	break
-      elseif mpsoln.eta < params.tol1 && abs(tHigh-tLow) > 1e-2
+      elseif mpsoln.eta < 1e-8 && abs(tHigh-tLow) > 1e-2
         tHigh=node_data.tVal
 	node_data.tVal=2/(1/tLow+1/tHigh)
-	@printf("iter: %d\t(objval,eta)=(%.4f,%.2e)\t(t,rho)=(%.3f,%.3f)\t(err,||s||,epshat)=(%.2e,%.2e,%.2e)\n",
-	  kk,mpsoln.linobjval,mpsoln.eta,node_data.tVal,node_data.rho,node_data.linerr,node_data.agg_sg_norm,node_data.epshat)
+	@printf("iter: %d\t(objval,eta)=(%.4f,%.2e)\t(t,rho)=(%.3f,%.3f)\t(err,||s||,epshat,desc_est)=(%.2e,%.2e,%.2e,%.5e)\n",
+	  kk,mpsoln.linobjval,mpsoln.eta,node_data.tVal,node_data.rho,node_data.linerr,node_data.agg_sg_norm,node_data.epshat,node_data.descent_est)
 	continue
       end
      # STEP 3
-      node_data.sscval = ((mpsoln.linobjval - node_data.rhoUB*mpsoln.eta)-(ctr.linobjval - node_data.rhoUB*ctr.eta))/(mpsoln.linobjval-(ctr.linobjval - node_data.rhoUB*ctr.eta)) 
-      node_data.descent_est = mpsoln.linobjval-(ctr.linobjval - node_data.rhoUB*ctr.eta) 
       if node_data.sscval >= params.ssc 
         # UPDATE CENTER VALUES
-        if testSchrammZoweSSII(opfdata,params,node_data,mpsoln,ctr) 
+        if testSchrammZoweSSII(opfdata,params,node_data,mpsoln,ctr) || abs(tHigh-tLow) <= 1e-2
           agg_bundles[1]=aggregateSG(opfdata,trl_bundles,mpsoln,ctr,ctr_bundles,agg_bundles)
-	  ntrlcuts=purgeSG(opfdata,trl_bundles,10,40)
-	  trl_bundles[ntrlcuts+1]=ctr_bundles[1] 	#Move old ctr bundle to the collection of trial bundles
+	  ntrlcuts=purgeSG(opfdata,trl_bundles,10,100)
+	  for n=1:length(ctr_bundles) 
+	    trl_bundles[ntrlcuts+n]=ctr_bundles[n] 	#Move old ctr bundle to the collection of trial bundles
+	    delete!(ctr_bundles,n)
+	  end
 	  ctr_bundles[1]=mpsoln
 	  ctr=mpsoln
           tLow,tHigh=params.tMin,params.tMax
-	  @printf("iter: %d\t(objval,eta)=(%.4f,%.2e)\t(t,rho)=(%.3f,%.3f)\t(err,||s||,epshat)=(%.2e,%.2e,%.2e)\n",
-	      kk,mpsoln.linobjval,mpsoln.eta,node_data.tVal,node_data.rho,node_data.linerr,node_data.agg_sg_norm,node_data.epshat)
+	  @printf("iter: %d\t(objval,eta)=(%.4f,%.2e)\t(t,rho)=(%.3f,%.3f)\t(err,||s||,epshat,desc_est)=(%.2e,%.2e,%.2e,%.5e)\n",
+	      kk,mpsoln.linobjval,mpsoln.eta,node_data.tVal,node_data.rho,node_data.linerr,node_data.agg_sg_norm,node_data.epshat,node_data.descent_est)
+	  node_data.tVal = max(0.5*node_data.tVal,params.tMin)
 	else
           tHigh=node_data.tVal
-	  node_data.tVal=2/(1/tLow+1/tHigh)
+	  node_data.tVal=0.5*(tLow+tHigh)
 	end
       else
-	if testSchrammZoweNSII(opfdata,params,ctr,node_data,mpsoln) 
+	if testSchrammZoweNSII(opfdata,params,ctr,node_data,mpsoln) || abs(tHigh-tLow) <= 1e-2
           agg_bundles[1]=aggregateSG(opfdata,trl_bundles,mpsoln,ctr,ctr_bundles,agg_bundles)
-	  ntrlcuts=purgeSG(opfdata,trl_bundles,10,40)
+	  ntrlcuts=purgeSG(opfdata,trl_bundles,10,100)
           trl_bundles[ntrlcuts+1]=mpsoln
           tLow,tHigh=params.tMin,params.tMax
 	else 
