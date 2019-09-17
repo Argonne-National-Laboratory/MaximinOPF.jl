@@ -55,7 +55,7 @@ function PBM_DelfinoOliveira(opfdata,params,K,HEUR,node_data)
 	continue
       end
      # STEP 3
-      if node_data.sscval >= params.ssc 
+      if node_data.sscval >= params.ssc1
         # UPDATE CENTER VALUES
         if testSchrammZoweSSII(opfdata,params,node_data,mpsoln,ctr) || abs(tHigh-tLow) <= 1e-2
           agg_bundles[1]=aggregateSG(opfdata,trl_bundles,mpsoln,ctr,ctr_bundles,agg_bundles)

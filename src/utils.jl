@@ -88,8 +88,8 @@ end
 function KiwielRhoUpdate(opfdata,params,node)
   nextTVal=node.tVal
   oldTVal=node.tVal
-  if node.sscval >= params.ssc
-    if node.sscval >= max(params.ssc,0.5) && node.ns_cntr > 0
+  if node.sscval >= params.ssc1
+    if node.sscval >= max(params.ssc2,0.5) && node.ns_cntr > 0
       nextTVal = 2*node.tVal*(1-node.sscval)
     elseif node.ns_cntr > 3
       nextTVal = node.tVal/2
@@ -114,13 +114,13 @@ function KiwielRhoUpdate(opfdata,params,node)
 end
 
 function testSchrammZoweSSII(opfdata,params,node,mpsoln,ctr)
-  #@printf("SSII tval=%.5f: %.5f >=? %.5f\n",node.tVal,node.linerr - mpsoln.linobjval + ctr.linobjval + node.rho*(mpsoln.eta-ctr.eta), -0.5*node.descent_est)
-  return ((node.linerr - mpsoln.linobjval + ctr.linobjval + node.rho*(mpsoln.eta-ctr.eta)  >= -0.5*node.descent_est) ) || node.tVal < max(1.001*params.tMin, 1e-3)
+  #@printf("SSII tval=%.5f: %.5f >=? %.5f\n",node.tVal,node.linerr - mpsoln.linobjval + ctr.linobjval + node.rho*(mpsoln.eta-ctr.eta), -params.ssc2*node.descent_est)
+  return ((node.linerr - mpsoln.linobjval + ctr.linobjval + node.rho*(mpsoln.eta-ctr.eta)  >= -params.ssc2*node.descent_est) ) || node.tVal < max(1.001*params.tMin, 1e-3)
 end
 function testSchrammZoweNSII(opfdata,params,ctr,node,mpsoln)
   linvarcond=abs(ctr.linobjval - mpsoln.linobjval - node.rho*(ctr.eta-mpsoln.eta)) <= node.agg_sg_norm + node.epshat 
-  #@printf("NSII tval=%.5f: %.5f <=? %.5f OR %.5f <=? %.5f\n",node.tVal,node.linerr,0.5*node.epshat,abs(ctr.linobjval - mpsoln.linobjval - node.rho*(ctr.eta-mpsoln.eta)),node.agg_sg_norm + node.epshat)
-  return (node.linerr <= 0.5*node.epshat) ||  linvarcond || node.tVal > 0.99*params.tMax
+  #@printf("NSII tval=%.5f: %.5f <=? %.5f OR %.5f <=? %.5f\n",node.tVal,node.linerr,params.ssc3*node.epshat,abs(ctr.linobjval - mpsoln.linobjval - node.rho*(ctr.eta-mpsoln.eta)),node.agg_sg_norm + node.epshat)
+  return (node.linerr <= params.ssc3*node.epshat) ||  linvarcond || node.tVal > 0.99*params.tMax
 end
 
 

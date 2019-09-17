@@ -63,12 +63,14 @@ node_data=create_node(opfdata)
   maxNSG::Int
   tMin::Float64
   tMax::Float64
-  ssc::Float64
+  ssc1::Float64
+  ssc2::Float64
+  ssc3::Float64
   tol1::Float64
   tol2::Float64
   tol3::Float64
 =#
-params=Params(3,100000,0.01,1000.0,0.1,1e-4,1e-2,1e-2)
+params=Params(3,10000,0.01,1000.0,0.1,0.5,0.5,1e-4,1e-2,1e-2)
 
 
 if FORM == ECP 

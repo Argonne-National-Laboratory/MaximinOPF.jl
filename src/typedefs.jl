@@ -6,7 +6,9 @@ mutable struct Params
   maxNSG::Int
   tMin::Float64
   tMax::Float64
-  ssc::Float64
+  ssc1::Float64
+  ssc2::Float64
+  ssc3::Float64
   tol1::Float64
   tol2::Float64
   tol3::Float64
