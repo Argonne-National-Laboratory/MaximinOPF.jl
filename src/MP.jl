@@ -216,7 +216,6 @@ function solveNodeMP(opfdata,mMP,nodeinfo,trl_bundles,ctr_bundles,agg_bundles,ct
 	+ ctr_bundles[n].eta_sg.μF[l]*(μF[l]-ctr_bundles[n].soln.μF[l]) + ctr_bundles[n].eta_sg.μT[l]*(μT[l]-ctr_bundles[n].soln.μT[l]) for l in L)
         )
     end
-    #@constraint(mMP, linobj >= 2.7)
   ### END DEFINING THE LaGRANGIAN DUAL PROBLEM
 
   JuMP.optimize!(mMP)
@@ -239,46 +238,6 @@ function solveNodeMP(opfdata,mMP,nodeinfo,trl_bundles,ctr_bundles,agg_bundles,ct
       end
 
       mpsoln.eta,stat = computeSG(opfdata,mpsoln) #This computes mpsoln.eta 
-#=
-      if !stat
-	nodeinfo.tVal /= 2.0
-      end
-=#
-
-
-      for n=1:length(trl_bundles)
-        etaval=-JuMP.value(-trl_bundles[n].eta 
-	  + sum( trl_bundles[n].eta_sg.α[i]*(α[i]-trl_bundles[n].soln.α[i]) + trl_bundles[n].eta_sg.β[i]*(β[i]-trl_bundles[n].soln.β[i])
-	    + trl_bundles[n].eta_sg.γ[i]*(γ[i]-trl_bundles[n].soln.γ[i]) + trl_bundles[n].eta_sg.δ[i]*(δ[i]-trl_bundles[n].soln.δ[i]) for i in N)
-          + sum( trl_bundles[n].eta_sg.λF[l]*(λF[l]-trl_bundles[n].soln.λF[l]) + trl_bundles[n].eta_sg.λT[l]*(λT[l]-trl_bundles[n].soln.λT[l]) 
-	    + trl_bundles[n].eta_sg.μF[l]*(μF[l]-trl_bundles[n].soln.μF[l]) + trl_bundles[n].eta_sg.μT[l]*(μT[l]-trl_bundles[n].soln.μT[l]) for l in L)
-        )
-	if mpsoln.etahat < etaval
-	  mpsoln.etahat = etaval
-	end
-      end
-      for n=1:length(ctr_bundles)
-        etaval=-JuMP.value(-ctr_bundles[n].eta 
-	  + sum( ctr_bundles[n].eta_sg.α[i]*(α[i]-ctr_bundles[n].soln.α[i]) + ctr_bundles[n].eta_sg.β[i]*(β[i]-ctr_bundles[n].soln.β[i])
-	    + ctr_bundles[n].eta_sg.γ[i]*(γ[i]-ctr_bundles[n].soln.γ[i]) + ctr_bundles[n].eta_sg.δ[i]*(δ[i]-ctr_bundles[n].soln.δ[i]) for i in N)
-          + sum( ctr_bundles[n].eta_sg.λF[l]*(λF[l]-ctr_bundles[n].soln.λF[l]) + ctr_bundles[n].eta_sg.λT[l]*(λT[l]-ctr_bundles[n].soln.λT[l]) 
-	    + ctr_bundles[n].eta_sg.μF[l]*(μF[l]-ctr_bundles[n].soln.μF[l]) + ctr_bundles[n].eta_sg.μT[l]*(μT[l]-ctr_bundles[n].soln.μT[l]) for l in L)
-        )
-	if mpsoln.etahat < etaval
-	  mpsoln.etahat = etaval
-	end
-      end
-      for n=1:length(agg_bundles)
-        etaval=-JuMP.value(-agg_bundles[n].etahat 
-	  + sum( agg_bundles[n].eta_sg.α[i]*(α[i]-agg_bundles[n].soln.α[i]) + agg_bundles[n].eta_sg.β[i]*(β[i]-agg_bundles[n].soln.β[i])
-	    + agg_bundles[n].eta_sg.γ[i]*(γ[i]-agg_bundles[n].soln.γ[i]) + agg_bundles[n].eta_sg.δ[i]*(δ[i]-agg_bundles[n].soln.δ[i]) for i in N)
-          + sum( agg_bundles[n].eta_sg.λF[l]*(λF[l]-agg_bundles[n].soln.λF[l]) + agg_bundles[n].eta_sg.λT[l]*(λT[l]-agg_bundles[n].soln.λT[l]) 
-	    + agg_bundles[n].eta_sg.μF[l]*(μF[l]-agg_bundles[n].soln.μF[l]) + agg_bundles[n].eta_sg.μT[l]*(μT[l]-agg_bundles[n].soln.μT[l]) for l in L)
-        )
-	if mpsoln.etahat < etaval
-	  mpsoln.etahat = etaval
-	end
-      end
 
       for n=1:length(trl_bundles)
         trl_bundles[n].cut_dual = abs(JuMP.dual(CutPlanesTrl[n]))
@@ -289,6 +248,7 @@ function solveNodeMP(opfdata,mMP,nodeinfo,trl_bundles,ctr_bundles,agg_bundles,ct
       for n=1:length(agg_bundles)
         agg_bundles[n].cut_dual = abs(JuMP.dual(CutPlanesAgg[n]))
       end
+
       update_rho(nodeinfo,trl_bundles,ctr_bundles,agg_bundles)
       nodeinfo.rhoUB = nodeinfo.rho
       nodeinfo.sscval = ((mpsoln.linobjval - nodeinfo.rhoUB*mpsoln.eta)-(ctr.linobjval - nodeinfo.rhoUB*ctr.eta))/(mpsoln.linobjval-(ctr.linobjval - nodeinfo.rhoUB*ctr.eta)) 
@@ -312,28 +272,34 @@ function solveNodeMP(opfdata,mMP,nodeinfo,trl_bundles,ctr_bundles,agg_bundles,ct
       node_data.linerr -= dot( node_data.sg_agg.μF[L],(ctr.soln.μF[L]-mpsoln.soln.μF[L]) ) 
       node_data.linerr -= dot( node_data.sg_agg.μT[L],(ctr.soln.μT[L]-mpsoln.soln.μT[L]) )
       for n=1:length(trl_bundles)
-        node_data.linerr -= trl_bundles[n].cut_dual*sum( trl_bundles[n].eta_sg.α[i]*(ctr.soln.α[i]-mpsoln.soln.α[i]) + trl_bundles[n].eta_sg.β[i]*(ctr.soln.β[i]-mpsoln.soln.β[i])
-	    + trl_bundles[n].eta_sg.γ[i]*(ctr.soln.γ[i]-mpsoln.soln.γ[i]) + trl_bundles[n].eta_sg.δ[i]*(ctr.soln.δ[i]-mpsoln.soln.δ[i]) for i in N)
-        node_data.linerr -= trl_bundles[n].cut_dual*sum(     trl_bundles[n].eta_sg.λF[l]*(ctr.soln.λF[l]-mpsoln.soln.λF[l]) 
-							+ trl_bundles[n].eta_sg.λT[l]*(ctr.soln.λT[l]-mpsoln.soln.λT[l]) 
-	    						+ trl_bundles[n].eta_sg.μF[l]*(ctr.soln.μF[l]-mpsoln.soln.μF[l]) 
-							+ trl_bundles[n].eta_sg.μT[l]*(ctr.soln.μT[l]-mpsoln.soln.μT[l])  for l in L)
+        node_data.linerr -= trl_bundles[n].cut_dual*dot( trl_bundles[n].eta_sg.α[N],(ctr.soln.α[N]-mpsoln.soln.α[N])) 
+        node_data.linerr -= trl_bundles[n].cut_dual*dot( trl_bundles[n].eta_sg.β[N],(ctr.soln.β[N]-mpsoln.soln.β[N]))
+        node_data.linerr -= trl_bundles[n].cut_dual*dot( trl_bundles[n].eta_sg.γ[N],(ctr.soln.γ[N]-mpsoln.soln.γ[N]))
+        node_data.linerr -= trl_bundles[n].cut_dual*dot( trl_bundles[n].eta_sg.δ[N],(ctr.soln.δ[N]-mpsoln.soln.δ[N]))
+        node_data.linerr -= trl_bundles[n].cut_dual*dot( trl_bundles[n].eta_sg.λF[L],(ctr.soln.λF[L]-mpsoln.soln.λF[L])) 
+        node_data.linerr -= trl_bundles[n].cut_dual*dot( trl_bundles[n].eta_sg.λT[L],(ctr.soln.λT[L]-mpsoln.soln.λT[L])) 
+        node_data.linerr -= trl_bundles[n].cut_dual*dot( trl_bundles[n].eta_sg.μF[L],(ctr.soln.μF[L]-mpsoln.soln.μF[L])) 
+        node_data.linerr -= trl_bundles[n].cut_dual*dot( trl_bundles[n].eta_sg.μT[L],(ctr.soln.μT[L]-mpsoln.soln.μT[L])) 
       end
       for n=1:length(ctr_bundles)
-        node_data.linerr -= ctr_bundles[n].cut_dual*sum( ctr_bundles[n].eta_sg.α[i]*(ctr.soln.α[i]-mpsoln.soln.α[i]) + ctr_bundles[n].eta_sg.β[i]*(ctr.soln.β[i]-mpsoln.soln.β[i])
-	    + ctr_bundles[n].eta_sg.γ[i]*(ctr.soln.γ[i]-mpsoln.soln.γ[i]) + ctr_bundles[n].eta_sg.δ[i]*(ctr.soln.δ[i]-mpsoln.soln.δ[i]) for i in N)
-        node_data.linerr -= ctr_bundles[n].cut_dual*sum( ctr_bundles[n].eta_sg.λF[l]*(ctr.soln.λF[l]-mpsoln.soln.λF[l]) 
-						    + ctr_bundles[n].eta_sg.λT[l]*(ctr.soln.λT[l]-mpsoln.soln.λT[l]) 
-	    					    + ctr_bundles[n].eta_sg.μF[l]*(ctr.soln.μF[l]-mpsoln.soln.μF[l]) 
-						    + ctr_bundles[n].eta_sg.μT[l]*(ctr.soln.μT[l]-mpsoln.soln.μT[l])  for l in L)
+        node_data.linerr -= ctr_bundles[n].cut_dual*dot( ctr_bundles[n].eta_sg.α[N],(ctr.soln.α[N]-mpsoln.soln.α[N])) 
+        node_data.linerr -= ctr_bundles[n].cut_dual*dot( ctr_bundles[n].eta_sg.β[N],(ctr.soln.β[N]-mpsoln.soln.β[N]))
+        node_data.linerr -= ctr_bundles[n].cut_dual*dot( ctr_bundles[n].eta_sg.γ[N],(ctr.soln.γ[N]-mpsoln.soln.γ[N]))
+        node_data.linerr -= ctr_bundles[n].cut_dual*dot( ctr_bundles[n].eta_sg.δ[N],(ctr.soln.δ[N]-mpsoln.soln.δ[N]))
+        node_data.linerr -= ctr_bundles[n].cut_dual*dot( ctr_bundles[n].eta_sg.λF[L],(ctr.soln.λF[L]-mpsoln.soln.λF[L])) 
+        node_data.linerr -= ctr_bundles[n].cut_dual*dot( ctr_bundles[n].eta_sg.λT[L],(ctr.soln.λT[L]-mpsoln.soln.λT[L])) 
+        node_data.linerr -= ctr_bundles[n].cut_dual*dot( ctr_bundles[n].eta_sg.μF[L],(ctr.soln.μF[L]-mpsoln.soln.μF[L])) 
+        node_data.linerr -= ctr_bundles[n].cut_dual*dot( ctr_bundles[n].eta_sg.μT[L],(ctr.soln.μT[L]-mpsoln.soln.μT[L])) 
       end
       for n=1:length(agg_bundles)
-        node_data.linerr -= agg_bundles[n].cut_dual*sum( agg_bundles[n].eta_sg.α[i]*(ctr.soln.α[i]-mpsoln.soln.α[i]) + agg_bundles[n].eta_sg.β[i]*(ctr.soln.β[i]-mpsoln.soln.β[i])
-	    + agg_bundles[n].eta_sg.γ[i]*(ctr.soln.γ[i]-mpsoln.soln.γ[i]) + agg_bundles[n].eta_sg.δ[i]*(ctr.soln.δ[i]-mpsoln.soln.δ[i]) for i in N)
-        node_data.linerr -= agg_bundles[n].cut_dual*sum( agg_bundles[n].eta_sg.λF[l]*(ctr.soln.λF[l]-mpsoln.soln.λF[l]) 
-						    + agg_bundles[n].eta_sg.λT[l]*(ctr.soln.λT[l]-mpsoln.soln.λT[l]) 
-	    					    + agg_bundles[n].eta_sg.μF[l]*(ctr.soln.μF[l]-mpsoln.soln.μF[l]) 
-						    + agg_bundles[n].eta_sg.μT[l]*(ctr.soln.μT[l]-mpsoln.soln.μT[l])  for l in L)
+        node_data.linerr -= agg_bundles[n].cut_dual*dot( agg_bundles[n].eta_sg.α[N],(ctr.soln.α[N]-mpsoln.soln.α[N])) 
+        node_data.linerr -= agg_bundles[n].cut_dual*dot( agg_bundles[n].eta_sg.β[N],(ctr.soln.β[N]-mpsoln.soln.β[N]))
+        node_data.linerr -= agg_bundles[n].cut_dual*dot( agg_bundles[n].eta_sg.γ[N],(ctr.soln.γ[N]-mpsoln.soln.γ[N]))
+        node_data.linerr -= agg_bundles[n].cut_dual*dot( agg_bundles[n].eta_sg.δ[N],(ctr.soln.δ[N]-mpsoln.soln.δ[N]))
+        node_data.linerr -= agg_bundles[n].cut_dual*dot( agg_bundles[n].eta_sg.λF[L],(ctr.soln.λF[L]-mpsoln.soln.λF[L])) 
+        node_data.linerr -= agg_bundles[n].cut_dual*dot( agg_bundles[n].eta_sg.λT[L],(ctr.soln.λT[L]-mpsoln.soln.λT[L])) 
+        node_data.linerr -= agg_bundles[n].cut_dual*dot( agg_bundles[n].eta_sg.μF[L],(ctr.soln.μF[L]-mpsoln.soln.μF[L])) 
+        node_data.linerr -= agg_bundles[n].cut_dual*dot( agg_bundles[n].eta_sg.μT[L],(ctr.soln.μT[L]-mpsoln.soln.μT[L])) 
       end
       node_data.linerr += node_data.rho*dot( mpsoln.eta_sg.α[N], (ctr.soln.α[N]-mpsoln.soln.α[N]) ) 
       node_data.linerr += node_data.rho*dot( mpsoln.eta_sg.β[N], (ctr.soln.β[N]-mpsoln.soln.β[N]) ) 
