@@ -60,6 +60,7 @@ N, L, G = opfdata.N, opfdata.L, opfdata.G
 node_data=create_node(opfdata)
 #= Params
   ALG::Int
+  maxNIter::Int
   maxNSG::Int
   tMin::Float64
   tMax::Float64
@@ -68,7 +69,7 @@ node_data=create_node(opfdata)
   tol2::Float64
   tol3::Float64
 =#
-params=Params(3,1000,0.01,1000,0.1,1e-4,1e-2,1e-2)
+params=Params(3,1000,100,0.01,1000,0.1,1e-4,1e-2,1e-2)
 
 
 if FORM == ECP 
@@ -81,46 +82,65 @@ elseif FORM == ProxPtSDP
   #testProxPt(opfdata,K,HEUR,node_data)
   #testProxTraj(opfdata,K,HEUR,node_data)
 
-  #include("../src/PBM-DelfinoOliveira.jl")
-  #plot_data=PBM_DelfinoOliveira(opfdata,params,K,HEUR,node_data)
+  include("../src/PBM-DelfinoOliveira.jl")
+  plot_data=PBM_DelfinoOliveira(opfdata,params,K,HEUR,node_data)
+  exptype="pbm"
 
-  include("../src/CPAlg.jl")
-  plot_data=CPAlg(opfdata,params,K,HEUR,node_data)
+  #include("../src/CPAlg.jl")
+  #plot_data=CPAlg(opfdata,params,K,HEUR,node_data)
+  #exptype="cp"
 
   n_data=size(plot_data)[1]
+  fn_base=string("ExpOut/",exptype,"exp",CASE_NUM,"-",K,"-",params.maxNSG)
+  fn_obj=string(fn_base,"-obj.dat")
+  io = open(fn_obj,"w")
   for kk=1:n_data
-    @printf("(%d,%.2f) ",kk,plot_data[kk,1])
+    write(io,string(kk," ",plot_data[kk,1],"\n"))
   end
-  println("\n")
+  close(io)
+
+  fn_eta=string(fn_base,"-eta.dat")
+  io = open(fn_eta,"w")
   for kk=1:n_data
-    @printf("(%d,%.2f) ",kk,plot_data[kk,2])
+    write(io,string(kk," ",plot_data[kk,2],"\n"))
   end
-  println("\n")
+  close(io)
+
+  fn_init=string(fn_base,"-init.dat")
+  io = open(fn_init,"w")
   for kk=1:n_data
-    @printf("(%d,%.2f) ",kk,plot_data[kk,3])
+    write(io,string(kk," ",plot_data[kk,3],"\n"))
   end
-  println("\n")
+  close(io)
+
+  fn_solve=string(fn_base,"-solve.dat")
+  io = open(fn_solve,"w")
   for kk=1:n_data
-    @printf("(%d,%.2f) ",kk,plot_data[kk,4])
+    write(io,string(kk," ",plot_data[kk,4],"\n"))
   end
-  println("\n")
+  close(io)
+
+  fn_sg=string(fn_base,"-sg.dat")
+  io = open(fn_sg,"w")
   for kk=1:n_data
-    @printf("(%d,%.2f) ",kk,plot_data[kk,5])
+    write(io,string(kk," ",plot_data[kk,5],"\n"))
   end
-  println("\n")
+  close(io)
+
+  fn_pp=string(fn_base,"-pp.dat")
+  io = open(fn_pp,"w")
   for kk=1:n_data
-    @printf("(%d,%.2f) ",kk,plot_data[kk,6])
+    write(io,string(kk," ",plot_data[kk,6],"\n"))
   end
-  println("\n")
+  close(io)
+
+  fn_bundle=string(fn_base,"-bundle.dat")
+  io = open(fn_bundle,"w")
   for kk=1:n_data
-    @printf("(%d,%.2f) ",kk,plot_data[kk,7])
+    write(io,string(kk," ",plot_data[kk,7],"\n"))
   end
-  println("\n")
-#=
-  for kk=1:params.maxNSG
-    println(plot_data[kk,:])
-  end
-=#
+  close(io)
+
 elseif FORM == AC
   include("../src/DualAC.jl")
 elseif FORM == SOCP

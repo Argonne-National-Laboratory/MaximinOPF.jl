@@ -17,8 +17,8 @@ function CPAlg(opfdata,params,K,HEUR,node_data)
   # DONE OBTAINING PROBLEM INFORMATION FROM opfdata
 
   # FOR STORING EXPERIMENTAL DATA
-    last_kk=params.maxNSG
-    plot_data = zeros(params.maxNSG,7)
+    last_kk=params.maxNIter
+    plot_data = zeros(params.maxNIter,7)
 
   # INITIAL ITERATION
     trl_bundles=Dict()
@@ -32,7 +32,7 @@ function CPAlg(opfdata,params,K,HEUR,node_data)
 
   # MAIN LOOP
     tLow,tHigh=params.tMin,params.tMax
-    for kk=1:params.maxNSG
+    for kk=1:params.maxNIter
       node_data.iter=kk
      # STEP 1
       mpsoln=computeMPSoln(opfdata,node_data,K,CP,ctr,trl_bundles,ctr_bundles,agg_bundles)

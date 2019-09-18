@@ -259,11 +259,9 @@ function solveNodeMP(opfdata,mMP,nodeinfo,trl_bundles,ctr_bundles,agg_bundles,ct
       mpsoln.sg_time += (time_ns()-sg_time_Start)/1e9
 
       pp_time_Start = time_ns()
-      if !stat
-	nodeinfo.tVal /= 2.0
-      end
 
 
+#=
       for n=1:length(trl_bundles)
         etaval=-JuMP.value(-trl_bundles[n].eta 
 	  + sum( trl_bundles[n].eta_sg.α[i]*(α[i]-trl_bundles[n].soln.α[i]) + trl_bundles[n].eta_sg.β[i]*(β[i]-trl_bundles[n].soln.β[i])
@@ -297,6 +295,7 @@ function solveNodeMP(opfdata,mMP,nodeinfo,trl_bundles,ctr_bundles,agg_bundles,ct
 	  mpsoln.etahat = etaval
 	end
       end
+=#
 
       for n=1:length(trl_bundles)
         trl_bundles[n].cut_dual = abs(JuMP.dual(CutPlanesTrl[n]))
