@@ -66,10 +66,10 @@ function PBM_DelfinoOliveira(opfdata,params,K,HEUR,node_data)
           tLow,tHigh=params.tMin,params.tMax
 	  @printf("iter: %d\t(objval,eta)=(%.4f,%.2e)\t(t,rho)=(%.3f,%.3f)\t(err,||s||,epshat)=(%.2e,%.2e,%.2e)\n",
 	      kk,mpsoln.linobjval,mpsoln.eta,node_data.tVal,node_data.rho,node_data.linerr,node_data.agg_sg_norm,node_data.epshat)
-          node_data.tVal = max(0.5*node_data.tVal,params.tMin)
+          node_data.tVal = max(0.7*node_data.tVal,params.tMin)
 	else
           tHigh=node_data.tVal
-	  node_data.tVal=0.5*(tLow+tHigh)
+	  node_data.tVal=2*tLow*tHigh/(tLow+tHigh)
 	end
       else
 	if testSchrammZoweNSII(opfdata,params,ctr,node_data,mpsoln) 
@@ -80,7 +80,7 @@ function PBM_DelfinoOliveira(opfdata,params,K,HEUR,node_data)
           tLow,tHigh=params.tMin,params.tMax
 	else 
           tLow=node_data.tVal
-	  node_data.tVal=2/(1/tLow+1/tHigh)
+	  node_data.tVal=2*tLow*tHigh/(tLow+tHigh)
 	end
       end
     end

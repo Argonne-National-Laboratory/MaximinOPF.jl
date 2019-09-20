@@ -198,8 +198,10 @@ function solveEta0Eigs(opfdata,soln,vR,vI)
       fromBus,toBus = opfdata.fromBus, opfdata.toBus
       H=spzeros(2*nbuses,2*nbuses)
       updateHess(opfdata,soln,H)
-      E=eigs(H,nev=1,which=:SR, maxiter=100000, tol=1e-6)
+#@show cond(Array(H),2)
+      E=eigs(H,nev=1,which=:SR, maxiter=3000, tol=1e-8)
       η0Val = E[1][1]
+#@show E[1][1],E[4],E[5]
       for i in N
         vR[i] = E[2][i,1]; vI[i] = E[2][nbuses+i,1]
       end
