@@ -60,6 +60,7 @@ N, L, G = opfdata.N, opfdata.L, opfdata.G
 node_data=create_node(opfdata)
 #= Params
   ALG::Int
+  maxNIter::Int
   maxNSG::Int
   tMin::Float64
   tMax::Float64
@@ -70,7 +71,7 @@ node_data=create_node(opfdata)
   tol2::Float64
   tol3::Float64
 =#
-params=Params(3,10000,0.01,1000.0,0.1,0.5,0.5,1e-4,1e-2,1e-2)
+params=Params(3,10000,100,0.01,1000.0,0.1,0.5,0.5,1e-3,1e-3,1e-3)
 
 
 if FORM == ECP 
@@ -83,6 +84,11 @@ elseif FORM == ProxPtSDP
   #testProxPt(opfdata,K,HEUR,node_data)
   #testProxTraj(opfdata,K,HEUR,node_data)
 
+  node_data.x_ubs.=0
+  node_data.x_lbs[41]=1
+  node_data.x_ubs[41]=1
+  node_data.x_lbs[80]=1
+  node_data.x_ubs[80]=1
   include("../src/PBM-DelfinoOliveira.jl")
   PBM_DelfinoOliveira(opfdata,params,K,HEUR,node_data)
 

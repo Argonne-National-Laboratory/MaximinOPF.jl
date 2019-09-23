@@ -42,6 +42,43 @@ function createBasicMP(opfdata,nodeinfo,K,CTR_PARAM)
  # McCormick inequalities enforcing bilinear equalities
     # auxiliary dual variables due to McCormick reformulation of cross terms appearing in the Lagrangian
       @variable(mMP, λF[l=L], start=0); @variable(mMP, λT[l=L], start=0); @variable(mMP, μF[l=L], start=0); @variable(mMP, μT[l=L], start=0)
+    for l in L
+      if nodeinfo.x_lbs[l] > 0.9999
+         set_lower_bound(λF[l],0)
+         set_upper_bound(λF[l],0)
+         set_lower_bound(λT[l],0)
+         set_upper_bound(λT[l],0)
+         set_lower_bound(μF[l],0)
+         set_upper_bound(μF[l],0)
+         set_lower_bound(μT[l],0)
+         set_upper_bound(μT[l],0)
+      elseif nodeinfo.x_ubs[l] < 0.0001
+	 @constraint(mMP, λF[l] - α[fromBus[l]] == 0)
+	 @constraint(mMP, λT[l] - α[toBus[l]] == 0)
+	 @constraint(mMP, μF[l] - β[fromBus[l]] == 0)
+	 @constraint(mMP, μT[l] - β[toBus[l]] == 0)
+      else
+    @constraint(mMP, α[fromBus[l]] - x[l] <= λF[l]) 
+    @constraint(mMP, α[fromBus[l]] + x[l] >= λF[l])
+    @constraint(mMP, -(1 - x[l]) <= λF[l]) 
+    @constraint(mMP,  (1 - x[l]) >= λF[l])
+    @constraint(mMP, α[toBus[l]] - x[l] <= λT[l]) 
+    @constraint(mMP, α[toBus[l]] + x[l] >= λT[l])
+    @constraint(mMP, -(1 - x[l]) <= λT[l])
+    @constraint(mMP,  (1 - x[l]) >= λT[l])
+
+    @constraint(mMP, β[fromBus[l]] - x[l] <= μF[l])
+    @constraint(mMP, β[fromBus[l]] + x[l] >= μF[l])
+    @constraint(mMP, -(1 - x[l]) <= μF[l])
+    @constraint(mMP,  (1 - x[l]) >= μF[l])
+    @constraint(mMP, β[toBus[l]] - x[l] <= μT[l])
+    @constraint(mMP, β[toBus[l]] + x[l] >= μT[l])
+    @constraint(mMP, -(1 - x[l]) <= μT[l])
+    @constraint(mMP,  (1 - x[l]) >= μT[l])
+
+      end
+    end
+#=
     @constraint(mMP, AMcf1[l in L], α[fromBus[l]] - x[l] <= λF[l]) 
     @constraint(mMP, AMcf2[l in L], α[fromBus[l]] + x[l] >= λF[l])
     @constraint(mMP, AMcf3[l in L], -(1 - x[l]) <= λF[l]) 
@@ -59,6 +96,7 @@ function createBasicMP(opfdata,nodeinfo,K,CTR_PARAM)
     @constraint(mMP, BMct2[l in L], β[toBus[l]] + x[l] >= μT[l])
     @constraint(mMP, BMct3[l in L], -(1 - x[l]) <= μT[l])
     @constraint(mMP, BMct4[l in L], (1 - x[l]) >= μT[l])
+=#
 
     if CTR_PARAM == PROX 
         @variable(mMP, psi)
@@ -220,7 +258,7 @@ function solveNodeMP(opfdata,mMP,nodeinfo,trl_bundles,ctr_bundles,agg_bundles,ct
 
   JuMP.optimize!(mMP)
   mpsoln.status=JuMP.termination_status(mMP)
-  if mpsoln.status == MOI.OPTIMAL || mpsoln.status == MOI.LOCALLY_SOLVED
+  if mpsoln.status == MOI.OPTIMAL || mpsoln.status == MOI.LOCALLY_SOLVED || mpsoln.status == MOI.ALMOST_LOCALLY_SOLVED
       for i in N
           mpsoln.soln.α[i],mpsoln.soln.β[i],mpsoln.soln.γ[i],mpsoln.soln.δ[i] = JuMP.value(α[i]), JuMP.value(β[i]), JuMP.value(γ[i]), JuMP.value(δ[i])
       end

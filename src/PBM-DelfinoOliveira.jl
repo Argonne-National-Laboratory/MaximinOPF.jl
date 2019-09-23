@@ -29,7 +29,7 @@ function PBM_DelfinoOliveira(opfdata,params,K,HEUR,node_data)
 
   # MAIN LOOP
     tLow,tHigh=params.tMin,params.tMax
-    for kk=1:params.maxNSG
+    for kk=1:params.maxNIter
       node_data.iter=kk
      # STEP 1
       mpsoln=computeMPSoln(opfdata,node_data,K,PROX0,ctr,trl_bundles,ctr_bundles,agg_bundles)
@@ -55,11 +55,18 @@ function PBM_DelfinoOliveira(opfdata,params,K,HEUR,node_data)
 	continue
       end
      # STEP 3
-      if node_data.sscval >= params.ssc1
+#=
+      if mpsoln.eta < params.tol1 # && !(node_data.agg_sg_norm < params.tol2 && node_data.epshat < params.tol3) && node_data.tVal > params.tMin+1e-2
+	  ctr=mpsoln
+	  @printf("iter: %d\t(objval,eta)=(%.4f,%.2e)\t(t,rho)=(%.3f,%.3f)\t(err,||s||,epshat,desc_est)=(%.2e,%.2e,%.2e,%.5e)\n",
+	      kk,mpsoln.linobjval,mpsoln.eta,node_data.tVal,node_data.rho,node_data.linerr,node_data.agg_sg_norm,node_data.epshat,node_data.descent_est)
+	  node_data.tVal = max(0.7*node_data.tVal,params.tMin)
+=#
+      if node_data.sscval >= params.ssc1 # || mpsoln.eta < params.tol1
         # UPDATE CENTER VALUES
         if testSchrammZoweSSII(opfdata,params,node_data,mpsoln,ctr) || abs(tHigh-tLow) <= 1e-2
           agg_bundles[1]=aggregateSG(opfdata,trl_bundles,mpsoln,ctr,ctr_bundles,agg_bundles)
-	  ntrlcuts=purgeSG(opfdata,trl_bundles,10,100)
+	  ntrlcuts=purgeSG(opfdata,trl_bundles,10,params.maxNSG)
 	  for n=1:length(ctr_bundles) 
 	    trl_bundles[ntrlcuts+n]=ctr_bundles[n] 	#Move old ctr bundle to the collection of trial bundles
 	    delete!(ctr_bundles,n)
@@ -69,7 +76,7 @@ function PBM_DelfinoOliveira(opfdata,params,K,HEUR,node_data)
           tLow,tHigh=params.tMin,params.tMax
 	  @printf("iter: %d\t(objval,eta)=(%.4f,%.2e)\t(t,rho)=(%.3f,%.3f)\t(err,||s||,epshat,desc_est)=(%.2e,%.2e,%.2e,%.5e)\n",
 	      kk,mpsoln.linobjval,mpsoln.eta,node_data.tVal,node_data.rho,node_data.linerr,node_data.agg_sg_norm,node_data.epshat,node_data.descent_est)
-	  node_data.tVal = max(0.5*node_data.tVal,params.tMin)
+	  node_data.tVal = max(0.7*node_data.tVal,params.tMin)
 	else
           tHigh=node_data.tVal
 	  node_data.tVal=2*tLow*tHigh/(tLow+tHigh)
@@ -77,7 +84,7 @@ function PBM_DelfinoOliveira(opfdata,params,K,HEUR,node_data)
       else
 	if testSchrammZoweNSII(opfdata,params,ctr,node_data,mpsoln) || abs(tHigh-tLow) <= 1e-2
           agg_bundles[1]=aggregateSG(opfdata,trl_bundles,mpsoln,ctr,ctr_bundles,agg_bundles)
-	  ntrlcuts=purgeSG(opfdata,trl_bundles,10,100)
+	  ntrlcuts=purgeSG(opfdata,trl_bundles,10,params.maxNSG)
           trl_bundles[ntrlcuts+1]=mpsoln
           tLow,tHigh=params.tMin,params.tMax
 	else 
@@ -88,5 +95,6 @@ function PBM_DelfinoOliveira(opfdata,params,K,HEUR,node_data)
     end
     time_End = (time_ns()-time_Start)/1e9
     println("Done after ",time_End," seconds.")
+    printX2(opfdata,mpsoln.soln.x)
 end
 

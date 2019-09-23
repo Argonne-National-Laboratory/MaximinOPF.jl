@@ -18,6 +18,14 @@ function printX(opfdata,x_soln)
    end
   end
 end
+function printX2(opfdata,x_soln)
+  for l in opfdata.L
+   if x_soln[l] > 1e-2 
+	@printf("(%d,%.2f)",l,x_soln[l])
+   end
+  end
+  @printf("\n")
+end
 
 function get_graph(mat::SparseMatrixCSC{Float64,Int64})
     rows = rowvals(mat)
@@ -187,12 +195,21 @@ function computeSG(opfdata,mpsoln)
       success=true
       try
         mpsoln.eta = -solveEta0Eigs(opfdata,mpsoln.soln,vR,vI)
+#=
+        eta_eig = -solveEta0Eigs(opfdata,mpsoln.soln,vR,vI)
+        mpsoln.eta,status = solveEta0SDP(opfdata,mpsoln.soln,vR,vI)
+	mpsoln.eta *= -1
+	while eta_eig > mpsoln.eta + 1e-4
+          mpsoln.eta,status = solveEta0SDP(opfdata,mpsoln.soln,vR,vI)
+	  mpsoln.eta *= -1
+	end
+=#
       catch exc
         println("Exception caught with eigs(), solving η0Val subproblem with Ipopt as recourse.")
         println(exc)
         mpsoln.eta,status = solveEta0SDP(opfdata,mpsoln.soln,vR,vI)
 	mpsoln.eta *= -1
-        if !(status == MOI.OPTIMAL || status == MOI.LOCALLY_SOLVED)
+        if !(status == MOI.OPTIMAL || status == MOI.LOCALLY_SOLVED || status == MOI.ALMOST_LOCALLY_SOLVED)
 	  success=false
 	end
       end
@@ -223,8 +240,11 @@ function solveEta0Eigs(opfdata,soln,vR,vI)
       fromBus,toBus = opfdata.fromBus, opfdata.toBus
       H=spzeros(2*nbuses,2*nbuses)
       updateHess(opfdata,soln,H)
-      E=eigs(H,nev=1,which=:SR, maxiter=100000, tol=1e-10)
+      E=eigs(H,nev=1,ncv=2*nbuses,which=:SR, maxiter=100000, tol=1e-8)
+      #E2=eigs(H,nev=1,which=:SR, maxiter=100000, tol=1e-8)
+#@show E2[1][1]-E[1][1],norm(E2[2][:,1]-E[2][:,1],2)
       η0Val = E[1][1]
+#@show norm(E[6],2)
       for i in N
         vR[i] = E[2][i,1]; vI[i] = E[2][nbuses+i,1]
       end
@@ -266,24 +286,25 @@ function solveEta0SDP(opfdata,soln,vR,vI)
 
       #The QP subproblem
       mSDP = Model(with_optimizer(Ipopt.Optimizer))
-      @variable(mSDP, e[i=N], start=0); @variable(mSDP, f[i=N], start=0)
+      @variable(mSDP, 0 <= e[i=N] <= 1, start=1); @variable(mSDP, 0 <= f[i=N] <= 1, start=0)
       η0Val = 0
 
       for i in N
-        setvalue(e[i], 1); setvalue(f[i], 0)
+        setvalue(e[i], 2*rand()-1); setvalue(f[i], 2*rand()-1)
       end
 
       H=spzeros(2*nbuses,2*nbuses)
       updateHess(opfdata,soln,H)
 
       # Adjust QP subproblem
+      #@NLconstraint(mSDP, sum( e[i]^2+f[i]^2 for i in N) <= 1.0)
       @NLobjective(mSDP, Min, sum( H[i,i]*(e[i]^2+f[i]^2) for i in N)
         + 2*sum( H[fromBus[l],toBus[l]]*(e[fromBus[l]]*e[toBus[l]]+f[fromBus[l]]*f[toBus[l]])   for l in L)
         - 2*sum( H[fromBus[l],nbuses+toBus[l]]*(f[fromBus[l]]*e[toBus[l]]-e[fromBus[l]]*f[toBus[l]])   for l in L)
       )
       JuMP.optimize!(mSDP)
       status=JuMP.termination_status(mSDP)
-      if status == MOI.OPTIMAL || status == MOI.LOCALLY_SOLVED
+      if status == MOI.OPTIMAL || status == MOI.LOCALLY_SOLVED || status == MOI.ALMOST_LOCALLY_SOLVED
         η0Val = getobjectivevalue(mSDP)
         for i in N
           vR[i],vI[i]=getvalue(e[i]),getvalue(f[i])
@@ -432,7 +453,7 @@ function computeMPSoln(opfdata,node_data,K,PROX_PARAM,ctr,trl_bundles,ctr_bundle
   mMP = createBasicMP(opfdata,node_data,K,PROX_PARAM)
   setObjMP(opfdata,mMP,node_data,ctr,PROX_PARAM)
   solveNodeMP(opfdata,mMP,node_data,trl_bundles,ctr_bundles,agg_bundles,ctr,PROX_PARAM,mpsoln)
-  while mpsoln.status != MOI.OPTIMAL && mpsoln.status != MOI.LOCALLY_SOLVED
+  while mpsoln.status != MOI.OPTIMAL && mpsoln.status != MOI.LOCALLY_SOLVED && mpsoln.status != MOI.ALMOST_LOCALLY_SOLVED
     node_data.tVal /= 2
     println("Status was: ",mpsoln.status,". Resolving with reduced prox parameter value: ",node_data.tVal)
     mMP = createBasicMP(opfdata,node_data,K,PROX_PARAM)
