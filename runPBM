@@ -14,11 +14,11 @@ if [ "$#" -eq 3 ]; then
     #julia --depwarn=no -O3 ${ALG}.jl $1 $2 $3 3 2> /dev/null &
     #julia --depwarn=no -O3 ${ALG}.jl $1 $2 $3 3 
     #julia -O3 ${ALG}.jl $1 $2 $3 3 2> depwarn
-    julia --project=. -O3 ${MAIN}.jl $1 $2 $3 3 2> depwarn
+    OMP_NUM_THREADS=1 JULIA_NUM_THREADS=1 julia --project=. -O3 ${MAIN}.jl $1 $2 $3 3 2> depwarn
 fi
 
 if [ "$#" -eq 2 ]; then
-  julia --project=. -O3 ${MAIN}.jl $1 $2 0 3 2> depwarn
+  OMP_NUM_THREADS=1 JULIA_NUM_THREADS=1 julia --project=. -O3 ${MAIN}.jl $1 $2 0 3 2> depwarn
 fi
 
 if [ "$#" -eq 1 ]; then

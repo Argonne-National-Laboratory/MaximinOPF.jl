@@ -4,17 +4,17 @@ jac_d_constant yes
 jac_c_constant yes
 hessian_constant yes
 
-#max_iter 50000
+max_iter 50000
 
-#tol 1e-8
-#constr_viol_tol 1e-8
-#dual_inf_tol 1e-8
-#compl_inf_tol 1e-8
+tol 1e-8
+constr_viol_tol 1e-8
+dual_inf_tol 1e-8
+compl_inf_tol 1e-8
 
-#acceptable_tol 1e-6
-#acceptable_constr_viol_tol 1e-6
-#acceptable_dual_inf_tol 1e-6
-#acceptable_compl_inf_tol 1e-6
+acceptable_tol 1e-6
+acceptable_constr_viol_tol 1e-6
+acceptable_dual_inf_tol 1e-6
+acceptable_compl_inf_tol 1e-6
 
 #mu_strategy monotone
 #nlp_scaling_method none

@@ -69,7 +69,7 @@ node_data=create_node(opfdata)
   tol2::Float64
   tol3::Float64
 =#
-params=Params(3,10000,100,0.01,1000,0.1,1e-4,1e-2,1e-2)
+params=Params(3,30000,100,0.01,1000,0.1,1e-4,1e-2,1e-2)
 
 
 if FORM == ECP 
@@ -83,26 +83,55 @@ elseif FORM == ProxPtSDP
   #testProxTraj(opfdata,K,HEUR,node_data)
 
   include("../src/PBM-DelfinoOliveira.jl")
-  plot_data=PBM_DelfinoOliveira(opfdata,params,K,HEUR,node_data)
+  plot_opt,plot_opt_ss,plot_data,plot_data_ss=PBM_DelfinoOliveira(opfdata,params,K,HEUR,node_data)
   exptype="pbm"
 
   #include("../src/CPAlg.jl")
   #plot_data=CPAlg(opfdata,params,K,HEUR,node_data)
   #exptype="cp"
 
-  n_data=size(plot_data)[1]
+  n_data,n_data_ss=size(plot_data)[1],size(plot_data_ss)[1]
   fn_base=string("ExpOut/",exptype,"exp",CASE_NUM,"-",K,"-",params.maxNSG)
+  fn_base_ss=string("ExpOut/",exptype,"exp",CASE_NUM,"-",K,"-",params.maxNSG,"ss")
+
   fn_obj=string(fn_base,"-obj.dat")
   io = open(fn_obj,"w")
   for kk=1:n_data
-    write(io,string(kk," ",plot_data[kk,1],"\n"))
+    write(io,string(kk," ",plot_opt[kk,1],"\n"))
+  end
+  close(io)
+
+  fn_obj_ss=string(fn_base_ss,"-obj.dat")
+  io = open(fn_obj_ss,"w")
+  for kk=1:n_data_ss
+    write(io,string(plot_opt_ss[kk,6]," ",plot_opt_ss[kk,1],"\n"))
   end
   close(io)
 
   fn_eta=string(fn_base,"-eta.dat")
   io = open(fn_eta,"w")
   for kk=1:n_data
-    write(io,string(kk," ",plot_data[kk,2],"\n"))
+    write(io,string(kk," ",plot_opt[kk,2],"\n"))
+  end
+  close(io)
+
+  fn_eta_ss=string(fn_base_ss,"-eta.dat")
+  io = open(fn_eta_ss,"w")
+  for kk=1:n_data_ss
+    write(io,string(plot_opt_ss[kk,6]," ",plot_opt_ss[kk,2],"\n"))
+  end
+  close(io)
+
+  fn_dual=string(fn_base,"-dual.dat")
+  io = open(fn_dual,"w")
+  for kk=1:n_data
+    write(io,string(kk," ",max(plot_opt[kk,4],plot_opt[kk,5]),"\n"))
+  end
+  close(io)
+  fn_dual_ss=string(fn_base_ss,"-dual.dat")
+  io = open(fn_dual_ss,"w")
+  for kk=1:n_data_ss
+    write(io,string(plot_opt_ss[kk,6]," ",max(plot_opt_ss[kk,4],plot_opt[kk,5]),"\n"))
   end
   close(io)
 
@@ -112,11 +141,23 @@ elseif FORM == ProxPtSDP
     write(io,string(kk," ",plot_data[kk,3],"\n"))
   end
   close(io)
+  fn_init_ss=string(fn_base_ss,"-init.dat")
+  io = open(fn_init_ss,"w")
+  for kk=1:n_data_ss
+    write(io,string(plot_data_ss[kk,8]," ",plot_data_ss[kk,3],"\n"))
+  end
+  close(io)
 
   fn_solve=string(fn_base,"-solve.dat")
   io = open(fn_solve,"w")
   for kk=1:n_data
     write(io,string(kk," ",plot_data[kk,4],"\n"))
+  end
+  close(io)
+  fn_solve_ss=string(fn_base_ss,"-solve.dat")
+  io = open(fn_solve_ss,"w")
+  for kk=1:n_data_ss
+    write(io,string(plot_data_ss[kk,8]," ",plot_data_ss[kk,4],"\n"))
   end
   close(io)
 
@@ -126,6 +167,12 @@ elseif FORM == ProxPtSDP
     write(io,string(kk," ",plot_data[kk,5],"\n"))
   end
   close(io)
+  fn_sg_ss=string(fn_base_ss,"-sg.dat")
+  io = open(fn_sg_ss,"w")
+  for kk=1:n_data_ss
+    write(io,string(plot_data_ss[kk,8]," ",plot_data_ss[kk,5],"\n"))
+  end
+  close(io)
 
   fn_pp=string(fn_base,"-pp.dat")
   io = open(fn_pp,"w")
@@ -133,11 +180,23 @@ elseif FORM == ProxPtSDP
     write(io,string(kk," ",plot_data[kk,6],"\n"))
   end
   close(io)
+  fn_pp_ss=string(fn_base_ss,"-pp.dat")
+  io = open(fn_pp_ss,"w")
+  for kk=1:n_data_ss
+    write(io,string(plot_data_ss[kk,8]," ",plot_data_ss[kk,6],"\n"))
+  end
+  close(io)
 
   fn_bundle=string(fn_base,"-bundle.dat")
   io = open(fn_bundle,"w")
   for kk=1:n_data
     write(io,string(kk," ",plot_data[kk,7],"\n"))
+  end
+  close(io)
+  fn_bundle_ss=string(fn_base_ss,"-bundle.dat")
+  io = open(fn_bundle_ss,"w")
+  for kk=1:n_data_ss
+    write(io,string(plot_data_ss[kk,8]," ",plot_data_ss[kk,7],"\n"))
   end
   close(io)
 

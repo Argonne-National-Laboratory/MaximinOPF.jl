@@ -8,6 +8,7 @@ Brian Dandurand
 
 include("utils.jl")
 
+#=
 type SolnInfo
   x_soln::Array{Float64}
   x_dualsoln::Array{Float64}
@@ -20,6 +21,7 @@ type NodeInfo
   x_ubs::Array{Float64}
   nodeBd::Float64
 end
+=#
 
 function solveNodeAC(opfdata,ndata,mpsoln)
   # OBTAIN PROBLEM INFORMATION FROM opfdata
@@ -29,12 +31,14 @@ function solveNodeAC(opfdata,ndata,mpsoln)
     BusGeners, Y = opfdata.BusGeners, opfdata.Y_AC
 
     # indicate to enable chordal decomposition
-    chordal_decomposition = true
+    #chordal_decomposition = true
+    chordal_decomposition = false
 
   # Instantiating the model and solver for the dual problem
     nThreads=1
-    mMP = Model(solver=MosekSolver(MSK_IPAR_LOG=0,MSK_IPAR_NUM_THREADS=nThreads))
+    #mMP = Model(solver=MosekSolver(MSK_IPAR_LOG=0,MSK_IPAR_NUM_THREADS=nThreads))
     #mMP = Model(solver=SCSSolver(verbose=1,max_iters=1000000))
+    mMP = Model(with_optimizer(SCS.Optimizer,verbose=1,max_iters=100000,rho_x=1.0))
     @variable(mMP, -1 <= α[i=N] <= 1)
     @variable(mMP, -1 <= β[i=N] <= 1)
     @variable(mMP, γp[i=N] >= 0)
@@ -124,7 +128,7 @@ function solveNodeAC(opfdata,ndata,mpsoln)
         @constraint(mMP, [i=1:(2*nbuses),j=i:(2*nbuses)], C[i,j] - sumH[i,j] == 0)
     else
         # SDP matrix
-        @variable(mMP, H[i=1:(2*nbuses),j=1:(2*nbuses)], SDP)
+        @variable(mMP, H[i=1:(2*nbuses),j=1:(2*nbuses)], PSD)
         @constraint(mMP, SetH[i=1:(2*nbuses),j=i:(2*nbuses)], C[i,j] - H[i,j] == 0)
     end
 
@@ -144,18 +148,18 @@ function solveNodeAC(opfdata,ndata,mpsoln)
     @constraint(mMP, LambdaMuConstr2[l in L], λF[l]*Y["tfR"][l] - λT[l]*Y["ftR"][l] - μF[l]*Y["tfI"][l] + μT[l]*Y["ftI"][l] == 0.0)
   end
 
-  status=solve(mMP)
-  if status == :Optimal || status == :Stall
+  JuMP.optimize!(mMP)
+  mpsoln.status=JuMP.termination_status(mMP)
+  #if mpsoln.status == :Optimal || mpsoln.status == :Stall
+  if true
+    println("solveNodeAC: Return status ",mpsoln.status)
       for l in L
-        mpsoln.x_soln[l] = getvalue(x[l])
+        mpsoln.soln.x[l] = getvalue(x[l])
         from=fromBus[l]; to=toBus[l]
-        mpsoln.x_dualsoln[l] = getdual(x[l])  
+        #mpsoln.x_dualsoln[l] = getdual(x[l])  
       end
-      mpsoln.optval = getobjectivevalue(mMP)
-      mpsoln.solvetime = getsolvetime(mMP)
-      if status == :Stall
-        println("solveNodeAC: Return status $status")
-      end
+      mpsoln.objval = getobjectivevalue(mMP)
+      #mpsoln.solvetime = getsolvetime(mMP)
   else
     println("solveNodeAC: Return status $status")
   end
@@ -229,6 +233,17 @@ function findNextNode(opfdata,E)
   return nodekey,weakestUBVal
 end
 
+function testSCSonRoot(opfdata)
+  println("Testing SCS on the PSD formulation at the root node...")
+  time_Start = time_ns()
+  N, L, G = opfdata.N, opfdata.L, opfdata.G 
+  node_data=create_node(opfdata)
+  mpsoln=create_bundle(opfdata)
+  solveNodeAC(opfdata,node_data,mpsoln)
+  time_End = (time_ns()-time_Start)/1e9
+  println("Done after ",time_End," seconds.")
+  @show mpsoln.objval
+end
 function testDualAC(opfdata)
   x_val=zeros(opfdata.nlines)
   x_val[41]=1
@@ -393,8 +408,11 @@ function primHeurXInt(opfdata,mpsoln,feasXs,incSoln)
   end
 end
 
+testSCSonRoot(opfdata)
+
 #testDualAC(opfdata)
 
+#=
 finalXSoln = SolnInfo(zeros(opfdata.nlines),ones(opfdata.nlines),0.0,0.0)
 
 bestUBVal,nNodes,runtime = solveBnBSDP(opfdata,finalXSoln)
@@ -458,3 +476,4 @@ println("Best bound:  ", bestUBVal)
 @show runtime
 @show finalXSoln
 end
+=#

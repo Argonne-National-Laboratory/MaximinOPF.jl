@@ -2,7 +2,7 @@ using LightGraphs
 using Formatting
 using JuMP
 #using CPLEX, Ipopt, SCS 
-using Ipopt 
+using Ipopt, SCS
 #using Mosek,MosekTools
 using Arpack
 using DelimitedFiles
@@ -192,6 +192,29 @@ function computeSG(opfdata,mpsoln)
       end
       return mpsoln.eta,success
 end
+
+function initialSG(opfdata,bundles)
+  nbuses, nlines, ngens, N, L, G = opfdata.nbuses, opfdata.nlines, opfdata.ngens, opfdata.N, opfdata.L, opfdata.G 
+  fromBus,toBus,Y = opfdata.fromBus, opfdata.toBus, opfdata.Y_AC
+  fromLines,toLines = opfdata.fromLines, opfdata.toLines
+  for ii=N
+    bundles[ii]=create_bundle(opfdata)
+    bundles[ii].eta_sg.α[ii] = Y["shR"][ii] 
+    bundles[ii].eta_sg.β[ii] = -Y["shI"][ii] 
+    bundles[ii].eta_sg.δ[ii] = 1.0
+    bundles[ii].eta_sg.γ[ii] = -1.0
+    for l in fromLines[ii]
+      bundles[ii].eta_sg.λF[l] = Y["ffR"][l] 
+      bundles[ii].eta_sg.μF[l] = -Y["ffI"][l]  
+    end
+    for l in toLines[ii]
+      bundles[ii].eta_sg.λT[l] = Y["ttR"][l] 
+      bundles[ii].eta_sg.μT[l] = -Y["ttI"][l] 
+    end
+  end
+
+end
+
 # SUBROUTINE FOR COMPUTING THE MINIMUM EIGENVALUE OF H WITH A CORRESPONDING EIGENVECTOR
 function solveEta0Eigs(opfdata,soln,vR,vI)
       nbuses, nlines, ngens, N, L, G = opfdata.nbuses, opfdata.nlines, opfdata.ngens, opfdata.N, opfdata.L, opfdata.G 
@@ -199,7 +222,8 @@ function solveEta0Eigs(opfdata,soln,vR,vI)
       H=spzeros(2*nbuses,2*nbuses)
       updateHess(opfdata,soln,H)
 #@show cond(Array(H),2)
-      E=eigs(H,nev=1,which=:SR, maxiter=3000, tol=1e-8)
+      E=eigs(H,nev=1,ncv=2*nbuses,which=:SR, maxiter=3000, tol=1e-8)
+      #E=eigs(H,nev=1,which=:SR, maxiter=3000, tol=1e-8)
       η0Val = E[1][1]
 #@show E[1][1],E[4],E[5]
       for i in N
