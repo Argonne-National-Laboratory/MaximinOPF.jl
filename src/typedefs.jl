@@ -97,7 +97,7 @@ end
 function create_node(opfdata)
     x_lbs=zeros(opfdata.nlines)
     x_ubs=ones(opfdata.nlines)
-    return NodeInfo(0,0,x_lbs,x_ubs,1e20,100.0,100.0,0.0,0.0,0,100.0,0.0,0.0,0.0,1e20,create_soln(opfdata))
+    return NodeInfo(0,0,x_lbs,x_ubs,1e20,100.0,100.0,0.0,0.0,0,500.0,0.0,0.0,0.0,1e20,create_soln(opfdata))
 end
 
 

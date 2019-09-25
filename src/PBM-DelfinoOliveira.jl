@@ -27,13 +27,8 @@ function PBM_DelfinoOliveira(opfdata,params,K,HEUR,node_data)
     trl_bundles=Dict()
     ctr_bundles=Dict()
     agg_bundles=Dict()
-    #initialSG(opfdata,trl_bundles)
     ctr=create_bundle(opfdata)
-    mpsoln=computeMPSoln(opfdata,node_data,K,PROX0,ctr,trl_bundles,ctr_bundles,agg_bundles)
-    ctr=mpsoln
-    ctr_bundles[1]=mpsoln
     sstep_no=1
-    min_it=50
 
   # MAIN LOOP
     tLow,tHigh=params.tMin,params.tMax
@@ -41,8 +36,9 @@ function PBM_DelfinoOliveira(opfdata,params,K,HEUR,node_data)
       node_data.iter=kk
      # STEP 1
       mpsoln=computeMPSoln(opfdata,node_data,K,PROX0,ctr,trl_bundles,ctr_bundles,agg_bundles)
-      node_data.sscval = ((mpsoln.linobjval - node_data.rhoUB*mpsoln.eta)-(ctr.linobjval - node_data.rhoUB*ctr.eta))/(mpsoln.linobjval-(ctr.linobjval - node_data.rhoUB*ctr.eta)) 
-      node_data.descent_est = mpsoln.linobjval-(ctr.linobjval - node_data.rhoUB*ctr.eta) 
+      rho_est=max(opfdata.nbuses,node_data.rho)
+      node_data.sscval = ((mpsoln.linobjval - rho_est*mpsoln.eta)-(ctr.linobjval - rho_est*ctr.eta))/(mpsoln.linobjval-(ctr.linobjval - rho_est*ctr.eta)) 
+      node_data.descent_est = mpsoln.linobjval-(ctr.linobjval - node_data.rho*ctr.eta) 
       plot_data[kk,3],plot_data[kk,4],plot_data[kk,5],plot_data[kk,6],plot_data[kk,7]=mpsoln.init_time,mpsoln.solve_time,mpsoln.sg_time,mpsoln.pp_time,mpsoln.bundle_time
       plot_opt[kk,1],plot_opt[kk,2],plot_opt[kk,3],plot_opt[kk,4],plot_opt[kk,5]=mpsoln.linobjval,mpsoln.eta,node_data.linerr,node_data.agg_sg_norm,node_data.epshat
       plot_data_ssteps[sstep_no,3:7] += plot_data[kk,3:7]
@@ -61,10 +57,12 @@ function PBM_DelfinoOliveira(opfdata,params,K,HEUR,node_data)
      # STEP 3
       if node_data.sscval >= params.ssc1 # || mpsoln.eta < params.tol1
         # UPDATE CENTER VALUES
-        if testSchrammZoweSSII(opfdata,params,node_data,mpsoln,ctr) || kk < min_it 
+        if testSchrammZoweSSII(opfdata,params,node_data,mpsoln,ctr)  
           agg_bundles[1]=aggregateSG(opfdata,trl_bundles,mpsoln,ctr,ctr_bundles,agg_bundles)
 	  ntrlcuts=purgeSG(opfdata,trl_bundles,min(10,params.maxNSG),params.maxNSG)
-	  trl_bundles[ntrlcuts+1]=ctr_bundles[1] 	#Move old ctr bundle to the collection of trial bundles
+	  for n=1:length(ctr_bundles)
+	    trl_bundles[ntrlcuts+n]=ctr_bundles[n] 	#Move old ctr bundle to the collection of trial bundles
+	  end
 	  ctr_bundles[1]=mpsoln
 	  ctr=mpsoln
           tLow,tHigh=params.tMin,params.tMax
@@ -76,15 +74,13 @@ function PBM_DelfinoOliveira(opfdata,params,K,HEUR,node_data)
 	    plot_data_ssteps[sstep_no,3:7] += plot_data_ssteps[sstep_no-1,3:7]  
           end
 	  sstep_no += 1
-	  if kk >= min_it
-            node_data.tVal = max(0.7*node_data.tVal,params.tMin)
-	  end
+          node_data.tVal = max(0.7*node_data.tVal,params.tMin)
 	else
           tHigh=node_data.tVal
 	  node_data.tVal=2*tLow*tHigh/(tLow+tHigh)
 	end
       else
-	if testSchrammZoweNSII(opfdata,params,ctr,node_data,mpsoln) || kk < min_it
+	if testSchrammZoweNSII(opfdata,params,ctr,node_data,mpsoln) 
           agg_bundles[1]=aggregateSG(opfdata,trl_bundles,mpsoln,ctr,ctr_bundles,agg_bundles)
 	  ntrlcuts=purgeSG(opfdata,trl_bundles,min(10,params.maxNSG),params.maxNSG)
           trl_bundles[ntrlcuts+1]=mpsoln
