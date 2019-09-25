@@ -86,11 +86,6 @@ elseif FORM == ProxPtSDP
   #testProxPt(opfdata,K,HEUR,node_data)
   #testProxTraj(opfdata,K,HEUR,node_data)
 
-  node_data.x_ubs.=0
-  node_data.x_lbs[41]=1
-  node_data.x_ubs[41]=1
-  node_data.x_lbs[80]=1
-  node_data.x_ubs[80]=1
   include("../src/PBM-DelfinoOliveira.jl")
   PBM_DelfinoOliveira(opfdata,params,K,HEUR,node_data)
 
