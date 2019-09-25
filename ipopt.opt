@@ -1,5 +1,8 @@
 print_level 0
 
+jac_d_constant yes
+jac_c_constant yes
+hessian_constant yes
 #max_iter 50000
 
 #tol 1e-8

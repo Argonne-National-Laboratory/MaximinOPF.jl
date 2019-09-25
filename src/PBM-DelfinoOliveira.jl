@@ -49,13 +49,13 @@ function PBM_DelfinoOliveira(opfdata,params,K,HEUR,node_data)
 	break
       elseif mpsoln.eta < 1e-8 && abs(tHigh-tLow) > 1e-2
         tHigh=node_data.tVal
-	node_data.tVal=2/(1/tLow+1/tHigh)
+	node_data.tVal=2*tLow*tHigh/(tLow+tHigh)
 	@printf("iter: %d\t(objval,eta)=(%.4f,%.2e)\t(t,rho)=(%.3f,%.3f)\t(err,||s||,epshat,desc_est)=(%.2e,%.2e,%.2e,%.5e)\n",
 	  kk,mpsoln.linobjval,mpsoln.eta,node_data.tVal,node_data.rho,node_data.linerr,node_data.agg_sg_norm,node_data.epshat,node_data.descent_est)
 	continue
       end
      # STEP 3
-      if node_data.sscval >= params.ssc 
+      if node_data.sscval >= params.ssc1
         # UPDATE CENTER VALUES
         if testSchrammZoweSSII(opfdata,params,node_data,mpsoln,ctr) || abs(tHigh-tLow) <= 1e-2
           agg_bundles[1]=aggregateSG(opfdata,trl_bundles,mpsoln,ctr,ctr_bundles,agg_bundles)
@@ -72,7 +72,7 @@ function PBM_DelfinoOliveira(opfdata,params,K,HEUR,node_data)
 	  node_data.tVal = max(0.5*node_data.tVal,params.tMin)
 	else
           tHigh=node_data.tVal
-	  node_data.tVal=0.5*(tLow+tHigh)
+	  node_data.tVal=2*tLow*tHigh/(tLow+tHigh)
 	end
       else
 	if testSchrammZoweNSII(opfdata,params,ctr,node_data,mpsoln) || abs(tHigh-tLow) <= 1e-2
@@ -82,7 +82,7 @@ function PBM_DelfinoOliveira(opfdata,params,K,HEUR,node_data)
           tLow,tHigh=params.tMin,params.tMax
 	else 
           tLow=node_data.tVal
-	  node_data.tVal=2/(1/tLow+1/tHigh)
+	  node_data.tVal=2*tLow*tHigh/(tLow+tHigh)
 	end
       end
     end
