@@ -6,6 +6,8 @@ Kibaek Kim
 Brian Dandurand
 =#
 
+#using Libdl
+#libomp=Libdl.dlopen("/sandbox/schanen/petsc/wgpu/lib/libpetsc.so.3.011.3",RTLD_GLOBAL)
 
 
 include("../src/opfdata.jl")
