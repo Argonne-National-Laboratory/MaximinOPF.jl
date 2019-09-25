@@ -2,7 +2,7 @@ using LightGraphs
 using Formatting
 using JuMP
 #using CPLEX, Ipopt, SCS 
-using Ipopt 
+using Ipopt, SCS
 #using Mosek,MosekTools
 using Arpack
 using DelimitedFiles
@@ -234,17 +234,37 @@ function computeSG(opfdata,mpsoln)
       end
       return mpsoln.eta,success
 end
+
+function initialSG(opfdata,bundles)
+  nbuses, nlines, ngens, N, L, G = opfdata.nbuses, opfdata.nlines, opfdata.ngens, opfdata.N, opfdata.L, opfdata.G 
+  fromBus,toBus,Y = opfdata.fromBus, opfdata.toBus, opfdata.Y_AC
+  fromLines,toLines = opfdata.fromLines, opfdata.toLines
+  for ii=N
+    bundles[ii]=create_bundle(opfdata)
+    bundles[ii].eta_sg.α[ii] = Y["shR"][ii] 
+    bundles[ii].eta_sg.β[ii] = -Y["shI"][ii] 
+    bundles[ii].eta_sg.δ[ii] = 1.0
+    bundles[ii].eta_sg.γ[ii] = -1.0
+    for l in fromLines[ii]
+      bundles[ii].eta_sg.λF[l] = Y["ffR"][l] 
+      bundles[ii].eta_sg.μF[l] = -Y["ffI"][l]  
+    end
+    for l in toLines[ii]
+      bundles[ii].eta_sg.λT[l] = Y["ttR"][l] 
+      bundles[ii].eta_sg.μT[l] = -Y["ttI"][l] 
+    end
+  end
+
+end
+
 # SUBROUTINE FOR COMPUTING THE MINIMUM EIGENVALUE OF H WITH A CORRESPONDING EIGENVECTOR
 function solveEta0Eigs(opfdata,soln,vR,vI)
       nbuses, nlines, ngens, N, L, G = opfdata.nbuses, opfdata.nlines, opfdata.ngens, opfdata.N, opfdata.L, opfdata.G 
       fromBus,toBus = opfdata.fromBus, opfdata.toBus
       H=spzeros(2*nbuses,2*nbuses)
       updateHess(opfdata,soln,H)
-      E=eigs(H,nev=1,ncv=2*nbuses,which=:SR, maxiter=100000, tol=1e-8)
-      #E2=eigs(H,nev=1,which=:SR, maxiter=100000, tol=1e-8)
-#@show E2[1][1]-E[1][1],norm(E2[2][:,1]-E[2][:,1],2)
+      E=eigs(H,nev=1,ncv=2*nbuses,which=:SR, maxiter=10000, tol=1e-8)
       η0Val = E[1][1]
-#@show norm(E[6],2)
       for i in N
         vR[i] = E[2][i,1]; vI[i] = E[2][nbuses+i,1]
       end
@@ -449,16 +469,24 @@ function decT(node)
 end
 
 function computeMPSoln(opfdata,node_data,K,PROX_PARAM,ctr,trl_bundles,ctr_bundles,agg_bundles)
+  bundle_time_Start = time_ns()
+
+  init_time_Start = time_ns()
   mpsoln=create_bundle(opfdata)
-  mMP = createBasicMP(opfdata,node_data,K,PROX_PARAM)
+  mMP = createBasicMP(opfdata,node_data,ctr,K,PROX_PARAM)
   setObjMP(opfdata,mMP,node_data,ctr,PROX_PARAM)
+  mpsoln.init_time += (time_ns()-init_time_Start)/1e9
+
   solveNodeMP(opfdata,mMP,node_data,trl_bundles,ctr_bundles,agg_bundles,ctr,PROX_PARAM,mpsoln)
   while mpsoln.status != MOI.OPTIMAL && mpsoln.status != MOI.LOCALLY_SOLVED && mpsoln.status != MOI.ALMOST_LOCALLY_SOLVED
     node_data.tVal /= 2
     println("Status was: ",mpsoln.status,". Resolving with reduced prox parameter value: ",node_data.tVal)
-    mMP = createBasicMP(opfdata,node_data,K,PROX_PARAM)
+    init_time_Start = time_ns()
+    mMP = createBasicMP(opfdata,node_data,ctr,K,PROX_PARAM)
     setObjMP(opfdata,mMP,node_data,ctr,PROX_PARAM)
+    mpsoln.init_time += (time_ns()-init_time_Start)/1e9
     solveNodeMP(opfdata,mMP,node_data,trl_bundles,ctr_bundles,agg_bundles,ctr,PROXPARAM,mpsoln)
   end	
+  mpsoln.bundle_time= (time_ns()-bundle_time_Start)/1e9
   return mpsoln
 end
