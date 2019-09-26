@@ -92,7 +92,7 @@ elseif FORM == ProxPtSDP
   #testProxTraj(opfdata,K,HEUR,node_data)
 
   include("../src/PBM-DelfinoOliveira.jl")
-  plot_opt,plot_opt_ss,plot_data,plot_data_ss=PBM_DelfinoOliveira(opfdata,params,K,HEUR,node_data)
+  plot_params,plot_opt,plot_data,plot_params_ss,plot_opt_ss,plot_data_ss=PBM_DelfinoOliveira(opfdata,params,K,HEUR,node_data)
   exptype="pbm"
 
   #include("../src/CPAlg.jl")
@@ -102,6 +102,19 @@ elseif FORM == ProxPtSDP
   n_data,n_data_ss=size(plot_data)[1],size(plot_data_ss)[1]
   fn_base=string("ExpOut/",exptype,"exp",CASE_NUM,"-",K,"-",params.maxNSG)
   fn_base_ss=string("ExpOut/",exptype,"exp",CASE_NUM,"-",K,"-",params.maxNSG,"ss")
+
+  fn_params=string(fn_base,"-params.dat")
+  io = open(fn_params,"w")
+  for kk=1:n_data
+    write(io,string(kk," ",plot_params[kk,1]," ",plot_params[kk,2]," ",plot_params[kk,3],"\n"))
+  end
+  close(io)
+  fn_params_ss=string(fn_base_ss,"-params.dat")
+  io = open(fn_params_ss,"w")
+  for kk=1:n_data_ss
+    write(io,string(plot_params_ss[kk,4]," ",plot_params_ss[kk,1]," ",plot_params_ss[kk,2]," ",plot_params_ss[kk,3],"\n"))
+  end
+  close(io)
 
   fn_obj=string(fn_base,"-obj.dat")
   io = open(fn_obj,"w")
