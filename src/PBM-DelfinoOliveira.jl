@@ -36,7 +36,7 @@ function PBM_DelfinoOliveira(opfdata,params,K,HEUR,node_data)
       node_data.iter=kk
      # STEP 1
       mpsoln=computeMPSoln(opfdata,node_data,K,PROX0,ctr,trl_bundles,ctr_bundles,agg_bundles)
-      rho_est=max(opfdata.nbuses,node_data.rho)
+      rho_est=node_data.rho
       node_data.sscval = ((mpsoln.linobjval - rho_est*mpsoln.eta)-(ctr.linobjval - rho_est*ctr.eta))/(mpsoln.linobjval-(ctr.linobjval - rho_est*ctr.eta)) 
       node_data.descent_est = mpsoln.linobjval-(ctr.linobjval - node_data.rho*ctr.eta) 
       plot_data[kk,3],plot_data[kk,4],plot_data[kk,5],plot_data[kk,6],plot_data[kk,7]=mpsoln.init_time,mpsoln.solve_time,mpsoln.sg_time,mpsoln.pp_time,mpsoln.bundle_time
@@ -55,9 +55,9 @@ function PBM_DelfinoOliveira(opfdata,params,K,HEUR,node_data)
 	break
       end
      # STEP 3
-      if node_data.sscval >= params.ssc1 # || mpsoln.eta < params.tol1
+      if node_data.sscval >= params.ssc1 
         # UPDATE CENTER VALUES
-        if testSchrammZoweSSII(opfdata,params,node_data,mpsoln,ctr)  
+        if testSchrammZoweSSII(opfdata,params,node_data,mpsoln,ctr) || tHigh-tLow < 1e-2 
           agg_bundles[1]=aggregateSG(opfdata,trl_bundles,mpsoln,ctr,ctr_bundles,agg_bundles)
 	  ntrlcuts=purgeSG(opfdata,trl_bundles,min(10,params.maxNSG),params.maxNSG)
 	  for n=1:length(ctr_bundles)
@@ -70,9 +70,6 @@ function PBM_DelfinoOliveira(opfdata,params,K,HEUR,node_data)
 	      kk,mpsoln.linobjval,mpsoln.eta,node_data.tVal,node_data.rho,node_data.linerr,node_data.agg_sg_norm,node_data.epshat)
           plot_data_ssteps[sstep_no,8] = kk
           plot_opt_ssteps[sstep_no,6] = kk
-          if sstep_no > 1
-	    plot_data_ssteps[sstep_no,3:7] += plot_data_ssteps[sstep_no-1,3:7]  
-          end
 	  sstep_no += 1
           node_data.tVal = max(0.7*node_data.tVal,params.tMin)
 	else
@@ -80,7 +77,7 @@ function PBM_DelfinoOliveira(opfdata,params,K,HEUR,node_data)
 	  node_data.tVal=2*tLow*tHigh/(tLow+tHigh)
 	end
       else
-	if testSchrammZoweNSII(opfdata,params,ctr,node_data,mpsoln) 
+	if testSchrammZoweNSII(opfdata,params,ctr,node_data,mpsoln) || tHigh-tLow < 1e-2
           agg_bundles[1]=aggregateSG(opfdata,trl_bundles,mpsoln,ctr,ctr_bundles,agg_bundles)
 	  ntrlcuts=purgeSG(opfdata,trl_bundles,min(10,params.maxNSG),params.maxNSG)
           trl_bundles[ntrlcuts+1]=mpsoln
@@ -94,9 +91,6 @@ function PBM_DelfinoOliveira(opfdata,params,K,HEUR,node_data)
     plot_opt[last_kk,1],plot_opt[last_kk,2],plot_opt[last_kk,3],plot_opt[last_kk,4],plot_opt[last_kk,5]=ctr.linobjval,ctr.eta,node_data.linerr,node_data.agg_sg_norm,node_data.epshat
     plot_opt_ssteps[sstep_no,6] = last_kk
     plot_data_ssteps[sstep_no,8] = last_kk
-    if sstep_no > 1
-      plot_data_ssteps[sstep_no,3:7] += plot_data_ssteps[sstep_no-1,3:7]  
-    end
     @printf("iter: %d\t(objval,eta)=(%.4f,%.2e)\t(t,rho)=(%.3f,%.3f)\t(err,||s||,epshat)=(%.2e,%.2e,%.2e)\n",
       last_kk,ctr.linobjval,ctr.eta,node_data.tVal,node_data.rho,node_data.linerr,node_data.agg_sg_norm,node_data.epshat)
     time_End = (time_ns()-time_Start)/1e9
