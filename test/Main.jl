@@ -8,6 +8,11 @@ Brian Dandurand
 
 #using Libdl
 #libomp=Libdl.dlopen("/sandbox/schanen/petsc/wgpu/lib/libpetsc.so.3.011.3",RTLD_GLOBAL)
+using Libdl
+libmkl2=Libdl.dlopen("/soft/com/packages/intel/19/u2/mkl/lib/intel64/libmkl_core.so",RTLD_GLOBAL)
+libmkl2=Libdl.dlopen("/soft/com/packages/intel/19/u2/mkl/lib/intel64/libmkl_intel_thread.so",RTLD_GLOBAL)
+libmkl3=Libdl.dlopen("/soft/com/packages/intel/19/u2/mkl/lib/intel64/libmkl_def.so",RTLD_GLOBAL)
+libmkl1=Libdl.dlopen("/soft/com/packages/intel/19/u2/mkl/lib/intel64/libmkl_avx512.so",RTLD_GLOBAL)
 
 
 include("../src/opfdata.jl")
