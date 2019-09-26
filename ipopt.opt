@@ -21,7 +21,7 @@ acceptable_compl_inf_tol 1e-6
 
 #mu_strategy adaptive
 
-#linear_solver ma57
+linear_solver ma57
 #ma57_pivtol 1e-4
 #ma57_automatic_scaling yes
 
