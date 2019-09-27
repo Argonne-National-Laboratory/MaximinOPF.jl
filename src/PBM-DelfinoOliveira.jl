@@ -38,9 +38,6 @@ function PBM_DelfinoOliveira(opfdata,params,K,HEUR,node_data)
       node_data.iter=kk
      # STEP 1
       mpsoln=computeMPSoln(opfdata,node_data,K,PROX0,ctr,trl_bundles,ctr_bundles,agg_bundles)
-      rho_est=node_data.rho
-      node_data.sscval = ((mpsoln.linobjval - rho_est*mpsoln.eta)-(ctr.linobjval - rho_est*ctr.eta))/(mpsoln.linobjval-(ctr.linobjval - rho_est*ctr.eta)) 
-      node_data.descent_est = mpsoln.linobjval-(ctr.linobjval - node_data.rho*ctr.eta) 
       plot_data[kk,3],plot_data[kk,4],plot_data[kk,5],plot_data[kk,6],plot_data[kk,7]=mpsoln.init_time,mpsoln.solve_time,mpsoln.sg_time,mpsoln.pp_time,mpsoln.bundle_time
       plot_opt[kk,1],plot_opt[kk,2],plot_opt[kk,3],plot_opt[kk,4],plot_opt[kk,5]=mpsoln.linobjval,mpsoln.eta,node_data.linerr,node_data.agg_sg_norm,node_data.epshat
       plot_data_ssteps[sstep_no,3:7] += plot_data[kk,3:7]

@@ -289,6 +289,7 @@ function solveNodeMP(opfdata,mMP,nodeinfo,trl_bundles,ctr_bundles,agg_bundles,ct
       nodeinfo.rhoUB = nodeinfo.rho
       rho_est=node_data.rho
       nodeinfo.sscval = ((mpsoln.linobjval - rho_est*mpsoln.eta)-(ctr.linobjval - rho_est*ctr.eta))/(mpsoln.linobjval-(ctr.linobjval - rho_est*ctr.eta)) 
+      nodeinfo.descent_est = mpsoln.linobjval-(ctr.linobjval - rho_est*ctr.eta) 
 
       node_data.agg_sg_norm = update_agg(opfdata,node_data,ctr,mpsoln,node_data.sg_agg)
       node_data.epshat = compute_epshat(opfdata,node_data,mpsoln,ctr,node_data.sg_agg)
