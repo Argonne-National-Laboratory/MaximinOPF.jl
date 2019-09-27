@@ -195,15 +195,6 @@ function computeSG(opfdata,mpsoln)
       success=true
       try
         mpsoln.eta = -solveEta0Eigs(opfdata,mpsoln.soln,vR,vI)
-#=
-        eta_eig = -solveEta0Eigs(opfdata,mpsoln.soln,vR,vI)
-        mpsoln.eta,status = solveEta0SDP(opfdata,mpsoln.soln,vR,vI)
-	mpsoln.eta *= -1
-	while eta_eig > mpsoln.eta + 1e-4
-          mpsoln.eta,status = solveEta0SDP(opfdata,mpsoln.soln,vR,vI)
-	  mpsoln.eta *= -1
-	end
-=#
       catch exc
         println("Exception caught with eigs(), solving η0Val subproblem with Ipopt as recourse.")
         println(exc)
@@ -340,21 +331,31 @@ function solveEta0SDP(opfdata,soln,vR,vI)
 end
 
 # SUBROUTINE FOR COMPUTING A SUBGRADIENT OF ETA(PI), WHICH IS THE FUNCTION TAKING THE VALUE OF THE MINIMUM EIGENVALUE OF H(PI)
-function purgeSG(opfdata,bundle,minAge=0,maxAge=100000)
+function purgeSG(opfdata,bundle,maxN=100000)
+      nbuses, nlines, ngens, N, L, G = opfdata.nbuses, opfdata.nlines, opfdata.ngens, opfdata.N, opfdata.L, opfdata.G 
+      fromBus,toBus,Y = opfdata.fromBus, opfdata.toBus, opfdata.Y_AC
+
+      ncuts = length(bundle)
+      for kk=-8:1:0
+        ncuts = purgeSGTol(opfdata,bundle,10.0^kk)
+	if ncuts <= maxN
+	  break
+	end
+      end
+      return ncuts
+end
+function purgeSGTol(opfdata,bundle,cut_tol)
       nbuses, nlines, ngens, N, L, G = opfdata.nbuses, opfdata.nlines, opfdata.ngens, opfdata.N, opfdata.L, opfdata.G 
       fromBus,toBus,Y = opfdata.fromBus, opfdata.toBus, opfdata.Y_AC
 
       orig_ncuts = length(bundle)
       ncuts = orig_ncuts
       for n=orig_ncuts:-1:1
-        if (abs(bundle[n].cut_dual) < 1e-8 && bundle[n].age > minAge) || (bundle[n].age > maxAge)
+        if abs(bundle[n].cut_dual) < cut_tol 
 	  bundle[n]=bundle[ncuts]
 	  delete!(bundle,ncuts)
 	  ncuts -= 1
 	end
-      end
-      for n=1:length(bundle)
-	bundle[n].age += 1
       end
       return length(bundle)
 end

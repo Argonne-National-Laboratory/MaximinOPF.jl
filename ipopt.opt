@@ -6,10 +6,10 @@ hessian_constant yes
 
 max_iter 50000
 
-tol 1e-8
-constr_viol_tol 1e-8
-dual_inf_tol 1e-8
-compl_inf_tol 1e-8
+tol 1e-10
+constr_viol_tol 1e-10
+dual_inf_tol 1e-10
+compl_inf_tol 1e-10
 
 acceptable_tol 1e-6
 acceptable_constr_viol_tol 1e-6

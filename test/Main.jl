@@ -78,7 +78,7 @@ node_data=create_node(opfdata)
   tol2::Float64
   tol3::Float64
 =#
-params=Params(3,3000,500,0.01,1000.0,0.1,0.5,0.5,1e-3,1e-2,1e-2)
+params=Params(3,10000,100,0.01,1000.0,0.1,0.5,0.5,1e-3,1e-2,1e-2)
 
 
 if FORM == ECP 
