@@ -32,6 +32,7 @@ function PBM_DelfinoOliveira(opfdata,params,K,HEUR,node_data)
     ctr=create_bundle(opfdata)
     sstep_no=1
 
+    nnzcuts=0
   # MAIN LOOP
     tLow,tHigh=params.tMin,params.tMax
     for kk=1:params.maxNIter
@@ -55,13 +56,14 @@ function PBM_DelfinoOliveira(opfdata,params,K,HEUR,node_data)
 	break
       end
      # STEP 3
-      if node_data.sscval >= params.ssc1 
+      if node_data.descent >= params.ssc1*node_data.descent_est
         # UPDATE CENTER VALUES
         if testSchrammZoweSSII(opfdata,params,node_data,mpsoln,ctr) || tHigh-tLow < 1e-2 
           plot_opt_ssteps[sstep_no,1],plot_opt_ssteps[sstep_no,2],plot_opt_ssteps[sstep_no,3],plot_opt_ssteps[sstep_no,4],plot_opt_ssteps[sstep_no,5]=plot_opt[kk,1],plot_opt[kk,2],plot_opt[kk,3],plot_opt[kk,4],plot_opt[kk,5]
           plot_params_ssteps[sstep_no,1],plot_params_ssteps[sstep_no,2],plot_params_ssteps[sstep_no,3]=plot_params[kk,1],plot_params[kk,2],plot_params[kk,3]
           agg_bundles[1]=aggregateSG(opfdata,trl_bundles,mpsoln,ctr,ctr_bundles,agg_bundles)
-	  ntrlcuts=purgeSG(opfdata,trl_bundles,params.maxNSG)
+	  ntrlcuts,nnzcuts=purgeSG(opfdata,trl_bundles,params.maxNSG)
+	  plot_params[kk,3]=nnzcuts
 	  for n=1:length(ctr_bundles)
 	    trl_bundles[ntrlcuts+n]=ctr_bundles[n] 	#Move old ctr bundle to the collection of trial bundles
 	  end
@@ -82,7 +84,8 @@ function PBM_DelfinoOliveira(opfdata,params,K,HEUR,node_data)
       else
 	if testSchrammZoweNSII(opfdata,params,ctr,node_data,mpsoln) || tHigh-tLow < 1e-2
           agg_bundles[1]=aggregateSG(opfdata,trl_bundles,mpsoln,ctr,ctr_bundles,agg_bundles)
-	  ntrlcuts=purgeSG(opfdata,trl_bundles,params.maxNSG)
+	  ntrlcuts,nnzcuts=purgeSG(opfdata,trl_bundles,params.maxNSG)
+	  plot_params[kk,3]=nnzcuts
           trl_bundles[ntrlcuts+1]=mpsoln
           tLow,tHigh=params.tMin,params.tMax
 	else 
@@ -92,7 +95,7 @@ function PBM_DelfinoOliveira(opfdata,params,K,HEUR,node_data)
       end
     end
     plot_opt[last_kk,1],plot_opt[last_kk,2],plot_opt[last_kk,3],plot_opt[last_kk,4],plot_opt[last_kk,5]=ctr.linobjval,ctr.eta,node_data.linerr,node_data.agg_sg_norm,node_data.epshat
-    plot_params[last_kk,1],plot_params[last_kk,2],plot_params[last_kk,3]=node_data.tVal,node_data.rho,node_data.ncuts
+    plot_params[last_kk,1],plot_params[last_kk,2],plot_params[last_kk,3]=node_data.tVal,node_data.rho,nnzcuts
     plot_params_ssteps[sstep_no,4] = last_kk
     plot_opt_ssteps[sstep_no,6] = last_kk
     plot_data_ssteps[sstep_no,8] = last_kk

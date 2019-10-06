@@ -123,13 +123,13 @@ function setObjMP(opfdata,mMP,nodeinfo,ctr,CTR_PARAM)
 	)
       )
     elseif CTR_PARAM == PROX 
-        @objective(mMP, Min, psi + 0.5*nodeinfo.tVal*(
+        @objective(mMP, Min, mMP[:psi] + 0.5*nodeinfo.tVal*(
 	  sum( (ctr.soln.α[i] - α[i])^2 + (ctr.soln.β[i] - β[i])^2 + (ctr.soln.γ[i] - γ[i])^2 + (ctr.soln.δ[i] - δ[i])^2 for i in N)
 	  +sum( (ctr.soln.ζpLB[g] - ζpLB[g])^2 + (ctr.soln.ζpUB[g] - ζpUB[g])^2 + (ctr.soln.ζqLB[g] - ζqLB[g])^2 + (ctr.soln.ζqUB[g] - ζqUB[g])^2 for g in G)
 	  +sum( (ctr.soln.x[l]-x[l])^2 + (ctr.soln.λF[l] - λF[l])^2 + (ctr.soln.λT[l] - λT[l])^2 + (ctr.soln.μF[l] - μF[l])^2 + (ctr.soln.μT[l] - μT[l])^2 for l in L)
 	  )
 	)
-	@constraint(mMP, ctr.linobjval - linobj - psi <= 0)
+	@constraint(mMP, ctr.linobjval - linobj - mMP[:psi] <= 0)
     elseif CTR_PARAM == LVL2 || CTR_PARAM == LVL2 || CTR_PARAM == LVLINF
       @constraint(mMP, LVLConstr, linobj >= nodeinfo.nodeBd)
       if CTR_PARAM==LVL1
@@ -216,12 +216,21 @@ function solveNodeMP(opfdata,mMP,nodeinfo,trl_bundles,ctr_bundles,agg_bundles,ct
 
   # Adding the extra cuts
     if length(agg_bundles) > 0
+      if CTR_PARAM == PROX0
       @constraint(mMP, CutPlanesAgg[n=1:length(agg_bundles)], 0 <= psi - agg_bundles[n].etahat
 	+ sum( agg_bundles[n].eta_sg.α[i]*(α[i]-agg_bundles[n].soln.α[i]) + agg_bundles[n].eta_sg.β[i]*(β[i]-agg_bundles[n].soln.β[i])
 	+ agg_bundles[n].eta_sg.γ[i]*(γ[i]-agg_bundles[n].soln.γ[i]) + agg_bundles[n].eta_sg.δ[i]*(δ[i]-agg_bundles[n].soln.δ[i]) for i in N)
         + sum( agg_bundles[n].eta_sg.λF[l]*(λF[l]-agg_bundles[n].soln.λF[l]) + agg_bundles[n].eta_sg.λT[l]*(λT[l]-agg_bundles[n].soln.λT[l]) 
 	+ agg_bundles[n].eta_sg.μF[l]*(μF[l]-agg_bundles[n].soln.μF[l]) + agg_bundles[n].eta_sg.μT[l]*(μT[l]-agg_bundles[n].soln.μT[l]) for l in L)
       )
+      elseif CTR_PARAM == PROX
+        @constraint(mMP, CutPlanesAgg[n=1:length(agg_bundles)], 0 >= -psi - nodeinfo.epshat
+	+ sum( nodeinfo.sg_agg.α[i]*(α[i]-ctr.soln.α[i]) + nodeinfo.sg_agg.β[i]*(β[i]-ctr.soln.β[i])
+	+ nodeinfo.sg_agg.γ[i]*(γ[i]-ctr.soln.γ[i]) + nodeinfo.sg_agg.δ[i]*(δ[i]-ctr.soln.δ[i]) for i in N)
+        + sum( nodeinfo.sg_agg.λF[l]*(λF[l]-ctr.soln.λF[l]) + nodeinfo.sg_agg.λT[l]*(λT[l]-ctr.soln.λT[l]) 
+	+ nodeinfo.sg_agg.μF[l]*(μF[l]-ctr.soln.μF[l]) + nodeinfo.sg_agg.μT[l]*(μT[l]-ctr.soln.μT[l]) for l in L)
+	)
+      end
     end
     if length(trl_bundles) > 0
       @constraint(mMP, CutPlanesTrl[n=1:length(trl_bundles)], 0 <= psi - trl_bundles[n].eta 
@@ -265,6 +274,8 @@ function solveNodeMP(opfdata,mMP,nodeinfo,trl_bundles,ctr_bundles,agg_bundles,ct
       mpsoln.linobjval = JuMP.value(linobj)
       if CTR_PARAM == PROX
         mpsoln.psival = JuMP.value(psi)
+      else
+        mpsoln.psival = 0
       end
       mpsoln.pp_time += (time_ns()-pp_time_Start)/1e9
 
@@ -288,14 +299,22 @@ function solveNodeMP(opfdata,mMP,nodeinfo,trl_bundles,ctr_bundles,agg_bundles,ct
       update_rho(nodeinfo,trl_bundles,ctr_bundles,agg_bundles)
       nodeinfo.rhoUB = nodeinfo.rho
       rho_est=node_data.rho
-      nodeinfo.sscval = ((mpsoln.linobjval - rho_est*mpsoln.eta)-(ctr.linobjval - rho_est*ctr.eta))/(mpsoln.linobjval-(ctr.linobjval - rho_est*ctr.eta)) 
-      nodeinfo.descent_est = mpsoln.linobjval-(ctr.linobjval - rho_est*ctr.eta) 
+      update_agg(opfdata,node_data,ctr,mpsoln,node_data.sg_agg)
+      node_data.agg_sg_norm=comp_norm(opfdata,node_data.sg_agg)
+      if CTR_PARAM == PROX0
+        node_data.epshat = mpsoln.linobjval - (ctr.linobjval - node_data.rho*ctr.eta) - (1.0/node_data.tVal)*node_data.agg_sg_norm^2
+        nodeinfo.descent = (mpsoln.linobjval - rho_est*mpsoln.eta)-(ctr.linobjval - rho_est*ctr.eta) 
+        nodeinfo.descent_est = mpsoln.linobjval-(ctr.linobjval - rho_est*ctr.eta) 
+        node_data.linerr = mpsoln.linobjval - ctr.linobjval + node_data.rho*(ctr.eta - mpsoln.eta) 
+      elseif CTR_PARAM == PROX
+        node_data.epshat = max(0,ctr.eta)-mpsoln.psival - (1.0/node_data.tVal)*node_data.agg_sg_norm^2
+        nodeinfo.descent_est = node_data.epshat + (0.5/node_data.tVal)*node_data.agg_sg_norm^2 
+        nodeinfo.descent = max(0,ctr.eta) - max(ctr.linobjval - mpsoln.linobjval, mpsoln.eta) 
+        #node_data.linerr = mpsoln.linobjval - ctr.linobjval + node_data.rho*(ctr.eta - mpsoln.eta) 
+      end
 
-      node_data.agg_sg_norm = update_agg(opfdata,node_data,ctr,mpsoln,node_data.sg_agg)
-      node_data.epshat = compute_epshat(opfdata,node_data,mpsoln,ctr,node_data.sg_agg)
 
-     # COMPUTE LINEAR ERRORS
-      node_data.linerr = mpsoln.linobjval - ctr.linobjval + node_data.rho*(ctr.eta - mpsoln.eta) 
+     # CONTINUE COMPUTING LINEAR ERRORS
       node_data.linerr -= dot( node_data.sg_agg.α[N], (ctr.soln.α[N]-mpsoln.soln.α[N]) ) 
       node_data.linerr -= dot( node_data.sg_agg.β[N], (ctr.soln.β[N]-mpsoln.soln.β[N]) ) 
       node_data.linerr -= dot( node_data.sg_agg.γ[N], (ctr.soln.γ[N]-mpsoln.soln.γ[N]) ) 

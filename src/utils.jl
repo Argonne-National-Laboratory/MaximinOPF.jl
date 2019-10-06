@@ -96,9 +96,9 @@ end
 function KiwielRhoUpdate(opfdata,params,node)
   nextTVal=node.tVal
   oldTVal=node.tVal
-  if node.sscval >= params.ssc1
-    if node.sscval >= max(params.ssc2,0.5) && node.ns_cntr > 0
-      nextTVal = 2*node.tVal*(1-node.sscval)
+  if node.descent >= params.ssc1*node.descent_est
+    if node.descent >= max(params.ssc2,0.5)*node.descent_est && node.ns_cntr > 0
+      nextTVal = 2*node.tVal*(1-node.descent/node.descent_est)
     elseif node.ns_cntr > 3
       nextTVal = node.tVal/2
     end
@@ -111,7 +111,7 @@ function KiwielRhoUpdate(opfdata,params,node)
   else
     node.var_est=min(node.var_est,node.agg_sg_norm+node.epshat)
     if node.linerr > max(node.var_est,10*node.descent_est) && node.ns_cntr < -3
-      nextTVal = 2*node.tVal*(1-node.sscval)
+      nextTVal = 2*node.tVal*(1-node.descent/node.descent_est)
     end
     node.tVal = min(nextTVal,10*node.tVal)
     node.ns_cntr = min(node.ns_cntr-1,-1)
@@ -135,7 +135,6 @@ end
 function update_agg(opfdata,node,ctr,mpsoln,sg_agg)
   N, L, G = opfdata.N, opfdata.L, opfdata.G 
   comp_agg(opfdata,node,ctr.soln,mpsoln.soln,sg_agg)
-  node.agg_sg_norm=comp_norm(opfdata,sg_agg)
   return node.agg_sg_norm
 end
 
@@ -336,13 +335,17 @@ function purgeSG(opfdata,bundle,maxN=100000)
       fromBus,toBus,Y = opfdata.fromBus, opfdata.toBus, opfdata.Y_AC
 
       ncuts = length(bundle)
+      nnzcuts = ncuts
       for kk=-8:1:0
         ncuts = purgeSGTol(opfdata,bundle,10.0^kk)
+	if kk == -8
+	  nnzcuts = ncuts
+	end
 	if ncuts <= maxN
 	  break
 	end
       end
-      return ncuts
+      return ncuts,nnzcuts
 end
 function purgeSGTol(opfdata,bundle,cut_tol)
       nbuses, nlines, ngens, N, L, G = opfdata.nbuses, opfdata.nlines, opfdata.ngens, opfdata.N, opfdata.L, opfdata.G 
@@ -366,9 +369,9 @@ function aggregateSG(opfdata,trl_bundles,mpsoln,ctr,ctr_bundles,agg_bundles)
       agg_bundle=create_bundle(opfdata)
 
       cpy_soln(opfdata,mpsoln.soln,agg_bundle.soln)
-      sumDuals,ncuts,nctrcuts,naggcuts = 0.0,length(trl_bundles),length(ctr_bundles),length(agg_bundles)
-      if ncuts > 0
-        sumDuals += sum(trl_bundles[n].cut_dual for n in 1:ncuts) 
+      sumDuals,ntrlcuts,nctrcuts,naggcuts = 0.0,length(trl_bundles),length(ctr_bundles),length(agg_bundles)
+      if ntrlcuts > 0
+        sumDuals += sum(trl_bundles[n].cut_dual for n in 1:ntrlcuts) 
       end
       if nctrcuts > 0
         sumDuals += sum(ctr_bundles[n].cut_dual for n in 1:nctrcuts) 
@@ -394,22 +397,21 @@ function aggregateSG(opfdata,trl_bundles,mpsoln,ctr,ctr_bundles,agg_bundles)
       agg_bundle.objval = 0
       agg_bundle.linobjval = 0
       agg_bundle.penval = 0
-      agg_bundle.psival = 0
 
-      if ncuts > 0
-        agg_bundle.eta_sg.α[N] += (1/sumDuals)*( sum( trl_bundles[n].cut_dual*trl_bundles[n].eta_sg.α[N] for n in 1:ncuts) )
-        agg_bundle.eta_sg.β[N] += (1/sumDuals)*( sum( trl_bundles[n].cut_dual*trl_bundles[n].eta_sg.β[N] for n in 1:ncuts) )
-        agg_bundle.eta_sg.γ[N] += (1/sumDuals)*( sum( trl_bundles[n].cut_dual*trl_bundles[n].eta_sg.γ[N] for n in 1:ncuts) )
-        agg_bundle.eta_sg.δ[N] += (1/sumDuals)*( sum( trl_bundles[n].cut_dual*trl_bundles[n].eta_sg.δ[N] for n in 1:ncuts) )
-        agg_bundle.eta_sg.ζpLB[G] += (1/sumDuals)*( sum( trl_bundles[n].cut_dual*trl_bundles[n].eta_sg.ζpLB[G] for n in 1:ncuts) )
-        agg_bundle.eta_sg.ζpUB[G] += (1/sumDuals)*( sum( trl_bundles[n].cut_dual*trl_bundles[n].eta_sg.ζpUB[G] for n in 1:ncuts) )
-        agg_bundle.eta_sg.ζqLB[G] += (1/sumDuals)*( sum( trl_bundles[n].cut_dual*trl_bundles[n].eta_sg.ζqLB[G] for n in 1:ncuts) )
-        agg_bundle.eta_sg.ζqUB[G] += (1/sumDuals)*( sum( trl_bundles[n].cut_dual*trl_bundles[n].eta_sg.ζqUB[G] for n in 1:ncuts) )
-        agg_bundle.eta_sg.x[L]  += (1/sumDuals)* ( sum( trl_bundles[n].cut_dual*trl_bundles[n].eta_sg.x[L] for n in 1:ncuts) )
-        agg_bundle.eta_sg.λF[L] += (1/sumDuals)*( sum( trl_bundles[n].cut_dual*trl_bundles[n].eta_sg.λF[L] for n in 1:ncuts) )
-        agg_bundle.eta_sg.λT[L] += (1/sumDuals)*( sum( trl_bundles[n].cut_dual*trl_bundles[n].eta_sg.λT[L] for n in 1:ncuts) )
-        agg_bundle.eta_sg.μF[L] += (1/sumDuals)*( sum( trl_bundles[n].cut_dual*trl_bundles[n].eta_sg.μF[L] for n in 1:ncuts) )
-        agg_bundle.eta_sg.μT[L] += (1/sumDuals)*( sum( trl_bundles[n].cut_dual*trl_bundles[n].eta_sg.μT[L] for n in 1:ncuts) )
+      if ntrlcuts > 0
+        agg_bundle.eta_sg.α[N] += (1/sumDuals)*( sum( trl_bundles[n].cut_dual*trl_bundles[n].eta_sg.α[N] for n in 1:ntrlcuts) )
+        agg_bundle.eta_sg.β[N] += (1/sumDuals)*( sum( trl_bundles[n].cut_dual*trl_bundles[n].eta_sg.β[N] for n in 1:ntrlcuts) )
+        agg_bundle.eta_sg.γ[N] += (1/sumDuals)*( sum( trl_bundles[n].cut_dual*trl_bundles[n].eta_sg.γ[N] for n in 1:ntrlcuts) )
+        agg_bundle.eta_sg.δ[N] += (1/sumDuals)*( sum( trl_bundles[n].cut_dual*trl_bundles[n].eta_sg.δ[N] for n in 1:ntrlcuts) )
+        agg_bundle.eta_sg.ζpLB[G] += (1/sumDuals)*( sum( trl_bundles[n].cut_dual*trl_bundles[n].eta_sg.ζpLB[G] for n in 1:ntrlcuts) )
+        agg_bundle.eta_sg.ζpUB[G] += (1/sumDuals)*( sum( trl_bundles[n].cut_dual*trl_bundles[n].eta_sg.ζpUB[G] for n in 1:ntrlcuts) )
+        agg_bundle.eta_sg.ζqLB[G] += (1/sumDuals)*( sum( trl_bundles[n].cut_dual*trl_bundles[n].eta_sg.ζqLB[G] for n in 1:ntrlcuts) )
+        agg_bundle.eta_sg.ζqUB[G] += (1/sumDuals)*( sum( trl_bundles[n].cut_dual*trl_bundles[n].eta_sg.ζqUB[G] for n in 1:ntrlcuts) )
+        agg_bundle.eta_sg.x[L]  += (1/sumDuals)* ( sum( trl_bundles[n].cut_dual*trl_bundles[n].eta_sg.x[L] for n in 1:ntrlcuts) )
+        agg_bundle.eta_sg.λF[L] += (1/sumDuals)*( sum( trl_bundles[n].cut_dual*trl_bundles[n].eta_sg.λF[L] for n in 1:ntrlcuts) )
+        agg_bundle.eta_sg.λT[L] += (1/sumDuals)*( sum( trl_bundles[n].cut_dual*trl_bundles[n].eta_sg.λT[L] for n in 1:ntrlcuts) )
+        agg_bundle.eta_sg.μF[L] += (1/sumDuals)*( sum( trl_bundles[n].cut_dual*trl_bundles[n].eta_sg.μF[L] for n in 1:ntrlcuts) )
+        agg_bundle.eta_sg.μT[L] += (1/sumDuals)*( sum( trl_bundles[n].cut_dual*trl_bundles[n].eta_sg.μT[L] for n in 1:ntrlcuts) )
 
       end
       if nctrcuts > 0
@@ -446,6 +448,7 @@ function aggregateSG(opfdata,trl_bundles,mpsoln,ctr,ctr_bundles,agg_bundles)
       end
       agg_bundle.age = 1
       agg_bundle.eta = mpsoln.eta
+      agg_bundle.psival = mpsoln.psival
       return agg_bundle
 end
 

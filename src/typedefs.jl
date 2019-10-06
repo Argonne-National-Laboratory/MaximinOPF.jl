@@ -84,7 +84,7 @@ mutable struct NodeInfo
   nodeBd::Float64
   rho::Float64
   rhoUB::Float64
-  sscval
+  descent::Float64
   descent_est::Float64
   ns_cntr::Int
   tVal::Float64
