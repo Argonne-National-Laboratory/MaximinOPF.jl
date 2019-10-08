@@ -164,28 +164,6 @@ function updateCenter(opfdata,mpsoln,ctr,trl_bundles,ctr_bundles,agg_bundles)
   cpy_bundle(opfdata,mpsoln,ctr)
 end
 
-function initialSG(opfdata,bundles)
-  nbuses, nlines, ngens, N, L, G = opfdata.nbuses, opfdata.nlines, opfdata.ngens, opfdata.N, opfdata.L, opfdata.G 
-  fromBus,toBus,Y = opfdata.fromBus, opfdata.toBus, opfdata.Y_AC
-  fromLines,toLines = opfdata.fromLines, opfdata.toLines
-  for ii=N
-    bundles[ii]=create_bundle(opfdata)
-    bundles[ii].eta_sg.α[ii] = Y["shR"][ii] 
-    bundles[ii].eta_sg.β[ii] = -Y["shI"][ii] 
-    bundles[ii].eta_sg.δ[ii] = 1.0
-    bundles[ii].eta_sg.γ[ii] = -1.0
-    for l in fromLines[ii]
-      bundles[ii].eta_sg.λF[l] = Y["ffR"][l] 
-      bundles[ii].eta_sg.μF[l] = -Y["ffI"][l]  
-    end
-    for l in toLines[ii]
-      bundles[ii].eta_sg.λT[l] = Y["ttR"][l] 
-      bundles[ii].eta_sg.μT[l] = -Y["ttI"][l] 
-    end
-  end
-
-end
-
 function computeSG(opfdata,mpsoln)
       nbuses, nlines, ngens, N, L, G = opfdata.nbuses, opfdata.nlines, opfdata.ngens, opfdata.N, opfdata.L, opfdata.G 
       fromBus,toBus,Y = opfdata.fromBus, opfdata.toBus, opfdata.Y_AC
@@ -206,20 +184,20 @@ function computeSG(opfdata,mpsoln)
       if success
         for i in N
           W_val = vR[i]^2 + vI[i]^2
-          mpsoln.eta_sg.α[i] = Y["shR"][i] * W_val
-	  mpsoln.eta_sg.β[i] = -Y["shI"][i] * W_val
-          mpsoln.eta_sg.δ[i] = W_val
-	  mpsoln.eta_sg.γ[i] = -W_val
+          mpsoln.eta_sg.α[i] = -Y["shR"][i] * W_val
+	  mpsoln.eta_sg.β[i] = Y["shI"][i] * W_val
+          mpsoln.eta_sg.δ[i] = -W_val
+	  mpsoln.eta_sg.γ[i] = W_val
         end
         for l in L
           from = fromBus[l]; to = toBus[l]
           e_valF = vR[from]; f_valF = vI[from]; W_valF = e_valF^2 + f_valF^2
           e_valT = vR[to]; f_valT = vI[to]; W_valT = e_valT^2 + f_valT^2
           Wr_val = e_valF*e_valT + f_valF*f_valT; Wi_val = e_valT*f_valF - e_valF*f_valT
-          mpsoln.eta_sg.λF[l] = (Y["ffR"][l] * W_valF + Y["ftR"][l] * Wr_val + Y["ftI"][l] * Wi_val)
-          mpsoln.eta_sg.λT[l] = (Y["ttR"][l] * W_valT + Y["tfR"][l] * Wr_val - Y["tfI"][l] * Wi_val)
-          mpsoln.eta_sg.μF[l] = (-Y["ffI"][l] * W_valF - Y["ftI"][l] * Wr_val + Y["ftR"][l] * Wi_val)
-          mpsoln.eta_sg.μT[l] = (-Y["ttI"][l] * W_valT - Y["tfI"][l] * Wr_val - Y["tfR"][l] * Wi_val)
+          mpsoln.eta_sg.λF[l] = -(Y["ffR"][l] * W_valF + Y["ftR"][l] * Wr_val + Y["ftI"][l] * Wi_val)
+          mpsoln.eta_sg.λT[l] = -(Y["ttR"][l] * W_valT + Y["tfR"][l] * Wr_val - Y["tfI"][l] * Wi_val)
+          mpsoln.eta_sg.μF[l] = -(-Y["ffI"][l] * W_valF - Y["ftI"][l] * Wr_val + Y["ftR"][l] * Wi_val)
+          mpsoln.eta_sg.μT[l] = -(-Y["ttI"][l] * W_valT - Y["tfI"][l] * Wr_val - Y["tfR"][l] * Wi_val)
         end
       end
       return mpsoln.eta,success
@@ -231,17 +209,17 @@ function initialSG(opfdata,bundles)
   fromLines,toLines = opfdata.fromLines, opfdata.toLines
   for ii=N
     bundles[ii]=create_bundle(opfdata)
-    bundles[ii].eta_sg.α[ii] = Y["shR"][ii] 
-    bundles[ii].eta_sg.β[ii] = -Y["shI"][ii] 
-    bundles[ii].eta_sg.δ[ii] = 1.0
-    bundles[ii].eta_sg.γ[ii] = -1.0
+    bundles[ii].eta_sg.α[ii] = -Y["shR"][ii] 
+    bundles[ii].eta_sg.β[ii] = Y["shI"][ii] 
+    bundles[ii].eta_sg.δ[ii] = -1.0
+    bundles[ii].eta_sg.γ[ii] = 1.0
     for l in fromLines[ii]
-      bundles[ii].eta_sg.λF[l] = Y["ffR"][l] 
-      bundles[ii].eta_sg.μF[l] = -Y["ffI"][l]  
+      bundles[ii].eta_sg.λF[l] = -Y["ffR"][l] 
+      bundles[ii].eta_sg.μF[l] = Y["ffI"][l]  
     end
     for l in toLines[ii]
-      bundles[ii].eta_sg.λT[l] = Y["ttR"][l] 
-      bundles[ii].eta_sg.μT[l] = -Y["ttI"][l] 
+      bundles[ii].eta_sg.λT[l] = -Y["ttR"][l] 
+      bundles[ii].eta_sg.μT[l] = Y["ttI"][l] 
     end
   end
 

@@ -23,6 +23,8 @@ function PBM_SagastizabalSolodov(opfdata,params,K,HEUR,node_data)
     mpsoln=create_bundle(opfdata)
     sg_agg=create_soln(opfdata)
     ctr=mpsoln
+    mpsoln=computeMPSoln(opfdata,node_data,K,PROX,ctr,trl_bundles,ctr_bundles,agg_bundles)
+    ctr=mpsoln
     node_data.tVal=0.1
   # MAIN LOOP
     for kk=1:params.maxNIter
@@ -31,23 +33,26 @@ function PBM_SagastizabalSolodov(opfdata,params,K,HEUR,node_data)
        # STEP 2
         #if node_data.descent_est < 1e-4 
         #if mpsoln.eta < params.tol1 && node_data.agg_sg_norm < params.tol2 && node_data.epshat < params.tol3 
-	if false
+        if mpsoln.eta < params.tol1 && node_data.agg_sg_norm < 1e-5 && node_data.epshat < 1e-5
 	  println("Convergence to within tolerance: del = ",node_data.descent_est," val: ",mpsoln.linobjval," and feas: ",mpsoln.eta)
           @show "Sagadov",kk,mpsoln.linobjval,mpsoln.eta,node_data.epshat,node_data.agg_sg_norm
 	  break
         end
        # STEP 3
+#@show node_data.descent,node_data.descent_est
         if node_data.descent >= params.ssc1*node_data.descent_est || kk==1
           # UPDATE CENTER VALUES
 	    ctr=mpsoln
-            agg_bundles[1]=aggregateSG(opfdata,trl_bundles,mpsoln,ctr,ctr_bundles,agg_bundles)
-	    ntrlcuts,nnzcuts=purgeSG(opfdata,trl_bundles,params.maxNSG)
+            #agg_bundles[1]=aggregateSG(opfdata,trl_bundles,mpsoln,ctr,ctr_bundles,agg_bundles)
+	    #ntrlcuts,nnzcuts=purgeSG(opfdata,trl_bundles,params.maxNSG)
+	    ntrlcuts=length(trl_bundles)
 	    if ctr.linobjval-mpsoln.linobjval > mpsoln.psival
               trl_bundles[ntrlcuts+1]=mpsoln
 	    end
-            @show "Sagadov",kk,ctr.linobjval,ctr.eta,node_data.epshat,node_data.agg_sg_norm
+            @show "Sagadov",kk,ctr.linobjval,ctr.eta,node_data.epshat,node_data.agg_sg_norm,node_data.linerr
 	else
-	  ntrlcuts,nnzcuts=purgeSG(opfdata,trl_bundles,params.maxNSG)
+	  ntrlcuts=length(trl_bundles)
+	  #ntrlcuts,nnzcuts=purgeSG(opfdata,trl_bundles,params.maxNSG)
           trl_bundles[ntrlcuts+1]=mpsoln
         end
        # STEP 4
