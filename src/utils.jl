@@ -59,7 +59,7 @@ function get_chordal_extension(opfdata)
         push!(V,-sum(A[i,:])+1)
     end
     A = sparse(I,J,V)
-    C = sparse(cholfact(A))
+    C = sparse(cholesky(A))
     return C
 end
 
@@ -89,7 +89,7 @@ function get_chordal_extension_complex(opfdata)
     A = sparse(I,J,V,2*num,2*num)
     # λ, ϕ = eigs(A)
     # @show λ
-    C = sparse(cholfact(A))
+    C = sparse(cholesky(A))
     return C
 end
 

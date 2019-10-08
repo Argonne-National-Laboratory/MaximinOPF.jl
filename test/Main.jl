@@ -233,7 +233,8 @@ elseif FORM == AC
   println("Best bound:  ", bestUBVal)
   @printf("Objective value: %.3f\n", finalXSoln.nodeBd)
   @show runtime
-  @show finalXSoln.x_soln,finalXSoln.nodeBd
+  printX(opfdata,finalXSoln.x_soln)
+  @show finalXSoln.nodeBd
 elseif FORM == SOCP
   include("../src/DualSOCP.jl")
 else
