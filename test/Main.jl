@@ -224,6 +224,16 @@ elseif FORM == ProxPtSDP
 
 elseif FORM == AC
   include("../src/DualAC.jl")
+
+  #testSCSonRoot(opfdata)
+
+  finalXSoln=create_node(opfdata)
+  bestUBVal,nNodes,runtime = solveBnBSDP(opfdata,finalXSoln)
+  println("No. Nodes: ", nNodes)
+  println("Best bound:  ", bestUBVal)
+  @printf("Objective value: %.3f\n", finalXSoln.nodeBd)
+  @show runtime
+  @show finalXSoln.x_soln,finalXSoln.nodeBd
 elseif FORM == SOCP
   include("../src/DualSOCP.jl")
 else

@@ -81,6 +81,7 @@ mutable struct NodeInfo
   ncuts::Int
   x_lbs::Array{Float64}
   x_ubs::Array{Float64}
+  x_soln::Array{Float64}
   nodeBd::Float64
   rho::Float64
   rhoUB::Float64
@@ -97,7 +98,7 @@ end
 function create_node(opfdata)
     x_lbs=zeros(opfdata.nlines)
     x_ubs=ones(opfdata.nlines)
-    return NodeInfo(0,0,x_lbs,x_ubs,1e20,100.0,100.0,0.0,0.0,0,500.0,0.0,0.0,0.0,1e20,create_soln(opfdata))
+    return NodeInfo(0,0,x_lbs,x_ubs,zeros(opfdata.nlines),1e20,100.0,100.0,0.0,0.0,0,500.0,0.0,0.0,0.0,1e20,create_soln(opfdata))
 end
 
 

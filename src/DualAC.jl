@@ -23,7 +23,7 @@ type NodeInfo
 end
 =#
 
-function solveNodeAC(opfdata,ndata,mpsoln)
+function solveNodeAC(opfdata,ndata)
   # OBTAIN PROBLEM INFORMATION FROM opfdata
     nbuses, nlines, ngens = opfdata.nbuses, opfdata.nlines, opfdata.ngens
     N, L, G = opfdata.N, opfdata.L, opfdata.G 
@@ -39,7 +39,8 @@ function solveNodeAC(opfdata,ndata,mpsoln)
     #mMP = Model(solver=MosekSolver(MSK_IPAR_LOG=0,MSK_IPAR_NUM_THREADS=nThreads))
     #mMP = Model(solver=SCSSolver(verbose=1,max_iters=1000000))
     #mMP = Model(with_optimizer(SCS.Optimizer,verbose=1,max_iters=100000,rho_x=1.0))
-    mMP = Model(with_optimizer(SCS.Optimizer,verbose=1,max_iters=100000))
+    mMP = Model(with_optimizer(Mosek.Optimizer,MSK_IPAR_LOG=0,MSK_IPAR_NUM_THREADS=1))
+    #mMP = Model(with_optimizer(SCS.Optimizer,verbose=1,max_iters=100000))
     @variable(mMP, -1 <= α[i=N] <= 1)
     @variable(mMP, -1 <= β[i=N] <= 1)
     @variable(mMP, γp[i=N] >= 0)
@@ -150,24 +151,24 @@ function solveNodeAC(opfdata,ndata,mpsoln)
   end
 
   JuMP.optimize!(mMP)
-  mpsoln.status=JuMP.termination_status(mMP)
+  #mpsoln.status=JuMP.termination_status(mMP)
   #if mpsoln.status == :Optimal || mpsoln.status == :Stall
   if true
-    println("solveNodeAC: Return status ",mpsoln.status)
+    #println("solveNodeAC: Return status ",mpsoln.status)
       for l in L
-        mpsoln.soln.x[l] = getvalue(x[l])
+        ndata.x_soln[l] = getvalue(x[l])
         from=fromBus[l]; to=toBus[l]
         #mpsoln.x_dualsoln[l] = getdual(x[l])  
       end
-      mpsoln.objval = getobjectivevalue(mMP)
+      ndata.nodeBd = getobjectivevalue(mMP)
       #mpsoln.solvetime = getsolvetime(mMP)
   else
     println("solveNodeAC: Return status $status")
   end
 end #end of function
 
-function xIntTol(opfdata,mpsoln)
-    x_val = mpsoln.x_soln
+function xIntTol(opfdata,ndata)
+    x_val = ndata.x_soln
     tol = 1e-6
     for l in opfdata.L
       if min(abs(x_val[l]),abs(1-x_val[l])) > tol
@@ -235,49 +236,28 @@ function findNextNode(opfdata,E)
 end
 
 function testSCSonRoot(opfdata)
-  println("Testing SCS on the PSD formulation at the root node...")
+  println("Testing SCS or Mosek on the PSD formulation at the root node...")
   time_Start = time_ns()
   N, L, G = opfdata.N, opfdata.L, opfdata.G 
   node_data=create_node(opfdata)
-  mpsoln=create_bundle(opfdata)
-  solveNodeAC(opfdata,node_data,mpsoln)
+  solveNodeAC(opfdata,node_data)
   time_End = (time_ns()-time_Start)/1e9
   println("Done after ",time_End," seconds.")
-  @show mpsoln.objval
-end
-function testDualAC(opfdata)
-  x_val=zeros(opfdata.nlines)
-  x_val[41]=1
-  x_val[80]=1
-  fixedNode=NodeInfo(x_val,x_val,1e20)
-
-  mpsoln = SolnInfo(zeros(opfdata.nlines),ones(opfdata.nlines),1e20,0)
-
-  solveNodeAC(opfdata,fixedNode,mpsoln)
-  dualObjval = mpsoln.optval
-  primalObjval = solveFullModelSDP(opfdata,x_val)
-  println("Primal value: ",primalObjval," and dual value: ",dualObjval)
+  @show node_data.nodeBd
 end
 
-
-function solveBnBSDP(opfdata,incSoln)
+function solveBnBSDP(opfdata,incsoln)
   global MAX_TIME
   nlines,L = opfdata.nlines, opfdata.L
-
-  mpsoln = SolnInfo(zeros(nlines),ones(nlines),1e20,0)
 
 
   start_time = time_ns()
   BnBTree = Dict()
-  #nodedata = Dict()
-  BnBTree[0] = NodeInfo(zeros(nlines),ones(nlines),1e20)
-  #nodedata[0] = -1*ones(nlines+1)
-  #nodedata[0][nlines+1]=1e20
+  BnBTree[0] = create_node(opfdata)  ### CREATE ROOT NODE
   nodekey=0
 
   feasXs = Dict()
-  incsoln = SolnInfo(zeros(nlines),ones(nlines),0.0,0.0)
-
+  incsoln.nodeBd=0.0
   bestUBVal=1e20
 
   nNodes=1
@@ -287,9 +267,8 @@ function solveBnBSDP(opfdata,incSoln)
   while true
     println("There are ",length(E)," nodes left out of a total of ", nNodes," generated.")
     currNode = pop!(BnBTree,nodekey)
-    objval=currNode.nodeBd
-    if objval <= incSoln.optval
-        println("\tFathoming due to initial testing of bound $objval < ",incSoln.optval)
+    if currNode.nodeBd <= incsoln.nodeBd
+        println("\tFathoming due to initial testing of bound ",currNode.nodeBd," < ",incsoln.nodeBd)
     else
       print("\t Fixing the following x: ")
       for l in L
@@ -298,37 +277,33 @@ function solveBnBSDP(opfdata,incSoln)
         end
       end
       print("\n")
-      solveNodeAC(opfdata,currNode,mpsoln)
-      x_val = mpsoln.x_soln
-      objval = mpsoln.optval
-      soltime = mpsoln.solvetime
-      if objval < incSoln.optval
-        println("\t\tFathoming due to bound $objval < ",incSoln.optval)
+      solveNodeAC(opfdata,currNode)
+      #soltime = mpsoln.solvetime
+      if currNode.nodeBd < incsoln.nodeBd
+        println("\t\tFathoming due to bound ",currNode.nodeBd," < ",incsoln.nodeBd)
       else
     # Apply primal heuristic
-        if xIntTol(opfdata,mpsoln)
+        if xIntTol(opfdata,currNode)
           println("\t\tFathoming due to optimality")
           # Apply primal heuristic
-          primHeurXInt(opfdata,mpsoln,feasXs,incSoln)
+          primHeurXInt(opfdata,currNode,feasXs,incsoln)
         else
-          maxidx,maxval=findBranchIdx2(opfdata,x_val)
+          maxidx,maxval=findBranchIdx2(opfdata,currNode.x_soln)
           println("\t\tBranching on index $maxidx with value $maxval")
-          upNLBs = zeros(nlines); upNLBs .= currNode.x_lbs
-          upNUBs = zeros(nlines); upNUBs .= currNode.x_ubs
-	  upNLBs[maxidx]=1
-	  upNUBs[maxidx]=1
-          BnBTree[nNodes]=NodeInfo(upNLBs,upNUBs,objval)
+          BnBTree[nNodes]=create_node(opfdata)
+          BnBTree[nNodes].x_lbs .= currNode.x_lbs
+          BnBTree[nNodes].x_ubs .= currNode.x_ubs
+          BnBTree[nNodes].x_lbs[maxidx],BnBTree[nNodes].x_ubs[maxidx],BnBTree[nNodes].nodeBd=1,1,currNode.nodeBd
           nNodes += 1
 
-          downNLBs = zeros(nlines); downNLBs .= currNode.x_lbs
-          downNUBs = zeros(nlines); downNUBs .= currNode.x_ubs
-	  downNLBs[maxidx]=0
-	  downNUBs[maxidx]=0
-          BnBTree[nNodes]=NodeInfo(downNLBs,downNUBs,objval)
+          BnBTree[nNodes]=create_node(opfdata)
+          BnBTree[nNodes].x_lbs .= currNode.x_lbs
+          BnBTree[nNodes].x_ubs .= currNode.x_ubs
+          BnBTree[nNodes].x_lbs[maxidx],BnBTree[nNodes].x_ubs[maxidx],BnBTree[nNodes].nodeBd=0,0,currNode.nodeBd
           nNodes += 1
 
           # Apply primal heuristic
-            primHeur(opfdata,mpsoln,feasXs,incSoln)
+            #primHeur(opfdata,currNode,feasXs,incsoln)
         end
       end #not fathomed due to bound after solving node
     end # no intial fathoming
@@ -336,13 +311,13 @@ function solveBnBSDP(opfdata,incSoln)
     if length(E) > 0
       nodekey,bestUBVal=findNextNode(opfdata,E)
     else
-      bestUBVal = incSoln.optval
+      bestUBVal = incsoln.nodeBd
       break
     end
     if (time_ns()-start_time)/1e9 > MAX_TIME
     break
     end
-    println("\t\t\tBest UB $bestUBVal versus incumbent value ",incSoln.optval)
+    println("\t\t\tBest UB $bestUBVal versus incumbent value ",incsoln.nodeBd)
   end # while
   end_time = time_ns()
 
@@ -350,13 +325,15 @@ function solveBnBSDP(opfdata,incSoln)
   return bestUBVal,nNodes,runtime
 end
 
-function primHeur(opfdata,mpsoln,feasXs,incSoln)
+function primHeur(opfdata,ndata,feasXs,incSoln)
   nlines=opfdata.nlines
   sortIdx = zeros(Int,nlines)
-  sortperm!(sortIdx,mpsoln.x_soln[1:nlines])
+  sortperm!(sortIdx,ndata.x_soln[1:nlines])
   bestKIdx = sortIdx[(nlines-K+1):nlines]
-  pX = SolnInfo(zeros(nlines),ones(nlines),0.0,0.0)
+  pX=create_node(opfdata)
   pX.x_soln[bestKIdx] = 1
+  pX.x_lbs .= pX.x_soln
+  pX.x_ubs .= pX.x_soln
   Xs = enumerate(feasXs)
   isNewX = true
   for (k,feasx) in Xs
@@ -368,55 +345,46 @@ function primHeur(opfdata,mpsoln,feasXs,incSoln)
   if isNewX
     nXs = length(feasXs)+1
     feasXs[nXs]=pX
-    solveNodeAC(opfdata,NodeInfo(pX.x_soln,pX.x_soln,1e20),pX)
-    if pX.optval > incSoln.optval
-      incSoln.optval = pX.optval
-      incSoln.x_soln .= pX.x_soln
+    solveNodeAC(opfdata,pX)
+    if pX.nodeBd > incsoln.nodeBd
+      incsoln.nodeBd = pX.nodeBd
+      incsoln.x_soln .= pX.x_soln
       print("\t\t\tNew incumbent solution: ")
       printX(opfdata,pX.x_soln)
-      println(" with value: ", pX.optval)
+      println(" with value: ", pX.nodeBd)
     end
   end
 end
 
-function primHeurXInt(opfdata,mpsoln,feasXs,incSoln)
+function primHeurXInt(opfdata,ndata,feasXs,incSoln)
   nlines,L=opfdata.nlines,opfdata.L
   for l in L
-    mpsoln.x_soln[l] = round(mpsoln.x_soln[l])
+    ndata.x_soln[l] = round(ndata.x_soln[l])
   end
   Xs = enumerate(feasXs)
   isNewX = true
   for (k,feasx) in Xs
-    if sum( abs(mpsoln.x_soln[l]-feasx[2].x_soln[l]) for l=1:nlines ) < 1e-6
+    if sum( abs(ndata.x_soln[l]-feasx[2].x_soln[l]) for l=1:nlines ) < 1e-6
       isNewX=false
       break
     end
   end
   if isNewX
-    pX = SolnInfo(zeros(nlines),ones(nlines),0.0,0.0)
-    pX.x_soln .= mpsoln.x_soln
-    pX.x_dualsoln .= mpsoln.x_dualsoln
-    pX.optval = mpsoln.optval
     nXs = length(feasXs)+1
-    feasXs[nXs]=pX
-    if pX.optval > incSoln.optval
-      incSoln.optval = pX.optval
-      incSoln.x_soln .= pX.x_soln
+    feasXs[nXs]=ndata
+    if ndata.nodeBd > incSoln.nodeBd
+      incSoln.nodeBd = ndata.nodeBd
+      incSoln.x_soln .= ndata.x_soln
       print("\t\t\tNew incumbent solution: ")
       printX(opfdata,incSoln.x_soln)
-      print(" with value: $pVal")
+      print(" with value: ",incSoln.nodeBd)
     end
   end
 end
 
-testSCSonRoot(opfdata)
 
-#testDualAC(opfdata)
 
 #=
-finalXSoln = SolnInfo(zeros(opfdata.nlines),ones(opfdata.nlines),0.0,0.0)
-
-bestUBVal,nNodes,runtime = solveBnBSDP(opfdata,finalXSoln)
 
 @printf("\n********************FINAL RESULT FOR CASE %s WITH %d LINES CUT H%dR%d*******************\n",CASE_NUM,K, HEUR,FORM)
 

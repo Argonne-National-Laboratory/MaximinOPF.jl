@@ -3,7 +3,7 @@ using Formatting
 using JuMP
 #using CPLEX, Ipopt, SCS 
 using Ipopt, SCS
-#using Mosek,MosekTools
+using Mosek,MosekTools
 using Arpack
 using DelimitedFiles
 using Printf
