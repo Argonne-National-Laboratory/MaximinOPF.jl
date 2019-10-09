@@ -79,7 +79,6 @@ node_data=create_node(opfdata)
   tol2::Float64
   tol3::Float64
 =#
-params=Params(3,10000,100,1e-2,1000.0,1.0,0.1,0.5,0.5,1e-6,1e-5,1e-5)
 
 
 if FORM == ECP 
@@ -92,12 +91,14 @@ elseif FORM == ProxPtSDP
   #testProxPt(opfdata,K,HEUR,node_data)
   #testProxTraj(opfdata,K,HEUR,node_data)
 
-  #include("../src/PBM-DelfinoOliveira.jl")
-  #plot_params,plot_opt,plot_data,plot_params_ss,plot_opt_ss,plot_data_ss=PBM_DelfinoOliveira(opfdata,params,K,HEUR,node_data)
-  #exptype="pbm"
+  include("../src/PBM-DelfinoOliveira.jl")
+  params=Params(3,10000,100,1e-2,1000.0,1.0,0.1,0.5,0.5,1e-4,1e-2,1e-2)
+  plot_params,plot_opt,plot_data,plot_params_ss,plot_opt_ss,plot_data_ss=PBM_DelfinoOliveira(opfdata,params,K,HEUR,node_data)
+  exptype="pbm"
 
-  include("../src/PBM-SagastizabalSolodov.jl")
-  PBM_SagastizabalSolodov(opfdata,params,K,HEUR,node_data)
+  #include("../src/PBM-SagastizabalSolodov.jl")
+  #params=Params(3,10000,100,1e-2,1000.0,1.0,0.1,0.5,0.5,1e-6,1e-5,1e-5)
+  #PBM_SagastizabalSolodov(opfdata,params,K,HEUR,node_data)
 
   #include("../src/CPAlg.jl")
   #plot_data=CPAlg(opfdata,params,K,HEUR,node_data)
