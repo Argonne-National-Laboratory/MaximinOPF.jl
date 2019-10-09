@@ -51,7 +51,7 @@ function PBM_SagastizabalSolodov(opfdata,params,K,HEUR,node_data)
             tLow,tHigh=params.tMin,params.tMax
 	    @printf("ss: %d\t(objval,eta)=(%.4f,%.2e)\t(t,rho,ncuts)=(%.4f,%.3f,%d)\t(err,||s||,epshat,desc)=(%.2e,%.2e,%.2e,%.5e)\n",
 	      kk,mpsoln.linobjval,mpsoln.eta,node_data.tVal,node_data.rho,node_data.ncuts,node_data.linerr,node_data.agg_sg_norm,node_data.epshat,node_data.descent_est)
-            #node_data.tVal = max(0.95*node_data.tVal,params.tMin)
+            node_data.tVal = max(0.95*node_data.tVal,params.tMin)
 	  else
             tHigh=node_data.tVal
 	    node_data.tVal=2*tLow*tHigh/(tLow+tHigh)

@@ -60,6 +60,51 @@ function solveNodeAC(opfdata,ndata)
     -β[i] + ζqUB[g] - ζqLB[g] == 0 )
    end
   end
+
+
+ # McCormick inequalities enforcing bilinear equalities
+    # auxiliary dual variables due to McCormick reformulation of cross terms appearing in the Lagrangian
+      @variable(mMP, λF[l=L]); @variable(mMP, λT[l=L]); @variable(mMP, μF[l=L]); @variable(mMP, μT[l=L])
+    for l in L
+      if ndata.x_lbs[l] > 0.9999
+         set_lower_bound(λF[l],0)
+         set_upper_bound(λF[l],0)
+         set_lower_bound(λT[l],0)
+         set_upper_bound(λT[l],0)
+         set_lower_bound(μF[l],0)
+         set_upper_bound(μF[l],0)
+         set_lower_bound(μT[l],0)
+         set_upper_bound(μT[l],0)
+      elseif ndata.x_ubs[l] < 0.0001
+	 @constraint(mMP, λF[l] - α[fromBus[l]] == 0)
+	 @constraint(mMP, λT[l] - α[toBus[l]] == 0)
+	 @constraint(mMP, μF[l] - β[fromBus[l]] == 0)
+	 @constraint(mMP, μT[l] - β[toBus[l]] == 0)
+      else
+        @constraint(mMP, α[fromBus[l]] - x[l] <= λF[l]) 
+        @constraint(mMP, α[fromBus[l]] + x[l] >= λF[l])
+        @constraint(mMP, -(1 - x[l]) <= λF[l]) 
+        @constraint(mMP,  (1 - x[l]) >= λF[l])
+        @constraint(mMP, α[toBus[l]] - x[l] <= λT[l]) 
+        @constraint(mMP, α[toBus[l]] + x[l] >= λT[l])
+        @constraint(mMP, -(1 - x[l]) <= λT[l])
+        @constraint(mMP,  (1 - x[l]) >= λT[l])
+
+        @constraint(mMP, β[fromBus[l]] - x[l] <= μF[l])
+        @constraint(mMP, β[fromBus[l]] + x[l] >= μF[l])
+        @constraint(mMP, -(1 - x[l]) <= μF[l])
+        @constraint(mMP,  (1 - x[l]) >= μF[l])
+        @constraint(mMP, β[toBus[l]] - x[l] <= μT[l])
+        @constraint(mMP, β[toBus[l]] + x[l] >= μT[l])
+        @constraint(mMP, -(1 - x[l]) <= μT[l])
+        @constraint(mMP,  (1 - x[l]) >= μT[l])
+      end
+    end
+
+
+
+
+#=
   # McCormick inequalities enforcing bilinear equalities
     # auxiliary dual variables due to McCormick reformulation of cross terms appearing in the Lagrangian
       @variable(mMP, λF[l=L]); @variable(mMP, λT[l=L]); @variable(mMP, μF[l=L]); @variable(mMP, μT[l=L])
@@ -72,6 +117,7 @@ function solveNodeAC(opfdata,ndata)
     @constraint(mMP, BMcf3[l in L], -(1 - x[l]) <= μF[l]); @constraint(mMP, BMcf4[l in L], (1 - x[l]) >= μF[l])
     @constraint(mMP, BMct1[l in L], β[toBus[l]] - x[l] <= μT[l]); @constraint(mMP, BMct2[l in L], β[toBus[l]] + x[l] >= μT[l])
     @constraint(mMP, BMct3[l in L], -(1 - x[l]) <= μT[l]); @constraint(mMP, BMct4[l in L], (1 - x[l]) >= μT[l])
+=#
 
   @expression(mMP, C[i=1:(2*nbuses),j=i:(2*nbuses)], 0)
   for i in N

@@ -123,10 +123,11 @@ end
 
 function testSchrammZoweSSII(opfdata,params,node,mpsoln,ctr)
   #@printf("SSII tval=%.5f: %.5f >=? %.5f\n",node.tVal,node.linerr - mpsoln.linobjval + ctr.linobjval + node.rho*(mpsoln.eta-ctr.eta), -params.ssc2*node.descent_est)
-  return ((node.linerr - mpsoln.linobjval + ctr.linobjval + node.rho*(mpsoln.eta-ctr.eta)  >= -params.ssc2*node.descent_est) ) # || node.tVal < max(1.001*params.tMin, 1e-4)
+  return ((node.linerr - node.descent)  >= -params.ssc2*node.descent_est)
 end
 function testSchrammZoweNSII(opfdata,params,ctr,node,mpsoln)
-  linvarcond=abs(ctr.linobjval - mpsoln.linobjval - node.rho*(ctr.eta-mpsoln.eta)) <= node.agg_sg_norm + node.epshat 
+  #linvarcond=abs(ctr.linobjval - mpsoln.linobjval - node.rho*(ctr.eta-mpsoln.eta)) <= node.agg_sg_norm + node.epshat 
+  linvarcond=abs(node.descent) <= node.agg_sg_norm + node.epshat 
   #@printf("NSII tval=%.5f: %.5f <=? %.5f OR %.5f <=? %.5f\n",node.tVal,node.linerr,params.ssc3*node.epshat,abs(ctr.linobjval - mpsoln.linobjval - node.rho*(ctr.eta-mpsoln.eta)),node.agg_sg_norm + node.epshat)
   return (node.linerr <= params.ssc3*node.epshat) ||  linvarcond || node.tVal > 0.99*params.tMax
 end
