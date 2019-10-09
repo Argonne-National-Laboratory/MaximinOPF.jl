@@ -216,30 +216,12 @@ function solveNodeMP(opfdata,mMP,nodeinfo,trl_bundles,ctr_bundles,agg_bundles,ct
 
   # Adding the extra cuts
     if length(agg_bundles) > 0
-      if true #CTR_PARAM == PROX0
       @constraint(mMP, CutPlanesAgg[n=1:length(agg_bundles)], 0 >= -psi + agg_bundles[n].psival + agg_bundles[n].etahat
 	+ sum( agg_bundles[n].eta_sg.α[i]*(α[i]-agg_bundles[n].soln.α[i]) + agg_bundles[n].eta_sg.β[i]*(β[i]-agg_bundles[n].soln.β[i])
 	+ agg_bundles[n].eta_sg.γ[i]*(γ[i]-agg_bundles[n].soln.γ[i]) + agg_bundles[n].eta_sg.δ[i]*(δ[i]-agg_bundles[n].soln.δ[i]) for i in N)
         + sum( agg_bundles[n].eta_sg.λF[l]*(λF[l]-agg_bundles[n].soln.λF[l]) + agg_bundles[n].eta_sg.λT[l]*(λT[l]-agg_bundles[n].soln.λT[l]) 
 	+ agg_bundles[n].eta_sg.μF[l]*(μF[l]-agg_bundles[n].soln.μF[l]) + agg_bundles[n].eta_sg.μT[l]*(μT[l]-agg_bundles[n].soln.μT[l]) for l in L)
       )
-      elseif false # CTR_PARAM == PROX
-        #node_data.epshat = max(0,ctr.eta)-mpsoln.psival - (1.0/node_data.tVal)*node_data.agg_sg_norm^2
-        @constraint(mMP, CutPlanesAgg[n=1:length(agg_bundles)], 0 >= -psi - nodeinfo.epshat
-	+ sum( nodeinfo.sg_agg.α[i]*(α[i]-ctr.soln.α[i]) + nodeinfo.sg_agg.β[i]*(β[i]-ctr.soln.β[i])
-	+ nodeinfo.sg_agg.γ[i]*(γ[i]-ctr.soln.γ[i]) + nodeinfo.sg_agg.δ[i]*(δ[i]-ctr.soln.δ[i]) for i in N)
-        + sum( nodeinfo.sg_agg.λF[l]*(λF[l]-ctr.soln.λF[l]) + nodeinfo.sg_agg.λT[l]*(λT[l]-ctr.soln.λT[l]) 
-	+ nodeinfo.sg_agg.μF[l]*(μF[l]-ctr.soln.μF[l]) + nodeinfo.sg_agg.μT[l]*(μT[l]-ctr.soln.μT[l]) for l in L)
-	)
-#=
-        @constraint(mMP, CutPlanesAgg[n=1:length(agg_bundles)], 0 >= -psi + mpsoln.psival - max(0,ctr.eta) 
-	+ sum( nodeinfo.sg_agg.α[i]*(α[i]-mpsoln.soln.α[i]) + nodeinfo.sg_agg.β[i]*(β[i]-mpsoln.soln.β[i])
-	+ nodeinfo.sg_agg.γ[i]*(γ[i]-mpsoln.soln.γ[i]) + nodeinfo.sg_agg.δ[i]*(δ[i]-mpsoln.soln.δ[i]) for i in N)
-        + sum( nodeinfo.sg_agg.λF[l]*(λF[l]-mpsoln.soln.λF[l]) + nodeinfo.sg_agg.λT[l]*(λT[l]-mpsoln.soln.λT[l]) 
-	+ nodeinfo.sg_agg.μF[l]*(μF[l]-mpsoln.soln.μF[l]) + nodeinfo.sg_agg.μT[l]*(μT[l]-mpsoln.soln.μT[l]) for l in L)
-	)
-=#
-      end
     end
     if length(trl_bundles) > 0
       @constraint(mMP, CutPlanesTrl[n=1:length(trl_bundles)], 0 >= -psi + trl_bundles[n].eta 
@@ -396,7 +378,9 @@ function solveNodeMP(opfdata,mMP,nodeinfo,trl_bundles,ctr_bundles,agg_bundles,ct
 	  node_data.linerr -= (ctr.linobjval-mpsoln.linobjval)
 	end
       end
-
+      if node_data.linerr < -1e-8
+        println("FLAGGING: linear error = ",node_data.linerr," is negative.")
+      end
       if mpsoln.status == MOI.OPTIMAL && (CTR_PARAM==LVL1 || CTR_PARAM == LVL2 || CTR_PARAM == LVLINF )
 	mpsoln.lvl_dual = -getdual(mMP[:LVLConstr])
       end
