@@ -327,8 +327,6 @@ function solveNodeMP(opfdata,mMP,nodeinfo,trl_bundles,ctr_bundles,agg_bundles,ct
         nodeinfo.descent = max(0,ctr.eta) - max(ctr.linobjval - mpsoln.linobjval, mpsoln.eta) 
       end
       node_data.linerr = nodeinfo.descent  ###TO BE MODIFIED BELOW
-#@show "0",node_data.linerr
-
 
      # CONTINUE COMPUTING LINEAR ERRORS
       node_data.linerr -= dot( node_data.sg_agg.α[N], (ctr.soln.α[N]-mpsoln.soln.α[N]) ) 
@@ -344,7 +342,6 @@ function solveNodeMP(opfdata,mMP,nodeinfo,trl_bundles,ctr_bundles,agg_bundles,ct
       node_data.linerr -= dot( node_data.sg_agg.λT[L],(ctr.soln.λT[L]-mpsoln.soln.λT[L]) ) 
       node_data.linerr -= dot( node_data.sg_agg.μF[L],(ctr.soln.μF[L]-mpsoln.soln.μF[L]) ) 
       node_data.linerr -= dot( node_data.sg_agg.μT[L],(ctr.soln.μT[L]-mpsoln.soln.μT[L]) )
-#@show "1",node_data.linerr
       for n=1:length(trl_bundles)
         node_data.linerr += trl_bundles[n].cut_dual*dot( trl_bundles[n].eta_sg.α[N],(ctr.soln.α[N]-mpsoln.soln.α[N])) 
         node_data.linerr += trl_bundles[n].cut_dual*dot( trl_bundles[n].eta_sg.β[N],(ctr.soln.β[N]-mpsoln.soln.β[N]))
@@ -385,7 +382,7 @@ function solveNodeMP(opfdata,mMP,nodeinfo,trl_bundles,ctr_bundles,agg_bundles,ct
         node_data.linerr -= node_data.rho*dot( mpsoln.eta_sg.μF[L],(ctr.soln.μF[L]-mpsoln.soln.μF[L]) ) 
         node_data.linerr -= node_data.rho*dot( mpsoln.eta_sg.μT[L],(ctr.soln.μT[L]-mpsoln.soln.μT[L]) )
       elseif CTR_PARAM == PROX
-	node_data.linerr += psiLCDual*(ctr.linobjval-mpsoln.linobjval)
+	node_data.linerr -= psiLCDual*(ctr.linobjval-mpsoln.linobjval)
 	if ctr.linobjval - mpsoln.linobjval <= mpsoln.eta
           node_data.linerr -= dot( mpsoln.eta_sg.α[N], (ctr.soln.α[N]-mpsoln.soln.α[N]) ) 
           node_data.linerr -= dot( mpsoln.eta_sg.β[N], (ctr.soln.β[N]-mpsoln.soln.β[N]) ) 
@@ -399,7 +396,6 @@ function solveNodeMP(opfdata,mMP,nodeinfo,trl_bundles,ctr_bundles,agg_bundles,ct
 	  node_data.linerr -= (ctr.linobjval-mpsoln.linobjval)
 	end
       end
-@show "2",node_data.linerr,node_data.rho,psiLCDual
 
       if mpsoln.status == MOI.OPTIMAL && (CTR_PARAM==LVL1 || CTR_PARAM == LVL2 || CTR_PARAM == LVLINF )
 	mpsoln.lvl_dual = -getdual(mMP[:LVLConstr])
