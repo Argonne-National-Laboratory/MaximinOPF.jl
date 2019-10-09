@@ -17,66 +17,62 @@ function PBM_SagastizabalSolodov(opfdata,params,K,HEUR,node_data)
   # DONE OBTAINING PROBLEM INFORMATION FROM opfdata
 
   # INITIAL ITERATION
-    bundles=Dict()
+    ctr_bundles=Dict()
+    trl_bundles=Dict()
+    agg_bundles=Dict()
     mpsoln=create_bundle(opfdata)
-    mpsoln.soln.x[L] = x_val[L]
     sg_agg=create_soln(opfdata)
     ctr=mpsoln
-
-    v_est,ssc_cntr = 1e20,0
+    #mpsoln=computeMPSoln(opfdata,node_data,K,PROX,ctr,trl_bundles,ctr_bundles,agg_bundles)
+    #ctr=mpsoln
+    node_data.tVal = params.tStart
+    tLow,tHigh=params.tMin,params.tMax
+    last_kk=params.maxNIter
   # MAIN LOOP
-    for kk=1:params.maxNSG
+    for kk=1:params.maxNIter
      # STEP 1
-      mpsoln=create_bundle(opfdata)
-      status = solveNodeMP(opfdata,node_data,params,bundles,K,HEUR,ctr,PROX,mpsoln)
-      while status != :Optimal
-	params.tVal /= 2
-        println("Resolving with reduced prox parameter value: ",params.tVal)
-        status = solveNodeMP(opfdata,node_data,params,bundles,K,HEUR,ctr,PROX,mpsoln)
-      end	
-      if status == :Optimal 
-	comp_agg(opfdata,ctr.soln,mpsoln.soln,sg_agg)
-	agg_norm=comp_norm(opfdata,sg_agg)
-	epshat=max(0,ctr.eta)-mpsoln.psival-(1.0/params.tVal)*agg_norm^2
-	#del=epshat+0.5*(1.0/params.tVal)*agg_norm^2
-        del=ctr.eta-mpsoln.objval
+      mpsoln=computeMPSoln(opfdata,node_data,K,PROX,ctr,trl_bundles,ctr_bundles,agg_bundles)
        # STEP 2
-        if del < 1e-6 
-	  println("Convergence to within tolerance: del = ",del," val: ",mpsoln.linobjval," and feas: ",mpsoln.eta)
+        #if node_data.descent_est < 1e-4 
+        if mpsoln.eta < params.tol1 && node_data.agg_sg_norm < params.tol2 && node_data.epshat < params.tol3 
+	  println("Convergence to within tolerance: del = ",node_data.descent_est," val: ",mpsoln.linobjval," and feas: ",mpsoln.eta)
+          last_kk=kk
 	  break
         end
        # STEP 3
-	hk = max(ctr.linobjval-mpsoln.linobjval,mpsoln.eta)
-	sscval = max(0,ctr.eta) - hk
-        if hk <= max(0,ctr.eta) - params.ssc*del || kk==1
+#@show node_data.descent,node_data.descent_est
+        if node_data.descent >= params.ssc1*node_data.descent_est 
+          if testSchrammZoweSSII(opfdata,params,node_data,mpsoln,ctr) || tHigh-tLow < 1e-4 
           # UPDATE CENTER VALUES
-	    updateCenter(opfdata,mpsoln,ctr,bundles)
-	    #purgeSG(opfdata,bundles)
-	    oldncuts = length(bundles)
-	    ncuts = oldncuts
-	    for n=oldncuts:-1:1
-	      if ctr.linobjval-bundles[n].linobjval > bundles[n].psival
-		bundles[n]=bundles[ncuts]
-	        delete!(bundles,ncuts)
-		ncuts -= 1
-	      end
-	    end
-	    if ctr.linobjval-mpsoln.linobjval > mpsoln.psival
-	      ncuts = length(bundles)
-              bundles[ncuts+1]=mpsoln
-	    end
-            @show "Sagadov",kk,ctr.linobjval,ctr.eta,epshat,del,hk,length(bundles),params
+            agg_bundles[1]=aggregateSG(opfdata,trl_bundles,mpsoln,ctr,ctr_bundles,agg_bundles)
+	    ctr=mpsoln
+	    ntrlcuts,nnzcuts=purgeSG(opfdata,trl_bundles,params.maxNSG)
+            trl_bundles[ntrlcuts+1]=mpsoln
+            tLow,tHigh=params.tMin,params.tMax
+	    @printf("ss: %d\t(objval,eta)=(%.4f,%.2e)\t(t,rho,ncuts)=(%.4f,%.3f,%d)\t(err,||s||,epshat,desc)=(%.2e,%.2e,%.2e,%.5e)\n",
+	      kk,mpsoln.linobjval,mpsoln.eta,node_data.tVal,node_data.rho,node_data.ncuts,node_data.linerr,node_data.agg_sg_norm,node_data.epshat,node_data.descent_est)
+            #node_data.tVal = max(0.95*node_data.tVal,params.tMin)
+	  else
+            tHigh=node_data.tVal
+	    node_data.tVal=2*tLow*tHigh/(tLow+tHigh)
+	  end
 	else
-	  ncuts = length(bundles)
-          bundles[ncuts+1]=mpsoln
+	  if testSchrammZoweNSII(opfdata,params,ctr,node_data,mpsoln) || tHigh-tLow < 1e-4
+            agg_bundles[1]=aggregateSG(opfdata,trl_bundles,mpsoln,ctr,ctr_bundles,agg_bundles)
+	    ntrlcuts,nnzcuts=purgeSG(opfdata,trl_bundles,params.maxNSG)
+            trl_bundles[ntrlcuts+1]=mpsoln
+            tLow,tHigh=params.tMin,params.tMax
+	    @printf("ns: %d\t(objval,eta)=(%.4f,%.2e)\t(t,rho,ncuts)=(%.4f,%.3f,%d)\t(err,||s||,epshat,desc)=(%.2e,%.2e,%.2e,%.5e)\n",
+	      kk,mpsoln.linobjval,mpsoln.eta,node_data.tVal,node_data.rho,node_data.ncuts,node_data.linerr,node_data.agg_sg_norm,node_data.epshat,node_data.descent_est)
+	  else 
+            tLow=node_data.tVal
+	    node_data.tVal=2*tLow*tHigh/(tLow+tHigh)
+	  end
         end
        # STEP 4
-        #tVal,v_est,ssc_cntr = KiwielRhoUpdate(opfdata,params,mpsoln,sscval,del,agg_norm,epshat,v_est,ssc_cntr)
-      else
-	#println("Solve status: $status")
-	#break
-      end
     end
+    @printf("iter: %d\t(objval,eta)=(%.4f,%.2e)\t(t,rho,ncuts)=(%.4f,%.3f,%d)\t(err,||s||,epshat,desc)=(%.2e,%.2e,%.2e,%.5e)\n",
+      last_kk,ctr.linobjval,ctr.eta,node_data.tVal,node_data.rho,node_data.ncuts,node_data.linerr,node_data.agg_sg_norm,node_data.epshat,node_data.descent_est)
     time_End = (time_ns()-time_Start)/1e9
     println("Done after ",time_End," seconds.")
 end

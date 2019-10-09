@@ -7,6 +7,7 @@ mutable struct Params
   maxNSG::Int
   tMin::Float64
   tMax::Float64
+  tStart::Float64
   ssc1::Float64
   ssc2::Float64
   ssc3::Float64
@@ -85,7 +86,7 @@ mutable struct NodeInfo
   nodeBd::Float64
   rho::Float64
   rhoUB::Float64
-  sscval
+  descent::Float64
   descent_est::Float64
   ns_cntr::Int
   tVal::Float64

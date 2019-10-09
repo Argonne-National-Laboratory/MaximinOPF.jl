@@ -71,6 +71,7 @@ node_data=create_node(opfdata)
   maxNSG::Int
   tMin::Float64
   tMax::Float64
+  tStart::Float64
   ssc1::Float64
   ssc2::Float64
   ssc3::Float64
@@ -78,7 +79,7 @@ node_data=create_node(opfdata)
   tol2::Float64
   tol3::Float64
 =#
-params=Params(3,10000,100,0.01,1000.0,0.1,0.5,0.5,1e-3,1e-2,1e-2)
+params=Params(3,10000,100,1e-2,1000.0,1.0,0.1,0.5,0.5,1e-6,1e-5,1e-5)
 
 
 if FORM == ECP 
@@ -91,14 +92,19 @@ elseif FORM == ProxPtSDP
   #testProxPt(opfdata,K,HEUR,node_data)
   #testProxTraj(opfdata,K,HEUR,node_data)
 
-  include("../src/PBM-DelfinoOliveira.jl")
-  plot_params,plot_opt,plot_data,plot_params_ss,plot_opt_ss,plot_data_ss=PBM_DelfinoOliveira(opfdata,params,K,HEUR,node_data)
-  exptype="pbm"
+  #include("../src/PBM-DelfinoOliveira.jl")
+  #plot_params,plot_opt,plot_data,plot_params_ss,plot_opt_ss,plot_data_ss=PBM_DelfinoOliveira(opfdata,params,K,HEUR,node_data)
+  #exptype="pbm"
+
+  include("../src/PBM-SagastizabalSolodov.jl")
+  PBM_SagastizabalSolodov(opfdata,params,K,HEUR,node_data)
 
   #include("../src/CPAlg.jl")
   #plot_data=CPAlg(opfdata,params,K,HEUR,node_data)
   #exptype="cp"
 
+write_data = false
+if write_data
   n_data,n_data_ss=size(plot_data)[1],size(plot_data_ss)[1]
   fn_base=string("ExpOut/",exptype,"exp",CASE_NUM,"-",K,"-",params.maxNSG)
   fn_base_ss=string("ExpOut/",exptype,"exp",CASE_NUM,"-",K,"-",params.maxNSG,"ss")
@@ -221,6 +227,7 @@ elseif FORM == ProxPtSDP
     write(io,string(plot_data_ss[kk,8]," ",plot_data_ss[kk,7],"\n"))
   end
   close(io)
+end
 
 elseif FORM == AC
   include("../src/DualAC.jl")
