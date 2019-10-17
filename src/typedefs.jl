@@ -31,13 +31,13 @@ mutable struct Soln
   μT::Array{Float64}
 end
 function create_soln(opfdata)
-  nbuses, nlines, ngens, N, L, G = opfdata.nbuses, opfdata.nlines, opfdata.ngens, opfdata.N, opfdata.L, opfdata.G 
+  nbuses, nlines, ngens, N, L, G = opfdata.nbuses, opfdata.nlines, opfdata.ngens, 1:opfdata.nbuses, 1:opfdata.nlines, 1:opfdata.ngens
   return Soln(zeros(nbuses),zeros(nbuses),zeros(nbuses),zeros(nbuses),
     zeros(ngens),zeros(ngens),zeros(ngens),zeros(ngens),
     zeros(nlines),zeros(nlines),zeros(nlines),zeros(nlines),zeros(nlines))
 end
 function cpy_soln(opfdata,fromSoln,toSoln)
-  nbuses, nlines, ngens, N, L, G = opfdata.nbuses, opfdata.nlines, opfdata.ngens, opfdata.N, opfdata.L, opfdata.G 
+  nbuses, nlines, ngens, N, L, G = opfdata.nbuses, opfdata.nlines, opfdata.ngens, 1:opfdata.nbuses, 1:opfdata.nlines, 1:opfdata.ngens
   toSoln.α[N] = fromSoln.α[N]
   toSoln.β[N] = fromSoln.β[N]
   toSoln.γ[N] = fromSoln.γ[N]
@@ -54,7 +54,7 @@ function cpy_soln(opfdata,fromSoln,toSoln)
 end
 
 function comp_agg(opfdata,node,ctr,trl,agg)
-  nbuses, nlines, ngens, N, L, G = opfdata.nbuses, opfdata.nlines, opfdata.ngens, opfdata.N, opfdata.L, opfdata.G 
+  nbuses, nlines, ngens, N, L, G = opfdata.nbuses, opfdata.nlines, opfdata.ngens, 1:opfdata.nbuses, 1:opfdata.nlines, 1:opfdata.ngens
   agg.α[N] = node.tVal*(ctr.α[N]-trl.α[N])
   agg.β[N] = node.tVal*(ctr.β[N]-trl.β[N])
   agg.γ[N] = node.tVal*(ctr.γ[N]-trl.γ[N])
@@ -70,7 +70,7 @@ function comp_agg(opfdata,node,ctr,trl,agg)
   agg.μT[L] = node.tVal*(ctr.μT[L]-trl.μT[L])
 end
 function comp_norm(opfdata,soln)
-  nbuses, nlines, ngens, N, L, G = opfdata.nbuses, opfdata.nlines, opfdata.ngens, opfdata.N, opfdata.L, opfdata.G 
+  nbuses, nlines, ngens, N, L, G = opfdata.nbuses, opfdata.nlines, opfdata.ngens, 1:opfdata.nbuses, 1:opfdata.nlines, 1:opfdata.ngens
   return sqrt(norm(soln.α[N])^2 + norm(soln.β[N])^2 + norm(soln.γ[N])^2 + norm(soln.δ[N])^2 
 	+ norm(soln.ζpLB[G])^2 + norm(soln.ζpUB[G])^2 + norm(soln.ζqLB[G])^2 + norm(soln.ζqUB[G])^2
   	+ norm(soln.x[L])^2 
@@ -123,11 +123,11 @@ mutable struct Bundle
   status
 end
 function create_bundle(opfdata)
-  nbuses, nlines, ngens, N, L, G = opfdata.nbuses, opfdata.nlines, opfdata.ngens, opfdata.N, opfdata.L, opfdata.G 
+  nbuses, nlines, ngens, N, L, G = opfdata.nbuses, opfdata.nlines, opfdata.ngens, 1:opfdata.nbuses, 1:opfdata.nlines, 1:opfdata.ngens
   return Bundle(create_soln(opfdata),create_soln(opfdata),0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,1.0,0.0,0.0,0.0,0.0,0.0,0)
 end
 function cpy_bundle(opfdata,fromBundle,toBundle)
-  nbuses, nlines, ngens, N, L, G = opfdata.nbuses, opfdata.nlines, opfdata.ngens, opfdata.N, opfdata.L, opfdata.G 
+  nbuses, nlines, ngens, N, L, G = opfdata.nbuses, opfdata.nlines, opfdata.ngens, 1:opfdata.nbuses, 1:opfdata.nlines, 1:opfdata.ngens
   cpy_soln(opfdata,fromBundle.soln,toBundle.soln)
   cpy_soln(opfdata,fromBundle.eta_sg,toBundle.eta_sg)
   toBundle.objval = fromBundle.objval
@@ -169,7 +169,7 @@ mutable struct ConstrDuals
 end
 
 function create_constr_duals(opfdata)
-  nbuses, nlines, ngens, N, L, G = opfdata.nbuses, opfdata.nlines, opfdata.ngens, opfdata.N, opfdata.L, opfdata.G 
+  nbuses, nlines, ngens, N, L, G = opfdata.nbuses, opfdata.nlines, opfdata.ngens, 1:opfdata.nbuses, 1:opfdata.nlines, 1:opfdata.ngens
   return ConstrDuals(create_soln(opfdata),zeros(nbuses,ngens),0,
     zeros(nlines),zeros(nlines),zeros(nlines),zeros(nlines),zeros(nlines),zeros(nlines),zeros(nlines),zeros(nlines),
     zeros(nlines),zeros(nlines),zeros(nlines),zeros(nlines),zeros(nlines),zeros(nlines),zeros(nlines),zeros(nlines))

@@ -12,14 +12,14 @@ using LinearAlgebra
 
 #USEFUL SUBROUTINES
 function printX(opfdata,x_soln)
-  for l in opfdata.L
+  for l in 1:opfdata.nlines
    if x_soln[l] > 0.5 
 	@printf(" %d",l)
    end
   end
 end
 function printX2(opfdata,x_soln)
-  for l in opfdata.L
+  for l in 1:opfdata.nlines
    if x_soln[l] > 1e-2 
 	@printf("(%d,%.2f)",l,x_soln[l])
    end
@@ -44,7 +44,7 @@ end
 
 # Get the n-by-n chordal extension
 function get_chordal_extension(opfdata)
-    N, L, fromBus, toBus = opfdata.N, opfdata.L, opfdata.fromBus, opfdata.toBus  
+    N, L, fromBus, toBus = 1:opfdata.nbuses, 1:opfdata.nlines, opfdata.fromBus, opfdata.toBus  
     # Laplacian graph
     I = Int64[]; J = Int64[]; V = Float64[]
     for l in L
@@ -65,7 +65,7 @@ end
 
 # Get the 2n-by-2n chordal extension
 function get_chordal_extension_complex(opfdata)
-    N, L, fromBus, toBus = opfdata.N, opfdata.L, opfdata.fromBus, opfdata.toBus  
+    N, L, fromBus, toBus = 1:opfdata.nbuses, 1:opfdata.nlines, opfdata.fromBus, opfdata.toBus  
     # Laplacian graph
     num = length(N)
     I = Int64[]; J = Int64[]; V = Float64[]
@@ -134,7 +134,7 @@ end
 
 
 function update_agg(opfdata,node,ctr,mpsoln,sg_agg)
-  N, L, G = opfdata.N, opfdata.L, opfdata.G 
+  N, L, G = 1:opfdata.nbuses, 1:opfdata.nlines, 1:opfdata.ngens 
   comp_agg(opfdata,node,ctr.soln,mpsoln.soln,sg_agg)
   return node.agg_sg_norm
 end
@@ -154,19 +154,19 @@ function update_rho(node,trl_bundles,ctr_bundles,agg_bundles)
 end
 
 function compute_epshat(opfdata,node,mpsoln,ctr,sg_agg)
-  N, L, G = opfdata.N, opfdata.L, opfdata.G 
+  N, L, G = 1:opfdata.nbuses, 1:opfdata.nlines, 1:opfdata.ngens 
   node.epshat = mpsoln.linobjval - (ctr.linobjval - node.rho*ctr.eta) - (1.0/node.tVal)*comp_norm(opfdata,sg_agg)^2
   return node.epshat
 end
 
 function updateCenter(opfdata,mpsoln,ctr,trl_bundles,ctr_bundles,agg_bundles)
-  nbuses, nlines, ngens, N, L, G = opfdata.nbuses, opfdata.nlines, opfdata.ngens, opfdata.N, opfdata.L, opfdata.G 
+  nbuses, nlines, ngens, N, L, G = opfdata.nbuses, opfdata.nlines, opfdata.ngens, 1:opfdata.nbuses, 1:opfdata.nlines, 1:opfdata.ngens
   fromBus,toBus,Y = opfdata.fromBus, opfdata.toBus, opfdata.Y_AC
   cpy_bundle(opfdata,mpsoln,ctr)
 end
 
 function computeSG(opfdata,mpsoln)
-      nbuses, nlines, ngens, N, L, G = opfdata.nbuses, opfdata.nlines, opfdata.ngens, opfdata.N, opfdata.L, opfdata.G 
+      nbuses, nlines, ngens, N, L, G = opfdata.nbuses, opfdata.nlines, opfdata.ngens, 1:opfdata.nbuses, 1:opfdata.nlines, 1:opfdata.ngens
       fromBus,toBus,Y = opfdata.fromBus, opfdata.toBus, opfdata.Y_AC
       vR = zeros(nbuses)
       vI = zeros(nbuses)
@@ -205,7 +205,7 @@ function computeSG(opfdata,mpsoln)
 end
 
 function initialSG(opfdata,bundles)
-  nbuses, nlines, ngens, N, L, G = opfdata.nbuses, opfdata.nlines, opfdata.ngens, opfdata.N, opfdata.L, opfdata.G 
+  nbuses, nlines, ngens, N, L, G = opfdata.nbuses, opfdata.nlines, opfdata.ngens, 1:opfdata.nbuses, 1:opfdata.nlines, 1:opfdata.ngens
   fromBus,toBus,Y = opfdata.fromBus, opfdata.toBus, opfdata.Y_AC
   fromLines,toLines = opfdata.fromLines, opfdata.toLines
   for ii=N
@@ -228,7 +228,7 @@ end
 
 # SUBROUTINE FOR COMPUTING THE MINIMUM EIGENVALUE OF H WITH A CORRESPONDING EIGENVECTOR
 function solveEta0Eigs(opfdata,soln,vR,vI)
-      nbuses, nlines, ngens, N, L, G = opfdata.nbuses, opfdata.nlines, opfdata.ngens, opfdata.N, opfdata.L, opfdata.G 
+      nbuses, nlines, ngens, N, L, G = opfdata.nbuses, opfdata.nlines, opfdata.ngens, 1:opfdata.nbuses, 1:opfdata.nlines, 1:opfdata.ngens
       fromBus,toBus = opfdata.fromBus, opfdata.toBus
       H=spzeros(2*nbuses,2*nbuses)
       updateHess(opfdata,soln,H)
@@ -242,7 +242,7 @@ end
 # Update Hessian
 function updateHess(opfdata,pi_val,H)
       #lines, buses, generators, baseMVA = opfdata.lines, opfdata.buses, opfdata.generators, opfdata.baseMVA
-      nbuses, nlines, ngens, N, L, G = opfdata.nbuses, opfdata.nlines, opfdata.ngens, opfdata.N, opfdata.L, opfdata.G 
+      nbuses, nlines, ngens, N, L, G = opfdata.nbuses, opfdata.nlines, opfdata.ngens, 1:opfdata.nbuses, 1:opfdata.nlines, 1:opfdata.ngens
       fromBus,toBus = opfdata.fromBus, opfdata.toBus  
       Y = opfdata.Y_AC
       for i in N
@@ -270,7 +270,7 @@ end
 # SUBROUTINE FOR COMPUTING THE MINIMUM EIGENVALUE OF H WITH A CORRESPONDING EIGENVECTOR
   # VIA AN OPTIMIZATION PROBLEM
 function solveEta0SDP(opfdata,soln,vR,vI)
-      nbuses, nlines, ngens, N, L, G = opfdata.nbuses, opfdata.nlines, opfdata.ngens, opfdata.N, opfdata.L, opfdata.G 
+      nbuses, nlines, ngens, N, L, G = opfdata.nbuses, opfdata.nlines, opfdata.ngens, 1:opfdata.nbuses, 1:opfdata.nlines, 1:opfdata.ngens
       fromBus,toBus = opfdata.fromBus, opfdata.toBus
 
       #The QP subproblem
@@ -310,7 +310,7 @@ end
 
 # SUBROUTINE FOR COMPUTING A SUBGRADIENT OF ETA(PI), WHICH IS THE FUNCTION TAKING THE VALUE OF THE MINIMUM EIGENVALUE OF H(PI)
 function purgeSG(opfdata,bundle,maxN=100000)
-      nbuses, nlines, ngens, N, L, G = opfdata.nbuses, opfdata.nlines, opfdata.ngens, opfdata.N, opfdata.L, opfdata.G 
+      nbuses, nlines, ngens, N, L, G = opfdata.nbuses, opfdata.nlines, opfdata.ngens, 1:opfdata.nbuses, 1:opfdata.nlines, 1:opfdata.ngens
       fromBus,toBus,Y = opfdata.fromBus, opfdata.toBus, opfdata.Y_AC
 
       ncuts = length(bundle)
@@ -327,7 +327,7 @@ function purgeSG(opfdata,bundle,maxN=100000)
       return ncuts,nnzcuts
 end
 function purgeSGTol(opfdata,bundle,cut_tol)
-      nbuses, nlines, ngens, N, L, G = opfdata.nbuses, opfdata.nlines, opfdata.ngens, opfdata.N, opfdata.L, opfdata.G 
+      nbuses, nlines, ngens, N, L, G = opfdata.nbuses, opfdata.nlines, opfdata.ngens, 1:opfdata.nbuses, 1:opfdata.nlines, 1:opfdata.ngens
       fromBus,toBus,Y = opfdata.fromBus, opfdata.toBus, opfdata.Y_AC
 
       orig_ncuts = length(bundle)
@@ -343,7 +343,7 @@ function purgeSGTol(opfdata,bundle,cut_tol)
 end
 
 function aggregateSG(opfdata,trl_bundles,mpsoln,ctr,ctr_bundles,agg_bundles)
-      nbuses, nlines, ngens, N, L, G = opfdata.nbuses, opfdata.nlines, opfdata.ngens, opfdata.N, opfdata.L, opfdata.G 
+      nbuses, nlines, ngens, N, L, G = opfdata.nbuses, opfdata.nlines, opfdata.ngens, 1:opfdata.nbuses, 1:opfdata.nlines, 1:opfdata.ngens
       fromBus,toBus,Y = opfdata.fromBus, opfdata.toBus, opfdata.Y_AC
       agg_bundle=create_bundle(opfdata)
 
