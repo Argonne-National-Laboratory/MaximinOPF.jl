@@ -2,36 +2,6 @@ using DelimitedFiles
 using Printf
 using PowerModels
 
-#=
-
-mutable struct Gener
-  # .gen fields
-  bus::Int
-  Pg::Float64
-  Qg::Float64
-  Qmax::Float64
-  Qmin::Float64
-  Vg::Float64
-  mBase::Float64
-  status::Int
-  Pmax::Float64
-  Pmin::Float64
-  Pc1::Float64
-  Pc2::Float64
-  Qc1min::Float64
-  Qc1max::Float64
-  Qc2min::Float64
-  Qc2max::Float64
-  ramp_agc::Float64
-  # .gencost fields
-  gentype::Int
-  startup::Float64
-  shutdown::Float64
-  n::Int
-  coeff::Array
-end
-=#
-
 mutable struct OPFData
   nbuses::Int
   PD::Array
@@ -62,66 +32,6 @@ function opf_loaddata(case_name)
   fn_mat=string(fn_base,".m")
   pm_data = PowerModels.parse_file(fn_mat)
   #@show pm_data
-
-#=
-
-  #
-  # load generators
-  #
-  # gen_arr = readdlm("data/" * case_name * ".gen")
-  gen_arr = readdlm(data_path * string(case_name) * ".gen")
-  # costgen_arr = readdlm("data/" * case_name * ".gencost")
-  costgen_arr = readdlm(data_path * string(case_name) * ".gencost")
-  num_gens = size(gen_arr,1)
-
-
-  @assert num_gens == size(costgen_arr,1)
-
-  gens_on=findall(x->x!=0, gen_arr[:,8]); num_on=length(gens_on)
-  if num_gens-num_on>0
-    println("loaddata: ", num_gens-num_on, " generators are off and will be discarded (out of ", num_gens, ")")
-  end
-
-  generators = Array{Gener}(undef,num_on)
-  i=0
-  for git in gens_on
-    i += 1
-    generators[i] = Gener(0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, Array{Int}(undef,0)) #gen_arr[i,1:end]...)
-
-    generators[i].bus      = gen_arr[git,1]
-    generators[i].Pg       = gen_arr[git,2] / pm_data["baseMVA"]
-    generators[i].Qg       = gen_arr[git,3] / pm_data["baseMVA"]
-    generators[i].Qmax     = gen_arr[git,4] / pm_data["baseMVA"]
-    generators[i].Qmin     = gen_arr[git,5] / pm_data["baseMVA"]
-    generators[i].Vg       = gen_arr[git,6]
-    generators[i].mBase    = gen_arr[git,7]
-    generators[i].status   = gen_arr[git,8]
-    @assert generators[i].status==1
-    generators[i].Pmax     = gen_arr[git,9]  / pm_data["baseMVA"]
-    generators[i].Pmin     = gen_arr[git,10] / pm_data["baseMVA"]
-    generators[i].Pc1      = gen_arr[git,11]
-    generators[i].Pc2      = gen_arr[git,12]
-    generators[i].Qc1min   = gen_arr[git,13]
-    generators[i].Qc1max   = gen_arr[git,14]
-    generators[i].Qc2min   = gen_arr[git,15]
-    generators[i].Qc2max   = gen_arr[git,16]
-    generators[i].gentype  = costgen_arr[git,1]
-    generators[i].startup  = costgen_arr[git,2]
-    generators[i].shutdown = costgen_arr[git,3]
-    generators[i].n        = costgen_arr[git,4]
-    if generators[i].gentype == 1
-      generators[i].coeff = costgen_arr[git,5:end]
-      error("Piecewise linear costs remains to be implemented.")
-    else
-      if generators[i].gentype == 2
-        generators[i].coeff = costgen_arr[git,5:end]
-        #println(generators[i].coeff, " ", length(generators[i].coeff), " ", generators[i].coeff[2])
-      else
-        error("Invalid generator cost model in the data.")
-      end
-    end
-  end
-=#
 
   #println(generators)
   #println(bus_ref)
