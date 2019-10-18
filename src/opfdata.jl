@@ -2,38 +2,7 @@ using DelimitedFiles
 using Printf
 using PowerModels
 
-mutable struct Bus
-  bus_i::Int
-  bustype::Int
-  Pd::Float64
-  Qd::Float64
-  Gs::Float64
-  Bs::Float64
-  area::Int
-  Vm::Float64
-  Va::Float64
-  baseKV::Float64
-  zone::Int
-  Vmax::Float64
-  Vmin::Float64
-end
-
-mutable struct Line
-  from::Int
-  to::Int
-  r::Float64
-  x::Float64
-  b::Float64
-  rateA::Float64
-  rateB::Float64
-  rateC::Float64
-  ratio::Float64 #TAP
-  angle::Float64 #SHIFT
-  status::Int
-  angmin::Float64
-  angmax::Float64
-end
-Line() = Line(0,0,0.,0.,0.,0.,0.,0.,0.,0.,0,0.,0.)
+#=
 
 mutable struct Gener
   # .gen fields
@@ -61,6 +30,7 @@ mutable struct Gener
   n::Int
   coeff::Array
 end
+=#
 
 mutable struct OPFData
   nbuses::Int
@@ -85,7 +55,7 @@ mutable struct OPFData
 end
 
 
-function opf_loaddata(case_name, lineOff=Line())
+function opf_loaddata(case_name)
 
   data_path = "data/case"
   fn_base=string(data_path,case_name)
@@ -93,62 +63,7 @@ function opf_loaddata(case_name, lineOff=Line())
   pm_data = PowerModels.parse_file(fn_mat)
   #@show pm_data
 
-  #
-  # load buses
-  #
-  #pm_buses = [ Int(bus["index"]) => bus for (k,bus) in pm_data["bus"] ]
-  #@show pm_buses
-  #nbuses = length(pm_buses)
-
-
-  bus_arr = readdlm(data_path * string(case_name) * ".bus")
-  num_buses = size(bus_arr,1)
-  buses = Array{Bus}(undef,num_buses)
-  bus_ref=-1
-  for i in 1:num_buses
-    @assert bus_arr[i,1]>0  #don't support nonpositive bus ids
-    buses[i] = Bus(bus_arr[i,1:13]...)
-    buses[i].Va *= pi/180
-    if buses[i].bustype==3
-      if bus_ref>0
-        error("More than one reference bus present in the data")
-      else
-         bus_ref=i
-      end
-    end
-    #println("bus ", i, " ", buses[i].Vmin, "      ", buses[i].Vmax)
-  end
-
-  #
-  # load branches/lines
-  #
-  # branch_arr = readdlm("data/" * case_name * ".branch")
-  branch_arr = readdlm(data_path * string(case_name) * ".branch")
-  num_lines = size(branch_arr,1)
-  lines_on = findall(x->x!=0, (branch_arr[:,11].>0) .& ((branch_arr[:,1].!=lineOff.from) .| (branch_arr[:,2].!=lineOff.to)) )
-  num_on   = length(lines_on)
-
-  if lineOff.from>0 && lineOff.to>0
-    println("opf_loaddata: was asked to remove line from,to=", lineOff.from, ",", lineOff.to)
-    #println(lines_on, branch_arr[:,1].!=lineOff.from, branch_arr[:,2].!=lineOff.to)
-  end
-  if length(findall(x->x!=0, branch_arr[:,11].==0))>0
-    println("opf_loaddata: ", num_lines-length(findall(x->x!=0, branch_arr[:,11].>0)), " lines are off and will be discarded (out of ", num_lines, ")")
-  end
-
-  lines = Array{Line}(undef,num_on)
-
-  lit=0
-  for i in lines_on
-    @assert branch_arr[i,11] == 1  #should be on since we discarded all other
-    lit += 1
-    lines[lit] = Line(branch_arr[i, 1:13]...)
-    if lines[lit].angmin>-360 || lines[lit].angmax<360
-      error("Bounds of voltage angles are still to be implemented.")
-    end
-
-  end
-  @assert lit == num_on
+#=
 
   #
   # load generators
@@ -206,6 +121,7 @@ function opf_loaddata(case_name, lineOff=Line())
       end
     end
   end
+=#
 
   #println(generators)
   #println(bus_ref)
@@ -213,7 +129,17 @@ function opf_loaddata(case_name, lineOff=Line())
   pm_lines = pm_data["branch"]
   pm_gens = pm_data["gen"]
   nbuses, nlines, ngens = length(pm_buses), length(pm_lines), length(pm_gens)
-  N = 1:nbuses; L = 1:nlines; G = 1:ngens
+ # compute reference bus
+  bus_ref=-1
+  for (k,bus) in pm_buses
+    if bus["bus_type"]==3
+      if bus_ref>0
+        error("More than one reference bus present in the data")
+      else
+         bus_ref=bus["index"]
+      end
+    end
+  end
   # set bus demands
       PD = zeros(nbuses); QD = zeros(nbuses)
       for (k,load_data) in pm_data["load"]
@@ -231,16 +157,14 @@ function opf_loaddata(case_name, lineOff=Line())
         Pmin[gen["index"]] = gen["pmin"]; Pmax[gen["index"]] = gen["pmax"]
         Qmin[gen["index"]] = gen["qmin"]; Qmax[gen["index"]] = gen["qmax"]
       end
-  # build a dictionary between buses ids and their indexes
-    busIdx = mapBusIdToIdx(buses)
   # set up the fromLines and toLines for each bus
-      fromLines, toLines = mapLinesToBuses(buses, lines, busIdx)
+      fromLines, toLines = mapLinesToBuses(pm_data)
       fromBus,toBus=zeros(Int,nlines),zeros(Int,nlines)
       for (k,line) in pm_lines 
         fromBus[line["index"]] = line["f_bus"]; toBus[line["index"]] = line["t_bus"]
       end
     # generators at each bus
-      BusGeners = mapGenersToBuses(buses, generators, busIdx)
+      BusGeners = mapGenersToBuses(pm_data)
   # obtain entries of the admittance matrix
   Y_AC = computeAdmittances(pm_data, 0)
   Y_DC = computeAdmittances(pm_data, 2)
@@ -305,47 +229,27 @@ end
 # Builds a map from lines to buses.
 # For each line we store an array with zero or one element containing
 # the  'From' and 'To'  bus number.
-function mapLinesToBuses(buses, lines, busDict)
-  nbus = length(buses)
+function mapLinesToBuses(pm_data)
+  nbus = length(pm_data["bus"])
   FromLines = [Int[] for b in 1:nbus]
   ToLines   = [Int[] for b in 1:nbus]
-  for i in 1:length(lines)
-      if(lines[i].status>0)
-          busID = busDict[lines[i].from]
-          @assert 1<= busID <= nbus
-          push!(FromLines[busID], i)
-
-          busID = busDict[lines[i].to]
-          @assert 1<= busID  <= nbus
-          push!(ToLines[busID], i)
+  for (k,line) in pm_data["branch"]
+      if(line["br_status"]>0)
+          push!(FromLines[line["f_bus"]], line["index"])
+          push!(ToLines[line["t_bus"]], line["index"])
       end
   end
   return FromLines,ToLines
 end
 
-# Builds a mapping between bus ids and bus indexes
-#
-# Returns a dictionary with bus ids as keys and bus indexes as values
-function mapBusIdToIdx(buses)
-  dict = Dict{Int,Int}()
-  for b in 1:length(buses)
-    @assert !haskey(dict,buses[b].bus_i)
-    dict[buses[b].bus_i] = b
-  end
-  return dict
-end
-
-
 # Builds a map between buses and generators.
 # For each bus we keep an array of corresponding generators number (as array).
 #
-# (Can be more than one generator per bus)
-function mapGenersToBuses(buses, generators,busDict)
-  gen2bus = [Int[] for b in 1:length(buses)]
-  for g in 1:length(generators)
-    busID = busDict[ generators[g].bus ]
-    #@assert(0==length(gen2bus[busID])) #at most one generator per bus
-    push!(gen2bus[busID], g)
+# (Can be more than one generator per bus, in future implementations at least)
+function mapGenersToBuses(pm_data)
+  gen2bus = [Int[] for b in 1:length(pm_data["bus"])]
+  for (k,gen) in pm_data["gen"]
+    push!(gen2bus[gen["gen_bus"]], gen["index"])
   end
   return gen2bus
 end
