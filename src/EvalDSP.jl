@@ -1,8 +1,10 @@
+include("utils.jl")
+
 function solveFullModelAC(opfdata,x_val)
 # The full lower level model, AC formulation
   # OBTAIN SHORTHAND PROBLEM INFORMATION FROM opfdata
     nbuses, nlines, ngens = opfdata.nbuses, opfdata.nlines, opfdata.ngens
-    N, L, G = opfdata.N, opfdata.L, opfdata.G 
+    N, L, G = 1:nbuses, 1:nlines, 1:ngens
     fromLines,toLines,fromBus,toBus = opfdata.fromLines, opfdata.toLines, opfdata.fromBus, opfdata.toBus
     BusGeners, Y = opfdata.BusGeners, opfdata.Y_AC
   mFullAC = Model(solver=IpoptSolver())
@@ -70,23 +72,24 @@ function solveFullModelSDP(opfdata,x_val,relax=false)
   # The full lower level model, SDP formulation
   # OBTAIN SHORTHAND PROBLEM INFORMATION FROM opfdata
     nbuses, nlines, ngens = opfdata.nbuses, opfdata.nlines, opfdata.ngens
-    N, L, G = opfdata.N, opfdata.L, opfdata.G 
+    N, L, G = 1:nbuses, 1:nlines, 1:ngens
     fromLines,toLines,fromBus,toBus = opfdata.fromLines, opfdata.toLines, opfdata.fromBus, opfdata.toBus
     BusGeners, Y = opfdata.BusGeners, opfdata.Y_AC
   #mFullSDP = Model(solver=SCSSolver(verbose=0))
-  mFullSDP = Model(solver=MosekSolver(MSK_IPAR_LOG=0,MSK_IPAR_NUM_THREADS=4))
+  #mFullSDP = Model(solver=MosekSolver(MSK_IPAR_LOG=0,MSK_IPAR_NUM_THREADS=4))
+  mFullSDP = Model(with_optimizer(Mosek.Optimizer,MSK_IPAR_LOG=0,MSK_IPAR_NUM_THREADS=4))
   @variable(mFullSDP, opfdata.Pmin[g] <= PG[g=G] <= opfdata.Pmax[g])
   @variable(mFullSDP, opfdata.Qmin[g] <= QG[g=G] <= opfdata.Qmax[g])
   @variable(mFullSDP, PSlack[i=N] >= 0)
   @variable(mFullSDP, QSlack[i=N] >= 0)
   @variable(mFullSDP, VMSlack[i=N] >= 0)
-  @variable(mFullSDP, W[1:(2*nbuses), 1:(2*nbuses)], SDP)
+  @variable(mFullSDP, W[1:(2*nbuses), 1:(2*nbuses)], PSD)
   @variable(mFullSDP, hP[l=L]) 
   @variable(mFullSDP, hQ[l=L]) 
   if !relax
     for l in L
-      setlowerbound(hP[l],0);setupperbound(hP[l],0);
-      setlowerbound(hQ[l],0);setupperbound(hQ[l],0);
+      set_lower_bound(hP[l],0);set_upper_bound(hP[l],0);
+      set_lower_bound(hQ[l],0);set_upper_bound(hQ[l],0);
     end
   end
 
@@ -136,8 +139,9 @@ function solveFullModelSDP(opfdata,x_val,relax=false)
       >= -QSlack[i])
   @objective(mFullSDP, Min, sum(PSlack[i] + QSlack[i] + VMSlack[i] for i in N))
 
-  status = solve(mFullSDP)
-  if status == :Optimal || status == :Stall
+  JuMP.optimize!(mFullSDP)
+  status=JuMP.termination_status(mFullSDP)
+  if status == MOI.OPTIMAL || status == MOI.LOCALLY_SOLVED || status == MOI.ALMOST_LOCALLY_SOLVED
 #=
 for i in N
 @show getdual(BusPBalanceUB[i]) + getdual(BusPBalanceLB[i])
@@ -146,7 +150,8 @@ for i in N
 @show -getdual(VoltMagUB[i])
 end
 =#
-    return getobjectivevalue(mFullSDP)
+    @show JuMP.objective_value(mFullSDP)
+    return JuMP.objective_value(mFullSDP)
   else
     println("Full SDP model solved with status: $status")
     return 0
@@ -157,64 +162,58 @@ function solveFullModelSOCP(opfdata,x_val)
 # The full lower level model, SOCP relaxation
   # OBTAIN SHORTHAND PROBLEM INFORMATION FROM opfdata
     nbuses, nlines, ngens = opfdata.nbuses, opfdata.nlines, opfdata.ngens
-    N, L, G = opfdata.N, opfdata.L, opfdata.G 
+    N, L, G = 1:nbuses, 1:nlines, 1:ngens
     fromLines,toLines,fromBus,toBus = opfdata.fromLines, opfdata.toLines, opfdata.fromBus, opfdata.toBus
     BusGeners, Y = opfdata.BusGeners, opfdata.Y_AC
-  mFullSOCP = Model(solver=IpoptSolver())
+  mFullSOCP = Model(with_optimizer(Mosek.Optimizer,MSK_IPAR_LOG=0,MSK_IPAR_NUM_THREADS=4))
   @variable(mFullSOCP, opfdata.Pmin[g] <= PG[g=G] <= opfdata.Pmax[g])
   @variable(mFullSOCP, opfdata.Qmin[g] <= QG[g=G] <= opfdata.Qmax[g])
-  @variable(mFullSOCP, PSlack[i=N] >= 0, start=0)
-  @variable(mFullSOCP, QSlack[i=N] >= 0, start=0)
+  @variable(mFullSOCP, PSlack[i=N] >= 0)
+  @variable(mFullSOCP, QSlack[i=N] >= 0)
   @variable(mFullSOCP, VMSlack[i=N] >= 0)
-  @variable(mFullSOCP, W[i=N] >= 0, start=1)
+  @variable(mFullSOCP, W[i=N] >= 0)
   @constraint(mFullSOCP, VMUB[i=N], W[i] - opfdata.Wmax[i] - VMSlack[i] <= 0)
   @constraint(mFullSOCP, VMLB[i=N], -W[i] + opfdata.Wmin[i] - VMSlack[i] <= 0)
-  @variable(mFullSOCP, WR[l=L] >= 0, start=1)
-  @variable(mFullSOCP, WI[l=L], start=0)
+  @variable(mFullSOCP, WR[l=L] >= 0)
+  @variable(mFullSOCP, WI[l=L])
 
 
 
-  @NLconstraint(mFullSOCP, [l=L],   WR[l]^2 + WI[l]^2 - W[fromBus[l]]*W[toBus[l]] <= 0)
-  @NLexpression(mFullSOCP, PFlowFrom[l=L], (W[fromBus[l]] * Y["ffR"][l] +  Y["ftR"][l]*WR[l] + Y["ftI"][l]*(WI[l]) ) )
-  @NLexpression(mFullSOCP, PFlowTo[l=L], (W[toBus[l]] * Y["ttR"][l] +  Y["tfR"][l]*WR[l] - Y["tfI"][l]*(WI[l]) ) )  
-  @NLexpression(mFullSOCP, QFlowFrom[l=L], (-Y["ffI"][l]*W[fromBus[l]] - Y["ftI"][l]*WR[l] + Y["ftR"][l]*(WI[l]) ) )
-  @NLexpression(mFullSOCP, QFlowTo[l=L], (-Y["ttI"][l]*W[toBus[l]] - Y["tfI"][l]*WR[l] - Y["tfR"][l]*(WI[l]) ) )
+  #@NLconstraint(mFullSOCP, [l=L],   WR[l]^2 + WI[l]^2 - W[fromBus[l]]*W[toBus[l]] <= 0)
+  #@NLconstraint(mFullSOCP, [l=L],  norm([0.5*(W[fromBus[l]]-W[toBus[l]]);WR[l];WI[l] ]) - 0.5*(W[fromBus[l]]+W[toBus[l]]) <= 0 )
+  @constraint(mFullSOCP, [l=L],  [0.5*(W[fromBus[l]]+W[toBus[l]]),0.5*(W[fromBus[l]]-W[toBus[l]]),WR[l],WI[l] ] in SecondOrderCone()) 
+  @expression(mFullSOCP, PFlowFrom[l=L], (W[fromBus[l]] * Y["ffR"][l] +  Y["ftR"][l]*WR[l] + Y["ftI"][l]*(WI[l]) ) )
+  @expression(mFullSOCP, PFlowTo[l=L], (W[toBus[l]] * Y["ttR"][l] +  Y["tfR"][l]*WR[l] - Y["tfI"][l]*(WI[l]) ) )  
+  @expression(mFullSOCP, QFlowFrom[l=L], (-Y["ffI"][l]*W[fromBus[l]] - Y["ftI"][l]*WR[l] + Y["ftR"][l]*(WI[l]) ) )
+  @expression(mFullSOCP, QFlowTo[l=L], (-Y["ttI"][l]*W[toBus[l]] - Y["tfI"][l]*WR[l] - Y["tfR"][l]*(WI[l]) ) )
 
    # ... Power flow balance constraints
    # real part
-   @NLconstraint( mFullSOCP, BusPBalanceUB[i=N],
+   @constraint( mFullSOCP, BusPBalanceUB[i=N],
 	Y["shR"][i] * W[i] - sum(PG[g] for g in BusGeners[i]) + opfdata.PD[i]        # Sbus part
       + sum( (1-x_val[l])*PFlowFrom[l]   for l in fromLines[i] )  + sum( (1-x_val[l])*PFlowTo[l]   for l in toLines[i] )  
      - PSlack[i] <= 0)
-   @NLconstraint( mFullSOCP, BusPBalanceLB[i=N],
+   @constraint( mFullSOCP, BusPBalanceLB[i=N],
 	Y["shR"][i] * W[i] - sum(PG[g] for g in BusGeners[i]) + opfdata.PD[i]        # Sbus part
       + sum( (1-x_val[l])*PFlowFrom[l]   for l in fromLines[i] )  + sum( (1-x_val[l])*PFlowTo[l]   for l in toLines[i] )  
      + PSlack[i] >= 0)
 
    #imaginary part
-   @NLconstraint( mFullSOCP, BusQBalanceUB[i=N],
+   @constraint( mFullSOCP, BusQBalanceUB[i=N],
 	-Y["shI"][i] * W[i] - sum(QG[g] for g in BusGeners[i]) + opfdata.QD[i]        #Sbus part
       + sum( (1-x_val[l])*QFlowFrom[l]   for l in fromLines[i] )  + sum( (1-x_val[l])*QFlowTo[l]   for l in toLines[i] )  
       - QSlack[i] <= 0)
-   @NLconstraint( mFullSOCP, BusQBalanceLB[i=N],
+   @constraint( mFullSOCP, BusQBalanceLB[i=N],
 	-Y["shI"][i] * W[i] - sum(QG[g] for g in BusGeners[i]) + opfdata.QD[i]        #Sbus part
       + sum( (1-x_val[l])*QFlowFrom[l]   for l in fromLines[i] )  + sum( (1-x_val[l])*QFlowTo[l]   for l in toLines[i] )  
       + QSlack[i] >= 0)
   @objective(mFullSOCP, Min, sum(PSlack[i] + QSlack[i] + VMSlack[i] for i in N))
 
-  for i in N
-    setvalue(W[i],1)	
-    setvalue(PSlack[i],0)
-    setvalue(QSlack[i],0)
-    setvalue(VMSlack[i],0)
-  end
-  for l in L
-    setvalue(WR[l],1)	
-    setvalue(WI[l],0)	
-  end
-  status = solve(mFullSOCP)
-  if status == :Optimal
-    return getobjectivevalue(mFullSOCP)
+  JuMP.optimize!(mFullSOCP)
+  status=JuMP.termination_status(mFullSOCP)
+  if status == MOI.OPTIMAL || status == MOI.LOCALLY_SOLVED || status == MOI.ALMOST_LOCALLY_SOLVED
+    @show JuMP.objective_value(mFullSOCP)
+    return JuMP.objective_value(mFullSOCP)
   else
     println("Full SOCP model solved with status: $status")
     return 0
@@ -225,25 +224,25 @@ function solveFullModelDC(opfdata,x_val)
 # The full lower level models, DC approximation
   # OBTAIN SHORTHAND PROBLEM INFORMATION FROM opfdata
     nbuses, nlines, ngens = opfdata.nbuses, opfdata.nlines, opfdata.ngens
-    N, L, G = opfdata.N, opfdata.L, opfdata.G 
+    N, L, G = 1:nbuses, 1:nlines, 1:ngens
     fromLines,toLines,fromBus,toBus = opfdata.fromLines, opfdata.toLines, opfdata.fromBus, opfdata.toBus
     BusGeners, Y = opfdata.BusGeners, opfdata.Y_DC
-  mFullDC = Model(solver=IpoptSolver())
-  @variable(mFullDC, Pmin[g] <= PG[g=G] <= Pmax[g])
-  @variable(mFullDC, PSlack[i=N] >= 0, start=0)
-  @variable(mFullDC, THETA[i=N], start=0)
+  mFullDC = Model(with_optimizer(Mosek.Optimizer,MSK_IPAR_LOG=0,MSK_IPAR_NUM_THREADS=4))
+  @variable(mFullDC, opfdata.Pmin[g] <= PG[g=G] <= opfdata.Pmax[g])
+  @variable(mFullDC, PSlack[i=N] >= 0)
+  @variable(mFullDC, THETA[i=N])
 
   @constraint(mFullDC, AngleDiffUB[l=L], THETA[fromBus[l]] - THETA[toBus[l]] <= pi)
   @constraint(mFullDC, AngleDiffLB[l=L], -pi <= THETA[fromBus[l]] - THETA[toBus[l]])
 
    # ... Power flow balance constraints
    # real part
-   @NLconstraint( mFullDC, BusPBalanceUB[i=N],
+   @constraint( mFullDC, BusPBalanceUB[i=N],
 	Y["shR"][i] - sum(PG[g] for g in BusGeners[i]) + opfdata.PD[i]       # Sbus part
       + sum( (1-x_val[l])*(Y["ffR"][l] +  Y["ftR"][l] + Y["ftI"][l]*( THETA[fromBus[l]] - THETA[toBus[l]] )  )   for l in fromLines[i] )  
       + sum( (1-x_val[l])*(Y["ttR"][l] +  Y["tfR"][l] - Y["tfI"][l]*( THETA[fromBus[l]] - THETA[toBus[l]] )  )   for l in toLines[i] )  
      - PSlack[i] <= 0)
-   @NLconstraint( mFullDC, BusPBalanceLB[i=N],
+   @constraint( mFullDC, BusPBalanceLB[i=N],
 	Y["shR"][i] - sum(PG[g] for g in BusGeners[i]) + opfdata.PD[i]       # Sbus part
       + sum( (1-x_val[l])*(Y["ffR"][l] +  Y["ftR"][l] + Y["ftI"][l]*( THETA[fromBus[l]] - THETA[toBus[l]] )  )   for l in fromLines[i] )  
       + sum( (1-x_val[l])*(Y["ttR"][l] +  Y["tfR"][l] - Y["tfI"][l]*( THETA[fromBus[l]] - THETA[toBus[l]] )  )   for l in toLines[i] )  
@@ -252,13 +251,11 @@ function solveFullModelDC(opfdata,x_val)
   @objective(mFullDC, Min, sum(PSlack[i] for i in N))
 
 
-  for i in N
-    setvalue(THETA[i],0)
-    setvalue(PSlack[i],0)
-  end
-  status = solve(mFullDC)
-  if status == :Optimal
-    return getobjectivevalue(mFullDC)
+  JuMP.optimize!(mFullDC)
+  status=JuMP.termination_status(mFullDC)
+  if status == MOI.OPTIMAL || status == MOI.LOCALLY_SOLVED || status == MOI.ALMOST_LOCALLY_SOLVED
+    @show JuMP.objective_value(mFullDC)
+    return JuMP.objective_value(mFullDC)
   else
     println("Full DC model solved with status: $status")
     return 0
