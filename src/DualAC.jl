@@ -26,7 +26,7 @@ end
 function solveNodeAC(opfdata,ndata)
   # OBTAIN PROBLEM INFORMATION FROM opfdata
     nbuses, nlines, ngens = opfdata.nbuses, opfdata.nlines, opfdata.ngens
-    N, L, G = opfdata.N, opfdata.L, opfdata.G 
+    N, L, G = 1:nbuses, 1:nlines, 1:ngens 
     fromLines,toLines,fromBus,toBus = opfdata.fromLines, opfdata.toLines, opfdata.fromBus, opfdata.toBus
     BusGeners, Y = opfdata.BusGeners, opfdata.Y_AC
 
@@ -286,7 +286,7 @@ end
 
 function solveBnBSDP(opfdata,incsoln)
   global MAX_TIME
-  nlines,L = opfdata.nlines, opfdata.L
+  nlines,L = opfdata.nlines, 1:opfdata.nlines
 
 
   start_time = time_ns()
