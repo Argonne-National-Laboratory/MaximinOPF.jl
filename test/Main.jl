@@ -249,6 +249,9 @@ elseif FORM == AC
   @show finalXSoln.nodeBd
 elseif FORM == SOCP
   include("../src/DualSOCP.jl")
+elseif FORM == DC
+  include("../src/DualDC.jl")
+  testDualDC(opfdata)
 else
 end
 
