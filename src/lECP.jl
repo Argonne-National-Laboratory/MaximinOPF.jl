@@ -19,7 +19,7 @@ function solveLECP(opfdata,K,HEUR)
   # DONE OBTAINING PROBLEM INFORMATION FROM opfdata
 
   # indicate to enable chordal decomposition
-    chordal_decomposition = true
+    chordal_decomposition = false
 
     if chordal_decomposition
         # Constrcut a chordal extension of the network topology
@@ -39,7 +39,7 @@ function solveLECP(opfdata,K,HEUR)
 
 
   # The master problem MP
-    mMP = Model(solver=CplexSolver(
+    mMP = Model(with_optimizer(Cplex.Optimizer,
       CPX_PARAM_SCRIND=1,
       CPX_PARAM_TILIM=MAX_TIME,
       CPX_PARAM_MIPDISPLAY=4,
@@ -48,7 +48,8 @@ function solveLECP(opfdata,K,HEUR)
       # CPX_PARAM_HEURFREQ=-1,
       CPX_PARAM_THREADS=1,
       CPX_PARAM_ADVIND=0))
-    #mMP = Model(solver=CplexSolver(CPX_PARAM_SCRIND=1,CPX_PARAM_TILIM=MAX_TIME,CPX_PARAM_MIPINTERVAL=50,CPX_PARAM_LPMETHOD=4,CPX_PARAM_SOLUTIONTYPE=2,CPX_PARAM_STARTALG=4))
+
+    #mMP = Model(with_optimizer(Cplex.Optimizer,CPX_PARAM_SCRIND=1,CPX_PARAM_TILIM=MAX_TIME,CPX_PARAM_MIPINTERVAL=50,CPX_PARAM_LPMETHOD=4,CPX_PARAM_SOLUTIONTYPE=2,CPX_PARAM_STARTALG=4))
     # each x[l] is either 0 (line l active) or 1 (line l is cut)
       @variable(mMP, x[l=L], Bin, start=0)
     # dual multipliers associated with active power flow balance constraints
@@ -270,7 +271,8 @@ function solveLECP(opfdata,K,HEUR)
   # some counters
   numcalls_Eta0SP = 0
   nMPUpdates=0
-  wtime = @elapsed status = solve(mMP)
+  wtime = @elapsed JuMP.optimize!(mMP)
+  status=JuMP.termination_status(mMP)
   @show wtime
   @printf("LAST ATTACK COMPUTED&& ")
   for l in L

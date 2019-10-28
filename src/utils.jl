@@ -2,7 +2,7 @@ using LightGraphs
 using Formatting
 using JuMP
 #using CPLEX, Ipopt, SCS 
-using Ipopt, SCS
+using CPLEX, Ipopt, SCS
 using Mosek,MosekTools
 using Arpack
 using DelimitedFiles
