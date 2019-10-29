@@ -18,13 +18,15 @@ function solveDualDC(opfdata,xsoln)
     Pmin,Pmax,PD=opfdata.Pmin,opfdata.Pmax,opfdata.PD
   rho_p=1;rho_q=1;rhoU=1
 # The dual problem 
-  mMP = Model(with_optimizer(Mosek.Optimizer,MSK_IPAR_LOG=0,MSK_IPAR_NUM_THREADS=4))
+  #mMP = Model(with_optimizer(Mosek.Optimizer,MSK_IPAR_LOG=0,MSK_IPAR_NUM_THREADS=4))
+  mMP = Model(with_optimizer(Ipopt.Optimizer))
   @variable(mMP, -rho_p <= α[i=N] <= rho_p)
   @variable(mMP, ζpUB[g=G] >=0)
   @variable(mMP, ζpLB[g=G] >=0)
   @variable(mMP, λF[l=L])
   @variable(mMP, λT[l=L])
-  @variable(mMP, x[l=L], Bin)
+  #@variable(mMP, x[l=L], Bin)
+  @variable(mMP, 0 <= x[l=L] <= 1)
   @constraint(mMP, sum(x[l] for l in L) <= K)
 
   
@@ -76,8 +78,9 @@ function solveDualDC(opfdata,xsoln)
    for l in L
      xsoln[l] = JuMP.value(x[l])
    end
-   bestUBVal = JuMP.objective_bound(mMP)
+   #bestUBVal = JuMP.objective_bound(mMP)
    nNodes = 0 #getnodecount(mMP)
+   bestUBVal = JuMP.objective_value(mMP)
    incVal = JuMP.objective_value(mMP)
    runtime = wtime #JuMP.solve_time(mMP)
    println("solveNodeDC: Return status $status")

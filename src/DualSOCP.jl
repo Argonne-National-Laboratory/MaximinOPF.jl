@@ -18,9 +18,11 @@ function solveDSOCP(xSoln)
   #mMP = Model(solver=CplexSolver(CPX_PARAM_SCRIND=1,CPX_PARAM_TILIM=MAX_TIME,CPX_PARAM_MIPINTERVAL=50,CPX_PARAM_THREADS=1))
   #mMP = Model(solver=MosekSolver(MSK_IPAR_LOG=0,MSK_IPAR_NUM_THREADS=4))
   mMP = Model(with_optimizer(Mosek.Optimizer,MSK_IPAR_LOG=0,MSK_IPAR_NUM_THREADS=4))
+  #mMP = Model(with_optimizer(Ipopt.Optimizer))
 
  # Define the model here
-  @variable(mMP, x[l=L], Bin)
+  #@variable(mMP, x[l=L], Bin)
+  @variable(mMP, 0 <= x[l=L] <= 1)
   rho_p=1;rho_q=1;rhoU=1
 
   @variable(mMP, -rho_p <= α[i=N] <= rho_p)
@@ -56,7 +58,7 @@ function solveDSOCP(xSoln)
 
   @constraint(mMP, sum(x[l] for l in L) <= K)
   
-  relFac = nlines #relaxation factor, needed to resolve a numerical problem noticeable in the lp relaxation
+  relFac = 1 # nlines #relaxation factor, needed to resolve a numerical problem noticeable in the lp relaxation
   @constraint(mMP, [l in L], α[fromBus[l]] - relFac*rho_p*x[l] <= λF[l])
   @constraint(mMP, [l in L], α[fromBus[l]] + relFac*rho_p*x[l] >= λF[l])
   @constraint(mMP, [l in L], -relFac*rho_p*(1 - x[l]) <= λF[l])
@@ -108,6 +110,7 @@ function solveDSOCP(xSoln)
   @constraint(mMP, dRSOCP[l=L], xiR[l] + wRCoeff[l] == 0)
   @constraint(mMP, dISOCP[l=L], xiI[l] + wICoeff[l] == 0)
   @constraint(mMP, cSOCP[l=L], [nu[l],xiD[l],xiR[l],xiI[l]] in SecondOrderCone())
+  #@constraint(mMP, cSOCP[l=L], xiD[l]^2 + xiR[l]^2 + xiI[l]^2 - nu[l]^2 <= 0)
 
    wtime = @elapsed JuMP.optimize!(mMP)
    status=JuMP.termination_status(mMP)
@@ -123,7 +126,7 @@ function solveDSOCP(xSoln)
 end #end of function
 
 
-finalXSoln = zeros(Int,opfdata.nlines)
+finalXSoln = zeros(opfdata.nlines)
 bestUBVal,nNodes,incVal,runtime = solveDSOCP(finalXSoln)
 
 @printf("\n********************FINAL RESULT FOR CASE %s WITH %d LINES CUT H%dR%d*******************\n",CASE_NUM,K, HEUR,FORM)
