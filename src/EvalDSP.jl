@@ -323,13 +323,26 @@ function solveFullModelDC(opfdata,x_val)
   end
 end
 
-function solveBilevelSDP(opfdata,K)
+function solveBilevelSDP(opfdata,ndata,K)
   # The full lower level model, SDP formulation
   # OBTAIN SHORTHAND PROBLEM INFORMATION FROM opfdata
     nbuses, nlines, ngens = opfdata.nbuses, opfdata.nlines, opfdata.ngens
     N, L, G = 1:nbuses, 1:nlines, 1:ngens
     fromLines,toLines,fromBus,toBus = opfdata.fromLines, opfdata.toLines, opfdata.fromBus, opfdata.toBus
     BusGeners, Y = opfdata.BusGeners, opfdata.Y_AC
+
+
+ # These are parameters that change depending on whether a given line is fixed on or off
+  xRHS = zeros(nlines)
+  auxLB = zeros(nlines)
+  for l in L
+    if ndata.x_lbs[l] > (1.0-1e-3)
+      auxLB[l] = -1e20
+    elseif ndata.x_ubs[l] < 1e-3
+      xRHS[l] = 1e20
+    end
+  end
+  
   #mBLSDP = Model(solver=SCSSolver(verbose=0))
   #mBLSDP = Model(solver=MosekSolver(MSK_IPAR_LOG=0,MSK_IPAR_NUM_THREADS=4))
   mBLSDP = Model(with_optimizer(Mosek.Optimizer,MSK_IPAR_LOG=0,MSK_IPAR_NUM_THREADS=4))
@@ -338,12 +351,14 @@ function solveBilevelSDP(opfdata,K)
   @variable(mBLSDP, PSlack[i=N] >= 0)
   @variable(mBLSDP, QSlack[i=N] >= 0)
   @variable(mBLSDP, VMSlack[i=N] >= 0)
-  @variable(mBLSDP, W[1:(2*nbuses), 1:(2*nbuses)], PSD)
+ 
+ # CAN CHORDAL DECOMPOSITION BE APPLIED HERE?
+  @variable(mBLSDP, W[1:(2*nbuses), 1:(2*nbuses)], PSD) ##Can this constraint be approximated with cutting planes in a manner that utilizes sparsity?
 
   @constraint(mBLSDP, VoltMagUB[i=N], W[i,i] - opfdata.Wmax[i] - VMSlack[i] <= 0)
   @constraint(mBLSDP, VoltMagLB[i=N], -W[i,i] + opfdata.Wmin[i] - VMSlack[i] <= 0)
 
-
+  
   @constraint(mBLSDP, Sym1[i=N,j=i:nbuses], W[i,j] - W[nbuses+i,nbuses+j] == 0) # enforcing form [WR WI; WI WR]
   @constraint(mBLSDP, Sym2[i=N,j=i:nbuses], W[i,nbuses+j] + W[j,nbuses+i] == 0)  # Enforcing WI skew symmetric
 
@@ -354,57 +369,51 @@ function solveBilevelSDP(opfdata,K)
   @expression(mBLSDP, PFlowTo[l=L], Y["ttR"][l]*W[toBus[l],toBus[l]] +  Y["tfR"][l]*WR[l] - Y["tfI"][l]*WI[l]  )  
   @expression(mBLSDP, QFlowFrom[l=L], -Y["ffI"][l]*W[fromBus[l],fromBus[l]] - Y["ftI"][l]*WR[l] + Y["ftR"][l]*WI[l] )
   @expression(mBLSDP, QFlowTo[l=L], -Y["ttI"][l]*W[toBus[l],toBus[l]] - Y["tfI"][l]*WR[l] - Y["tfR"][l]*WI[l] )
-#=
 
-   # ... Power flow balance constraints
-   # real part
-   @constraint( mBLSDP, BusPBalanceUB[i=N],
-	Y["shR"][i] * W[i,i] - sum(PG[g] for g in BusGeners[i]) + opfdata.PD[i]        # Sbus part
-      + sum( (1-x_val[l])*(PFlowFrom[l])   for l in fromLines[i] )  + sum( (1-x_val[l])*(PFlowTo[l]-hP[l])   for l in toLines[i] )  
-     <= PSlack[i])
-   @constraint( mBLSDP, BusPBalanceLB[i=N],
-	Y["shR"][i] * W[i,i] - sum(PG[g] for g in BusGeners[i]) + opfdata.PD[i]        # Sbus part
-      + sum( (1-x_val[l])*(PFlowFrom[l]+hP[l])   for l in fromLines[i] )  + sum( (1-x_val[l])*(PFlowTo[l]-hP[l])   for l in toLines[i] )  
-     >= -PSlack[i])
-
-   #imaginary part
-     @constraint( mBLSDP, BusQBalanceUB[i=N],
-	-Y["shI"][i] * W[i,i] - sum(QG[g] for g in BusGeners[i]) + opfdata.QD[i]        #Sbus part
-      + sum( (1-x_val[l])*(QFlowFrom[l]+hQ[l])   for l in fromLines[i] )  + sum( (1-x_val[l])*(QFlowTo[l]-hQ[l])   for l in toLines[i] )  
-      <= QSlack[i] )
-     @constraint( mBLSDP, BusQBalanceLB[i=N],
-	-Y["shI"][i] * W[i,i] - sum(QG[g] for g in BusGeners[i]) + opfdata.QD[i]        #Sbus part
-      + sum( (1-x_val[l])*(QFlowFrom[l]+hQ[l])   for l in fromLines[i] )  + sum( (1-x_val[l])*(QFlowTo[l]-hQ[l])   for l in toLines[i] )  
-      >= -QSlack[i])
-  @objective(mBLSDP, Min, sum(PSlack[i] + QSlack[i] + VMSlack[i] for i in N))
-=#
-
+# AUXILIARY VARIABLES RELATED TO THE DETERMINATION OF EFFECTIVE POWER FLOWS (A BETTER PHYSICAL EXPLANATION MAY BE AVAILABLE)
   @variable(mBLSDP, pfp[l=L] >= 0)
   @variable(mBLSDP, pfm[l=L] >= 0)
   @variable(mBLSDP, ptp[l=L] >= 0)
   @variable(mBLSDP, ptm[l=L] >= 0)
-  @variable(mBLSDP, pfpx[l=L] >= 0)
-  @variable(mBLSDP, pfmx[l=L] >= 0)
-  @variable(mBLSDP, ptpx[l=L] >= 0)
-  @variable(mBLSDP, ptmx[l=L] >= 0)
   @variable(mBLSDP, qfp[l=L] >= 0)
   @variable(mBLSDP, qfm[l=L] >= 0)
   @variable(mBLSDP, qtp[l=L] >= 0)
   @variable(mBLSDP, qtm[l=L] >= 0)
+  @variable(mBLSDP, pfpx[l=L] >= 0)
+  @variable(mBLSDP, pfmx[l=L] >= 0)
+  @variable(mBLSDP, ptpx[l=L] >= 0)
+  @variable(mBLSDP, ptmx[l=L] >= 0)
   @variable(mBLSDP, qfpx[l=L] >= 0)
   @variable(mBLSDP, qfmx[l=L] >= 0)
   @variable(mBLSDP, qtpx[l=L] >= 0)
   @variable(mBLSDP, qtmx[l=L] >= 0)
+  for l in L
+    if ndata.x_lbs[l] > (1.0-1e-3)
+       delete_lower_bound(pfpx[l]) 
+       delete_lower_bound(pfmx[l]) 
+       delete_lower_bound(ptpx[l]) 
+       delete_lower_bound(ptmx[l]) 
+       delete_lower_bound(qfpx[l]) 
+       delete_lower_bound(qfmx[l]) 
+       delete_lower_bound(qtpx[l]) 
+       delete_lower_bound(qtmx[l]) 
+    end
+  end
 
+ ### To fix x_l == 1, we relax the l instance of the following four constraints
   @constraint(mBLSDP, λf[l=L], PFlowFrom[l] - (pfm[l]-pfp[l])-(pfmx[l]-pfpx[l]) == 0 )   
   @constraint(mBLSDP, λt[l=L], PFlowTo[l] - (ptm[l]-ptp[l])-(ptmx[l]-ptpx[l]) == 0 )   
   @constraint(mBLSDP, μf[l=L], QFlowFrom[l] - (qfm[l]-qfp[l])-(qfmx[l]-qfpx[l]) == 0 )
   @constraint(mBLSDP, μt[l=L], QFlowTo[l] - (qtm[l]-qtp[l])-(qtmx[l]-qtpx[l]) == 0 )
 
-  @variable(mBLSDP, ux[l=L] >= 0)
-  @variable(mBLSDP, uK >= 0)
+  @variable(mBLSDP, uK >= 0) ### To have sum x_l == K, we change uK be free
   @constraint(mBLSDP, x[l=L], (pfm[l]+pfp[l])-(pfmx[l]+pfpx[l])+(ptm[l]+ptp[l])-(ptmx[l]+ptpx[l]) 
-	+ (qfm[l]+qfp[l])-(qfmx[l]+qfpx[l])+(qtm[l]+qtp[l])-(qtmx[l]+qtpx[l]) - ux[l] - uK <= 0)
+	+ (qfm[l]+qfp[l])-(qfmx[l]+qfpx[l])+(qtm[l]+qtp[l])-(qtmx[l]+qtpx[l]) - uK <= 0.0) ### To fix x_l == 0, we relax the x[l] instance of this constraint
+  for l in L
+    if ndata.x_ubs[l] < 1e-3
+      delete(mBLSDP, x[l])
+    end
+  end
 
 
    # ... Power flow balance constraints
@@ -427,17 +436,23 @@ function solveBilevelSDP(opfdata,K)
 	-Y["shI"][i] * W[i,i] - sum(QG[g] for g in BusGeners[i]) + opfdata.QD[i]        #Sbus part
       + sum( ( qfm[l] - qfp[l] )   for l in fromLines[i] )  + sum( ( qtm[l] - qtp[l] )   for l in toLines[i] )  
       + QSlack[i] >= 0)
-  @objective(mBLSDP, Min, K*uK + sum(PSlack[i] + QSlack[i] + VMSlack[i] for i in N) + sum(pfpx[l]+pfmx[l]+ptpx[l]+ptmx[l]+qfpx[l]+qfmx[l]+qtpx[l]+qtmx[l]+ux[l] for l in L))  
+  @objective(mBLSDP, Min, K*uK + sum(PSlack[i] + QSlack[i] + VMSlack[i] for i in N) + sum(pfpx[l]+pfmx[l]+ptpx[l]+ptmx[l]+qfpx[l]+qfmx[l]+qtpx[l]+qtmx[l] for l in L))  
 
   JuMP.optimize!(mBLSDP)
   status=JuMP.termination_status(mBLSDP)
-  if status == MOI.OPTIMAL || status == MOI.LOCALLY_SOLVED || status == MOI.ALMOST_LOCALLY_SOLVED
-    @show JuMP.objective_value(mBLSDP)
-    return JuMP.objective_value(mBLSDP)
-  else
-    println("Full SDP model solved with status: $status")
-    return 0
+  @show JuMP.objective_value(mBLSDP)
+  println("Full SDP model solved with status: $status")
+  for l in L
+    if is_valid(mBLSDP,x[l])
+      if abs(JuMP.dual(x[l])) >= 1e-3
+        @printf("(%d, %.2f)",l,-JuMP.dual(x[l]))
+      end
+    else
+      @printf("(%d, 0)",l)
+    end
   end
+  print("\n")
+  return JuMP.objective_value(mBLSDP)
 end
 
 function solveBilevelSOCP(opfdata,K)
@@ -522,6 +537,10 @@ function solveBilevelSOCP(opfdata,K)
   status=JuMP.termination_status(mBLSOCP)
   if status == MOI.OPTIMAL || status == MOI.LOCALLY_SOLVED || status == MOI.ALMOST_LOCALLY_SOLVED
     @show JuMP.objective_value(mBLSOCP)
+    for l in L
+      @printf(" %.3f",JuMP.dual(x[l]))
+    end
+    print("\n")
     return JuMP.objective_value(mBLSOCP)
   else
     println("Full SOCP model solved with status: $status")
