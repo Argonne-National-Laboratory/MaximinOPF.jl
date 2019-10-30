@@ -348,9 +348,9 @@ function solveBilevelSDP(opfdata,ndata,K)
   mBLSDP = Model(with_optimizer(Mosek.Optimizer,MSK_IPAR_LOG=0,MSK_IPAR_NUM_THREADS=4))
   @variable(mBLSDP, opfdata.Pmin[g] <= PG[g=G] <= opfdata.Pmax[g])
   @variable(mBLSDP, opfdata.Qmin[g] <= QG[g=G] <= opfdata.Qmax[g])
-  @variable(mBLSDP, PSlack[i=N] >= 0)
-  @variable(mBLSDP, QSlack[i=N] >= 0)
-  @variable(mBLSDP, VMSlack[i=N] >= 0)
+  @variable(mBLSDP, PSlack[i=N] == 0)
+  @variable(mBLSDP, QSlack[i=N] == 0)
+  @variable(mBLSDP, VMSlack[i=N] == 0)
  
  # CAN CHORDAL DECOMPOSITION BE APPLIED HERE?
   @variable(mBLSDP, W[1:(2*nbuses), 1:(2*nbuses)], PSD) ##Can this constraint be approximated with cutting planes in a manner that utilizes sparsity?
@@ -388,7 +388,16 @@ function solveBilevelSDP(opfdata,ndata,K)
   @variable(mBLSDP, qtpx[l=L] >= 0)
   @variable(mBLSDP, qtmx[l=L] >= 0)
   for l in L
-    if ndata.x_lbs[l] > (1.0-1e-3)
+    if ndata.x_ubs[l] < 1e-3
+       delete_lower_bound(pfp[l]) 
+       delete_lower_bound(pfm[l]) 
+       delete_lower_bound(ptp[l]) 
+       delete_lower_bound(ptm[l]) 
+       delete_lower_bound(qfp[l]) 
+       delete_lower_bound(qfm[l]) 
+       delete_lower_bound(qtp[l]) 
+       delete_lower_bound(qtm[l]) 
+    elseif ndata.x_lbs[l] > (1.0-1e-3)
        delete_lower_bound(pfpx[l]) 
        delete_lower_bound(pfmx[l]) 
        delete_lower_bound(ptpx[l]) 
@@ -408,12 +417,7 @@ function solveBilevelSDP(opfdata,ndata,K)
 
   @variable(mBLSDP, uK >= 0) ### To have sum x_l == K, we change uK be free
   @constraint(mBLSDP, x[l=L], (pfm[l]+pfp[l])-(pfmx[l]+pfpx[l])+(ptm[l]+ptp[l])-(ptmx[l]+ptpx[l]) 
-	+ (qfm[l]+qfp[l])-(qfmx[l]+qfpx[l])+(qtm[l]+qtp[l])-(qtmx[l]+qtpx[l]) - uK <= 0.0) ### To fix x_l == 0, we relax the x[l] instance of this constraint
-  for l in L
-    if ndata.x_ubs[l] < 1e-3
-      delete(mBLSDP, x[l])
-    end
-  end
+	+ (qfm[l]+qfp[l])-(qfmx[l]+qfpx[l])+(qtm[l]+qtp[l])-(qtmx[l]+qtpx[l]) - uK == 0.0) ### To fix x_l == 0, we relax the x[l] instance of this constraint
 
 
    # ... Power flow balance constraints
@@ -443,12 +447,8 @@ function solveBilevelSDP(opfdata,ndata,K)
   @show JuMP.objective_value(mBLSDP)
   println("Full SDP model solved with status: $status")
   for l in L
-    if is_valid(mBLSDP,x[l])
-      if abs(JuMP.dual(x[l])) >= 1e-3
-        @printf("(%d, %.2f)",l,-JuMP.dual(x[l]))
-      end
-    else
-      @printf("(%d, 0)",l)
+    if abs(JuMP.dual(x[l])) >= 1e-3
+      @printf("(%d, %.2f)",l,-JuMP.dual(x[l]))
     end
   end
   print("\n")
