@@ -331,26 +331,12 @@ function solveBilevelSDP(opfdata,ndata,K)
     fromLines,toLines,fromBus,toBus = opfdata.fromLines, opfdata.toLines, opfdata.fromBus, opfdata.toBus
     BusGeners, Y = opfdata.BusGeners, opfdata.Y_AC
 
-
- # These are parameters that change depending on whether a given line is fixed on or off
-  xRHS = zeros(nlines)
-  auxLB = zeros(nlines)
-  for l in L
-    if ndata.x_lbs[l] > (1.0-1e-3)
-      auxLB[l] = -1e20
-    elseif ndata.x_ubs[l] < 1e-3
-      xRHS[l] = 1e20
-    end
-  end
-  
   #mBLSDP = Model(solver=SCSSolver(verbose=0))
   #mBLSDP = Model(solver=MosekSolver(MSK_IPAR_LOG=0,MSK_IPAR_NUM_THREADS=4))
   mBLSDP = Model(with_optimizer(Mosek.Optimizer,MSK_IPAR_LOG=0,MSK_IPAR_NUM_THREADS=4))
   @variable(mBLSDP, opfdata.Pmin[g] <= PG[g=G] <= opfdata.Pmax[g])
   @variable(mBLSDP, opfdata.Qmin[g] <= QG[g=G] <= opfdata.Qmax[g])
-  @variable(mBLSDP, PSlack[i=N] == 0)
-  @variable(mBLSDP, QSlack[i=N] == 0)
-  @variable(mBLSDP, VMSlack[i=N] == 0)
+  @variable(mBLSDP, VMSlack[i=N] >= 0)
  
  # CAN CHORDAL DECOMPOSITION BE APPLIED HERE?
   @variable(mBLSDP, W[1:(2*nbuses), 1:(2*nbuses)], PSD) ##Can this constraint be approximated with cutting planes in a manner that utilizes sparsity?
@@ -388,7 +374,7 @@ function solveBilevelSDP(opfdata,ndata,K)
   @variable(mBLSDP, qtpx[l=L] >= 0)
   @variable(mBLSDP, qtmx[l=L] >= 0)
   for l in L
-    if ndata.x_ubs[l] < 1e-3
+    if ndata.x_ubs[l] < 1e-3  ### x_l fixed to 0
        delete_lower_bound(pfp[l]) 
        delete_lower_bound(pfm[l]) 
        delete_lower_bound(ptp[l]) 
@@ -397,7 +383,7 @@ function solveBilevelSDP(opfdata,ndata,K)
        delete_lower_bound(qfm[l]) 
        delete_lower_bound(qtp[l]) 
        delete_lower_bound(qtm[l]) 
-    elseif ndata.x_lbs[l] > (1.0-1e-3)
+    elseif ndata.x_lbs[l] > (1.0-1e-3)  ### x_l fixed to 1
        delete_lower_bound(pfpx[l]) 
        delete_lower_bound(pfmx[l]) 
        delete_lower_bound(ptpx[l]) 
@@ -415,32 +401,21 @@ function solveBilevelSDP(opfdata,ndata,K)
   @constraint(mBLSDP, μf[l=L], QFlowFrom[l] - (qfm[l]-qfp[l])-(qfmx[l]-qfpx[l]) == 0 )
   @constraint(mBLSDP, μt[l=L], QFlowTo[l] - (qtm[l]-qtp[l])-(qtmx[l]-qtpx[l]) == 0 )
 
-  @variable(mBLSDP, uK >= 0) ### To have sum x_l == K, we change uK be free
+  @variable(mBLSDP, uK >= 0) ### To have  sum_l x_l == K, we change uK be free
   @constraint(mBLSDP, x[l=L], (pfm[l]+pfp[l])-(pfmx[l]+pfpx[l])+(ptm[l]+ptp[l])-(ptmx[l]+ptpx[l]) 
 	+ (qfm[l]+qfp[l])-(qfmx[l]+qfpx[l])+(qtm[l]+qtp[l])-(qtmx[l]+qtpx[l]) - uK == 0.0) ### To fix x_l == 0, we relax the x[l] instance of this constraint
 
 
    # ... Power flow balance constraints
    # real part
-   @constraint( mBLSDP, BusPBalanceUB[i=N],
+   @constraint( mBLSDP, BusPBalance[i=N],
 	Y["shR"][i] * W[i,i] - sum(PG[g] for g in BusGeners[i]) + opfdata.PD[i]        # Sbus part
-      + sum( ( pfm[l] - pfp[l] )   for l in fromLines[i] )  + sum( ( ptm[l] - ptp[l] ) for l in toLines[i] )  
-     - PSlack[i] <= 0)
-   @constraint( mBLSDP, BusPBalanceLB[i=N],
-	Y["shR"][i] * W[i,i] - sum(PG[g] for g in BusGeners[i]) + opfdata.PD[i]        # Sbus part
-      + sum( ( pfm[l] - pfp[l] )  for l in fromLines[i] )  + sum( ( ptm[l] - ptp[l] )  for l in toLines[i] )  
-     + PSlack[i] >= 0)
-
+      + sum( ( pfm[l] - pfp[l] )   for l in fromLines[i] )  + sum( ( ptm[l] - ptp[l] ) for l in toLines[i] ) == 0) 
    #imaginary part
    @constraint( mBLSDP, BusQBalanceUB[i=N],
 	-Y["shI"][i] * W[i,i] - sum(QG[g] for g in BusGeners[i]) + opfdata.QD[i]        #Sbus part
-      + sum( ( qfm[l] - qfp[l] )   for l in fromLines[i] )  + sum( ( qtm[l] - qtp[l] )   for l in toLines[i] )  
-      - QSlack[i] <= 0)
-   @constraint( mBLSDP, BusQBalanceLB[i=N],
-	-Y["shI"][i] * W[i,i] - sum(QG[g] for g in BusGeners[i]) + opfdata.QD[i]        #Sbus part
-      + sum( ( qfm[l] - qfp[l] )   for l in fromLines[i] )  + sum( ( qtm[l] - qtp[l] )   for l in toLines[i] )  
-      + QSlack[i] >= 0)
-  @objective(mBLSDP, Min, K*uK + sum(PSlack[i] + QSlack[i] + VMSlack[i] for i in N) + sum(pfpx[l]+pfmx[l]+ptpx[l]+ptmx[l]+qfpx[l]+qfmx[l]+qtpx[l]+qtmx[l] for l in L))  
+      + sum( ( qfm[l] - qfp[l] )   for l in fromLines[i] )  + sum( ( qtm[l] - qtp[l] )   for l in toLines[i] ) == 0)  
+  @objective(mBLSDP, Min, K*uK + sum(VMSlack[i] for i in N) + sum(pfpx[l]+pfmx[l]+ptpx[l]+ptmx[l]+qfpx[l]+qfmx[l]+qtpx[l]+qtmx[l] for l in L))  
 
   JuMP.optimize!(mBLSDP)
   status=JuMP.termination_status(mBLSDP)
@@ -452,6 +427,11 @@ function solveBilevelSDP(opfdata,ndata,K)
     end
   end
   print("\n")
+  uWSum = 0.0
+  for i in N
+    uWSum += JuMP.value(VMSlack[i])
+  end
+  println("The sum of the voltage magnitude slacks is: ",uWSum)
   return JuMP.objective_value(mBLSDP)
 end
 
