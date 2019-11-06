@@ -63,7 +63,7 @@ print("finished loading the data after ",(time_ns()-start_load)/1e9," seconds.\n
 
 
 # Import the appropriate subproblem formulation
-N, L, G = opfdata.N, opfdata.L, opfdata.G 
+N, L, G = 1:opfdata.nbuses, 1:opfdata.nlines, 1:opfdata.ngens 
 node_data=create_node(opfdata)
 #= Params
   ALG::Int
@@ -96,16 +96,16 @@ elseif FORM == ProxPtSDP
   #plot_params,plot_opt,plot_data,plot_params_ss,plot_opt_ss,plot_data_ss=PBM_DelfinoOliveira(opfdata,params,K,HEUR,node_data)
   #exptype="pbm"
 
-  #include("../src/PBM-SagastizabalSolodov.jl")
-  #params=Params(3,10000,100,1e-4,1000.0,1.0,0.1,0.5,0.5,1e-6,1e-5,1e-5)
-  #PBM_SagastizabalSolodov(opfdata,params,K,HEUR,node_data)
+  include("../src/PBM-SagastizabalSolodov.jl")
+  params=Params(3,10000,100,1e-4,1000.0,1.0,0.1,0.5,0.5,1e-6,1e-5,1e-5)
+  PBM_SagastizabalSolodov(opfdata,params,K,HEUR,node_data)
 
   #include("../src/CPAlg.jl")
   #plot_data=CPAlg(opfdata,params,K,HEUR,node_data)
   #exptype="cp"
 
-  include("../src/scipSDP.jl")
-  createSCIPModel(opfdata)
+  #include("../src/scipSDP.jl")
+  #createSCIPModel(opfdata)
 
 write_data = false
 if write_data
@@ -249,6 +249,9 @@ elseif FORM == AC
   @show finalXSoln.nodeBd
 elseif FORM == SOCP
   include("../src/DualSOCP.jl")
+elseif FORM == DC
+  include("../src/DualDC.jl")
+  testDualDC(opfdata)
 else
 end
 

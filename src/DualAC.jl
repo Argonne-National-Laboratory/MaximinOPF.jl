@@ -26,7 +26,7 @@ end
 function solveNodeAC(opfdata,ndata)
   # OBTAIN PROBLEM INFORMATION FROM opfdata
     nbuses, nlines, ngens = opfdata.nbuses, opfdata.nlines, opfdata.ngens
-    N, L, G = opfdata.N, opfdata.L, opfdata.G 
+    N, L, G = 1:nbuses, 1:nlines, 1:ngens 
     fromLines,toLines,fromBus,toBus = opfdata.fromLines, opfdata.toLines, opfdata.fromBus, opfdata.toBus
     BusGeners, Y = opfdata.BusGeners, opfdata.Y_AC
 
@@ -40,16 +40,16 @@ function solveNodeAC(opfdata,ndata)
     #mMP = Model(with_optimizer(SCS.Optimizer,verbose=1,max_iters=100000,rho_x=1.0))
     mMP = Model(with_optimizer(Mosek.Optimizer,MSK_IPAR_LOG=0,MSK_IPAR_NUM_THREADS=1))
     #mMP = Model(with_optimizer(SCS.Optimizer,verbose=1,max_iters=100000))
-    @variable(mMP, -1 <= α[i=N] <= 1)
-    @variable(mMP, -1 <= β[i=N] <= 1)
+    @variable(mMP, α[i=N])
+    @variable(mMP, β[i=N])
     @variable(mMP, γp[i=N] >= 0)
     @variable(mMP, γm[i=N] >= 0)
-    @constraint(mMP, [i=N], γp[i]+γm[i] <= 1)
+    @constraint(mMP, [i=N], γp[i] + γm[i] <= 1)
     @variable(mMP, ζpUB[g=G] >= 0)
     @variable(mMP, ζpLB[g=G] >= 0)
     @variable(mMP, ζqUB[g=G] >= 0)
     @variable(mMP, ζqLB[g=G] >= 0)
-    @variable(mMP, ndata.x_lbs[l] <= x[l=L] <= ndata.x_ubs[l])
+    @variable(mMP, x[l=L])
     @constraint(mMP, sum(x[l] for l in L) <= K)
 
   for i in N
@@ -65,21 +65,35 @@ function solveNodeAC(opfdata,ndata)
  # McCormick inequalities enforcing bilinear equalities
     # auxiliary dual variables due to McCormick reformulation of cross terms appearing in the Lagrangian
       @variable(mMP, λF[l=L]); @variable(mMP, λT[l=L]); @variable(mMP, μF[l=L]); @variable(mMP, μT[l=L])
-    for l in L
+  for l in L
       if ndata.x_lbs[l] > 0.9999
-         set_lower_bound(λF[l],0)
-         set_upper_bound(λF[l],0)
-         set_lower_bound(λT[l],0)
-         set_upper_bound(λT[l],0)
-         set_lower_bound(μF[l],0)
-         set_upper_bound(μF[l],0)
-         set_lower_bound(μT[l],0)
-         set_upper_bound(μT[l],0)
+	fix(x[l],1)
+        fix(λF[l],0)
+        fix(λT[l],0)
+        fix(μF[l],0)
+        fix(μT[l],0)
+        set_lower_bound(α[fromBus[l]],-1)
+        set_upper_bound(α[fromBus[l]],1)
+        set_lower_bound(α[toBus[l]],-1)
+        set_upper_bound(α[toBus[l]],1)
+        set_lower_bound(β[fromBus[l]],-1)
+        set_upper_bound(β[fromBus[l]],1)
+        set_lower_bound(β[toBus[l]],-1)
+        set_upper_bound(β[toBus[l]],1)
       elseif ndata.x_ubs[l] < 0.0001
-	 @constraint(mMP, λF[l] - α[fromBus[l]] == 0)
-	 @constraint(mMP, λT[l] - α[toBus[l]] == 0)
-	 @constraint(mMP, μF[l] - β[fromBus[l]] == 0)
-	 @constraint(mMP, μT[l] - β[toBus[l]] == 0)
+	fix(x[l],0)
+	@constraint(mMP, λF[l] - α[fromBus[l]] == 0)
+	@constraint(mMP, λT[l] - α[toBus[l]] == 0)
+	@constraint(mMP, μF[l] - β[fromBus[l]] == 0)
+	@constraint(mMP, μT[l] - β[toBus[l]] == 0)
+        set_lower_bound(α[fromBus[l]],-1)
+        set_upper_bound(α[fromBus[l]],1)
+        set_lower_bound(α[toBus[l]],-1)
+        set_upper_bound(α[toBus[l]],1)
+        set_lower_bound(β[fromBus[l]],-1)
+        set_upper_bound(β[fromBus[l]],1)
+        set_lower_bound(β[toBus[l]],-1)
+        set_upper_bound(β[toBus[l]],1)
       else
         @constraint(mMP, α[fromBus[l]] - x[l] <= λF[l]) 
         @constraint(mMP, α[fromBus[l]] + x[l] >= λF[l])
@@ -99,25 +113,7 @@ function solveNodeAC(opfdata,ndata)
         @constraint(mMP, -(1 - x[l]) <= μT[l])
         @constraint(mMP,  (1 - x[l]) >= μT[l])
       end
-    end
-
-
-
-
-#=
-  # McCormick inequalities enforcing bilinear equalities
-    # auxiliary dual variables due to McCormick reformulation of cross terms appearing in the Lagrangian
-      @variable(mMP, λF[l=L]); @variable(mMP, λT[l=L]); @variable(mMP, μF[l=L]); @variable(mMP, μT[l=L])
-    @constraint(mMP, AMcf1[l in L], α[fromBus[l]] - x[l] <= λF[l]); @constraint(mMP, AMcf2[l in L], α[fromBus[l]] + x[l] >= λF[l])
-    @constraint(mMP, AMcf3[l in L], -(1 - x[l]) <= λF[l]); @constraint(mMP, AMcf4[l in L], (1 - x[l]) >= λF[l])
-    @constraint(mMP, AMct1[l in L], α[toBus[l]] - x[l] <= λT[l]); @constraint(mMP, AMct2[l in L], α[toBus[l]] + x[l] >= λT[l])
-    @constraint(mMP, AMct3[l in L], -(1 - x[l]) <= λT[l]); @constraint(mMP, AMct4[l in L], (1 - x[l]) >= λT[l])
-
-    @constraint(mMP, BMcf1[l in L], β[fromBus[l]] - x[l] <= μF[l]); @constraint(mMP, BMcf2[l in L], β[fromBus[l]] + x[l] >= μF[l])
-    @constraint(mMP, BMcf3[l in L], -(1 - x[l]) <= μF[l]); @constraint(mMP, BMcf4[l in L], (1 - x[l]) >= μF[l])
-    @constraint(mMP, BMct1[l in L], β[toBus[l]] - x[l] <= μT[l]); @constraint(mMP, BMct2[l in L], β[toBus[l]] + x[l] >= μT[l])
-    @constraint(mMP, BMct3[l in L], -(1 - x[l]) <= μT[l]); @constraint(mMP, BMct4[l in L], (1 - x[l]) >= μT[l])
-=#
+  end
 
   @expression(mMP, C[i=1:(2*nbuses),j=i:(2*nbuses)], 0)
   for i in N
@@ -189,15 +185,18 @@ function solveNodeAC(opfdata,ndata)
   end
 
   JuMP.optimize!(mMP)
-  #mpsoln.status=JuMP.termination_status(mMP)
+  status=JuMP.termination_status(mMP)
   #if mpsoln.status == :Optimal || mpsoln.status == :Stall
   if true
-    #println("solveNodeAC: Return status ",mpsoln.status)
+      if status != MOI.OPTIMAL
+	println("FLAGGING solveNodeAC: Return status ",status)
+      end
       for l in L
         ndata.x_soln[l] = getvalue(x[l])
         from=fromBus[l]; to=toBus[l]
         #mpsoln.x_dualsoln[l] = getdual(x[l])  
       end
+      printX2(opfdata,ndata.x_soln)
       ndata.nodeBd = getobjectivevalue(mMP)
       #mpsoln.solvetime = getsolvetime(mMP)
   else
@@ -208,13 +207,13 @@ end #end of function
 function xIntTol(opfdata,ndata)
     x_val = ndata.x_soln
     tol = 1e-6
-    for l in opfdata.L
+    for l in 1:opfdata.nlines
       if min(abs(x_val[l]),abs(1-x_val[l])) > tol
     return false
       end
     end
     # at this point, x_val is verified to be binary within tolerance
-    for l in opfdata.L
+    for l in 1:opfdata.nlines
     x_val[l] = round(x_val[l])
     end
     return true
@@ -222,7 +221,7 @@ end
 function findBranchIdx(opfdata,x_val)
   maxidx=1
   maxval=min(x_val[1], 1-x_val[1])
-  for l in opfdata.L
+  for l in 1:opfdata.nlines
     if min(x_val[l], 1-x_val[l]) > maxval
     maxidx=l
     maxval = min(x_val[l],1-x_val[l])
@@ -234,14 +233,14 @@ end
 function findBranchIdx2(opfdata,x_val)
   absCoeff=zeros(opfdata.nlines)
   Y = opfdata.Y_AC
-  for l in opfdata.L
+  for l in 1:opfdata.nlines
     absCoeff[l] =
       sqrt(Y["ffR"][l]^2 + Y["ffI"][l]^2 + Y["ttR"][l]^2 + Y["ttI"][l]^2
       + Y["ftR"][l]^2 + Y["ftI"][l]^2 + Y["tfR"][l]^2 + Y["tfI"][l]^2)
   end
   maxidx=1
   maxval=absCoeff[1]*min(x_val[1], 1-x_val[1])
-  for l in opfdata.L
+  for l in 1:opfdata.nlines
     if absCoeff[l]*min(x_val[l], 1-x_val[l]) > maxval
     maxidx=l
     maxval = absCoeff[l]*min(x_val[l],1-x_val[l])
@@ -252,7 +251,7 @@ end
 function findBranchIdx3(opfdata,x_val,xDualVals)
   maxidx=1
   maxval=xDualVals[1]*min(x_val[1], 1-x_val[1])
-  for l in opfdata.L
+  for l in 1:opfdata.nlines
     if xDualVals[l]*min(x_val[l], 1-x_val[l]) > maxval
     maxidx=l
     maxval = xDualVals[l]*min(x_val[l],1-x_val[l])
@@ -276,7 +275,6 @@ end
 function testSCSonRoot(opfdata)
   println("Testing SCS or Mosek on the PSD formulation at the root node...")
   time_Start = time_ns()
-  N, L, G = opfdata.N, opfdata.L, opfdata.G 
   node_data=create_node(opfdata)
   solveNodeAC(opfdata,node_data)
   time_End = (time_ns()-time_Start)/1e9
@@ -286,7 +284,7 @@ end
 
 function solveBnBSDP(opfdata,incsoln)
   global MAX_TIME
-  nlines,L = opfdata.nlines, opfdata.L
+  nlines,L = opfdata.nlines, 1:opfdata.nlines
 
 
   start_time = time_ns()
@@ -395,7 +393,7 @@ function primHeur(opfdata,ndata,feasXs,incSoln)
 end
 
 function primHeurXInt(opfdata,ndata,feasXs,incSoln)
-  nlines,L=opfdata.nlines,opfdata.L
+  nlines,L=opfdata.nlines,1:opfdata.nlines
   for l in L
     ndata.x_soln[l] = round(ndata.x_soln[l])
   end

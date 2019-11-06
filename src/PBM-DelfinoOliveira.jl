@@ -11,7 +11,7 @@ function PBM_DelfinoOliveira(opfdata,params,K,HEUR,node_data)
     time_Start = time_ns()
   # OBTAIN SHORTHAND PROBLEM INFORMATION FROM opfdata
     nbuses, nlines, ngens = opfdata.nbuses, opfdata.nlines, opfdata.ngens
-    N, L, G = opfdata.N, opfdata.L, opfdata.G 
+    N, L, G = 1:nbuses,1:nlines,1:ngens 
     fromLines,toLines,fromBus,toBus = opfdata.fromLines, opfdata.toLines, opfdata.fromBus, opfdata.toBus
     BusGeners, Y = opfdata.BusGeners, opfdata.Y_AC
   # DONE OBTAINING PROBLEM INFORMATION FROM opfdata
