@@ -47,8 +47,8 @@ if length(ARGS) > 0
     end
   end
 else
-  println("Usage: julia BranchAndCut.jl CASE_NUM K HEUR FORM")
-  println("Testing parameters: julia BranchAndCut.jl 30 4 0 3")
+  println("Usage: julia test/runtests.jl CASE_NUM K HEUR FORM")
+  println("Testing parameters: julia test/runtests.jl 30 4 0 3")
 end
 ############# DONE READING ARGS ###############
 
