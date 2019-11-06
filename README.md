@@ -45,12 +45,13 @@ There is a script for the above, in which case it is recommended to run, say,
 where for our purpose, we want to always set H=0
 
 ==================
-To install and test
+## To install and test
+Run the instaruction below to install and test MaximinOPF
 
-'''
-(Shell) cd <proj_root>
-(Shell) julia
-(Julia) ]
+```
+(Shell)> cd <proj_root>
+(Shell)> julia
+(Julia)> ]
 (v1.2) pkg> activate .
 (MaximinOPF) pkg> test
-'''
+```
