@@ -20,7 +20,7 @@ function createSCIPModel(opfdata)
     fromLines,toLines,fromBus,toBus = opfdata.fromLines, opfdata.toLines, opfdata.fromBus, opfdata.toBus
     BusGeners, Y = opfdata.BusGeners, opfdata.Y_AC
     # indicate to enable chordal decomposition
-    chordal_decomposition = false
+    chordal_decomposition = true
 
   # Instantiating the model and solver for the dual problem
   # NOTE: UNDER THE CURRENT STATE OF DEVELOPMENT, MathOptFormat REQUIRES MODELS CREATED THROUGH JUMP TO ADD BOUNDS AS CONSTRAINTS
@@ -28,8 +28,9 @@ function createSCIPModel(opfdata)
     #mMP = Model(solver=MosekSolver(MSK_IPAR_LOG=0,MSK_IPAR_NUM_THREADS=nThreads))
     #mMP = Model(solver=SCSSolver(verbose=1,max_iters=1000000))
     #mMP = Model(with_optimizer(SCS.Optimizer,verbose=1,max_iters=100000,rho_x=1.0))
-    mMP = Model(with_optimizer(Mosek.Optimizer,MSK_IPAR_LOG=0,MSK_IPAR_NUM_THREADS=1))
+    # mMP = Model(with_optimizer(Mosek.Optimizer,MSK_IPAR_LOG=0,MSK_IPAR_NUM_THREADS=1))
     #mMP = Model(with_optimizer(SCS.Optimizer,verbose=1,max_iters=100000))
+    mMP = Model()
     @variable(mMP, α[i=N])
     @constraint(mMP, aLB[i=N], α[i] >= -1)
     @constraint(mMP, aUB[i=N], α[i] <= 1)
