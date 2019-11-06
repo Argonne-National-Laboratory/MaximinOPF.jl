@@ -1,0 +1,44 @@
+V=
+#OUTDIR=Output
+#OUTDIR=TestOutAC
+#OUTDIR=TestACBnB
+OUTDIR=TestProxPtSDP
+#OUTDIR=TestACBnB2
+#OUTDIR=TestACP
+#OUTDIR=TestOutSDP
+ERRDIR=Error
+#ALG=DualSCOPF
+ALG=test/Main
+#Usage: julia BranchAndCut.jl CASE K H R TIME
+#
+if [ "$#" -eq 0 ]; then
+    echo "Illegal number of parameters"
+fi
+
+if [ "$#" -eq 4 ]; then
+    echo "Too many parameters"
+fi
+
+if [ "$#" -eq 3 ]; then
+    #env OMP_NUM_THREADS=1 JULIA_NUM_THREADS=1 julia --depwarn=no -O3 ${ALG}.jl $1 $2 $3 3 > ${OUTDIR}/case$1K$2H$3R3 &
+    #julia --depwarn=no -O3 ${ALG}.jl $1 $2 $3 3 2> /dev/null &
+    #julia --depwarn=no -O3 ${ALG}.jl $1 $2 $3 3 
+    julia -O3 ${ALG}.jl $1 $2 $3 3 2> depwarn
+fi
+
+if [ "$#" -eq 2 ]; then
+  for i in `seq 0 2`;
+  do
+    env OMP_NUM_THREADS=1 JULIA_NUM_THREADS=1 julia --depwarn=no -O3 ${ALG}.jl $1 $2 $i 3 > ${OUTDIR}/case$1K$2H${i}R0 &
+  done    
+fi
+
+if [ "$#" -eq 1 ]; then
+  for i in `seq 1 4`;
+  do
+    for j in `seq 0 2`;
+    do
+      env OMP_NUM_THREADS=1 JULIA_NUM_THREADS=1 julia --depwarn=no -O3 ${ALG}.jl $1 $i $j 3 > ${OUTDIR}/case$1K${i}H${j}R0 &
+    done
+  done    
+fi
