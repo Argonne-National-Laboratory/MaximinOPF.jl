@@ -87,7 +87,7 @@
 \author{Brian Dandurand \\
 joint work with: \\
 Kibaek Kim \\
-Michel Schanen 
+Sang-il Yim
 }
 \institute{Division of Mathematics and Computer Science \\ Argonne National Laboratory, USA}
 
@@ -139,22 +139,18 @@ Buses are indexed by $i \in N$ and lines (including transformers) are indexed by
 \begin{subequations}
 \begin{align}
 &\min_{\substack{v,W,p^G,q^G,\\ p^f,p^t,q^f,q^t,\\ u \geqq 0}} \quad 
-  \sum_{i \in N} u_i^p + u_i^q + \sum_{l \in L} u_l^{pf} + u_l^{ft} + u_l^{qf} + u_l^{qt}  \notag \\
+  \sum_{i \in N} u_i^p + u_i^q  \notag \\
   & W = v v^* \notag\\
   & P_i^{min} \leq p_i^G \leq P_i^{max}, \quad Q_i^{min} \leq q_i^G \leq Q_i^{max}, \quad i\in N \notag \\
   & (V_i^{min})^2 \leq W_{ii} \leq (V_i^{max})^2,\quad i\in N, \notag \\
   & -u_i^p \le p_i^{sh}(\WW_{ii}) - p^G_i + P^D_i 
-	+ \sum_{\llll \in \Lines_\ii^{\from} } p_{l}^{f}  
-	+\sum_{\llll \in \Lines_\ii^{\tto}   } p_{l}^{t} 
+	+ \sum_{\llll \in \Lines_\ii^{\from} } \p{\from}_{\llll}(\WW_\llll)  
+	+\sum_{\llll \in \Lines_\ii^{\tto}   } \p{\tto}_{\llll}(\WW_\llll)
 	\le u_i^p \quad i\in N, \notag\\ 
   & -u_i^q \le q_i^{sh}(\WW_{ii}) - q^G_i + Q^D_i 
-	+ \sum_{\llll \in \Lines_\ii^{\from}} q_{l}^{f}
-	+ \sum_{\llll \in \Lines_\ii^{\tto} } q_{l}^{t} 
-	\le u_i^q \quad i\in N, \notag \\
-& -u_l^{pf} \le \p{\from}_{\llll}(\WW_\llll) - p_{l}^{f} \le u_l^{pf}, \quad
- -u_l^{pt} \le \p{\tto}_{\llll}(\WW_\llll)  - p_{l}^{t} \le u_l^{pt}, \quad \llll \in L, \notag \\
-& -u_l^{qf} \le \q{\from}_{\llll}(\WW_\llll) - q_{l}^{f} \le u_l^{qf}, \quad 
- -u_l^{qt} \le \q{\tto}_{\llll}(\WW_\llll)  - q_{l}^{t} \le u_l^{qt}, \quad \llll \in L. \notag 
+	+ \sum_{\llll \in \Lines_\ii^{\from}} \q{\from}_{\llll}(\WW_\llll)
+	+ \sum_{\llll \in \Lines_\ii^{\tto} } \q{\tto}_{\llll}(\WW_\llll)
+	\le u_i^q \quad i\in N. \notag
 \end{align}
 \end{subequations}
 where $v,W,p^G,q^G,u$ are decision variables. 
@@ -163,29 +159,39 @@ where $v,W,p^G,q^G,u$ are decision variables.
 %& =  (p_{l}^{f,1,-} + p_{l}^{f,1,+}) + (p_{l}^{t,1,-} + p_{l}^{t,1,+}) + (q_{l}^{f,1,-} + q_{l}^{f,1,+}) + (q_{l}^{t,1,-} + q_{l}^{t,1,+}) + u^K, \quad \llll \in L. \notag
 \end{frame}
 
-\begin{frame}{Power System Model: Feasibility Problem with robustness parameterized by $K$}
+\begin{frame}{Definitions}
+$L$ is the set of lines (including transformers)
+\begin{enumerate}
+\item $L^0 \subseteq L$ is the set of lines that are fixed as on; an attacker is committed to \emph{not} attacking line $l \in L^0$
+\item $L^1 \subseteq L$ is the set of lines that are fixed as off; an attacker is committed to attacking $l \in L^1$
+\item $L^* = L \backslash (L^0 \cup L^1)$ are the remaining ``undecided" lines that the attacker needs to decide whether or not to attack.
+\end{enumerate}
+$\{ L^0, L^1, L^*\}$ is a partition of the set $L$.
+\end{frame}
+
+\begin{frame}{Power System Model: Feasibility Problem with robustness parameterized by attack budget $K$}
 \begin{footnotesize}
 \begin{subequations}
 \begin{align}
-&\min_{\substack{v,W,p^G,q^G,\\ p^f,p^t,q^f,q^t,\\ u \geqq 0}} \quad 
-  (K-|L^1|) u^K + \sum_{i \in N} u_i^p + u_i^q + \sum_{l \in L \backslash L^1} u_l^{pf1} + u_l^{ft1} + u_l^{qf1} + u_l^{qt1}  \notag \\
-  & W = v v^* \notag\\
+&\min_{\substack{p,q\\ u \geqq 0,W=vv^*}} \quad 
+  (K-|L^1|) u^K + \sum_{i \in N} u_i^p + u_i^q + \sum_{l \in L^*} u_l^{pf1} + u_l^{ft1} + u_l^{qf1} + u_l^{qt1}  \notag \\
   & P_i^{min} \leq p_i^G \leq P_i^{max}, \quad Q_i^{min} \leq q_i^G \leq Q_i^{max}, \quad (V_i^{min})^2 \leq W_{ii} \leq (V_i^{max})^2,\quad i\in N \notag \\
   & -u_i^p \le p_i^{sh}(\WW_{ii}) - p^G_i + P^D_i 
-	+ \sum_{\llll \in \Lines_\ii^{\from} \backslash L^1  } p_{l}^{f}  
-	+\sum_{\llll \in \Lines_\ii^{\tto} \backslash L^1   } p_{l}^{t} 
+	+ \sum_{\llll \in \Lines_\ii^{\from} \cap (L^* \cup L^0)  } p_{l}^{f}  
+	+\sum_{\llll \in \Lines_\ii^{\tto} \cap (L^* \cup L^0) } p_{l}^{t} 
 	\le u_i^p \quad i\in N, \notag\\ 
   & -u_i^q \le q_i^{sh}(\WW_{ii}) - q^G_i + Q^D_i 
-	+ \sum_{\llll \in \Lines_\ii^{\from} \backslash L^1 } q_{l}^{f}
-	+ \sum_{\llll \in \Lines_\ii^{\tto} \backslash L^1 } q_{l}^{t} 
+	+ \sum_{\llll \in \Lines_\ii^{\from} \cap (L^* \cup L^0) } q_{l}^{f}
+	+ \sum_{\llll \in \Lines_\ii^{\tto} \cap (L^* \cup L^0) } q_{l}^{t} 
 	\le u_i^q \quad i\in N, \notag \\
+& p_{l}^{f}=\p{\from}_{\llll}(\WW_\llll),\quad p_l^t=\p{\tto}_{\llll}(\WW_\llll),\quad q_l^f=\q{\from}_{\llll}(\WW_\llll),\quad q_l^t=\q{\tto}_{\llll}(\WW_\llll) , \quad \llll \in L^0 \notag \\
 & -u_l^{pf1} \le \p{\from}_{\llll}(\WW_\llll) - p_{l}^{f} \le u_l^{pf1}, \quad
- -u_l^{pt1} \le \p{\tto}_{\llll}(\WW_\llll)  - p_{l}^{t} \le u_l^{pt1}, \quad \llll \in L \backslash L^1, \notag \\
+ -u_l^{pt1} \le \p{\tto}_{\llll}(\WW_\llll)  - p_{l}^{t} \le u_l^{pt1}, \quad \llll \in L^* \notag \\
 & -u_l^{qf1} \le \q{\from}_{\llll}(\WW_\llll) - q_{l}^{f} \le u_l^{qf1}, \quad 
- -u_l^{qt1} \le \q{\tto}_{\llll}(\WW_\llll)  - q_{l}^{t} \le u_l^{qt1}, \quad \llll \in L \backslash L^1. \notag \\
-& -u_l^{pf0} \le p_l^f \le u_l^{pf0},\quad-u_l^{pt0} \le p_l^t \le u_l^{pt0}, \quad l \in L \backslash (L^0 \cup L^1) \notag\\ 
-& -u_l^{qf0} \le q_l^f \le u_l^{qf0},\quad-u_l^{qt0} \le q_l^t \le u_l^{qt0}, \quad l \in L \backslash (L^0 \cup L^1) \notag \\
-& u_l^{pf0} + u_l^{pt0} + u_l^{qf0} + u_l^{qt0} = u_l^{pf1} + u_l^{pt1} + u_l^{qf1} + u_l^{qt1} + u^K,\quad l \in L \backslash (L^0 \cup L^1) \notag
+ -u_l^{qt1} \le \q{\tto}_{\llll}(\WW_\llll)  - q_{l}^{t} \le u_l^{qt1}, \quad \llll \in L^* \notag \\
+& -u_l^{pf0} \le p_l^f \le u_l^{pf0},\quad-u_l^{pt0} \le p_l^t \le u_l^{pt0}, \quad l \in L^* \notag\\ 
+& -u_l^{qf0} \le q_l^f \le u_l^{qf0},\quad-u_l^{qt0} \le q_l^t \le u_l^{qt0}, \quad l \in L^* \notag \\
+& u_l^{pf0} + u_l^{pt0} + u_l^{qf0} + u_l^{qt0} = u_l^{pf1} + u_l^{pt1} + u_l^{qf1} + u_l^{qt1} + u^K,\quad l \in L^* \notag
 \end{align}
 \end{subequations}
 \end{footnotesize}
@@ -198,22 +204,20 @@ where $v,W,p^G,q^G,u$ are decision variables.
 \begin{tiny}
 \begin{subequations}
 \begin{align}
-&\min_{v,W,p^G,q^G,u \geqq 0} \quad 
+&\min_{\substack{p,q\\ u \geqq 0,W=vv^*}} \quad 
   \sum_{i \in N} u_i^{p}(1-|\alpha_{\ii}|) +  u_i^{q}(1-|\beta_{\ii}|)   
-+ u^K(K-|L^1|-\sum_{l \in L \backslash (L^0 \cup L^1)} x_l) \notag \\
++ u^K(K-|L^1|-\sum_{l \in L^*} x_l) \notag \\
   &+\sum_{\ii \in N} W_\ii(\gamma_{\ii}^+-\gamma_{\ii}^-) +p_\ii^{sh}(\WW_{ii})\alpha_\ii + q_\ii^{sh}(\WW_{ii})\beta_\ii - \langle C , \WW \rangle + \langle C, v v^* \rangle \notag\\
-&+\sum_{l \in L \backslash L^1} \lambda_l^f p_l^f(\WW_l) + \lambda_l^t p_l^t(\WW_l) + \mu_l^f q_l^f(\WW_l) + \mu_l^t q_l^t(\WW_l) \notag\\
+&+\sum_{(i,j)=l \in L^0} \alpha_i p_l^f(\WW_l) + \alpha_j p_l^t(\WW_l) + \beta_i q_l^f(\WW_l) + \beta_j q_l^t(\WW_l) \notag\\
+&+\sum_{l \in L^*} \lambda_l^f p_l^f(\WW_l) + \lambda_l^t p_l^t(\WW_l) + \mu_l^f q_l^f(\WW_l) + \mu_l^t q_l^t(\WW_l) \notag\\
 &+ p_\ii^G(\zeta_\ii^{p+}-\zeta_\ii^{p-} - \alpha_\ii) + q_\ii^G(\zeta_\ii^{q+}-\zeta_\ii^{q-} - \beta_\ii)\notag \\
   &+\sum_{\ii \in N}  (V_\ii^{min})^2 \gamma_\ii^- - (V_\ii^{max})^2 \gamma_\ii^+ 
 - \zeta_\ii^{p+}P_\ii^{max} + \zeta_\ii^{p-}P_\ii^{min} + \alpha_\ii P_\ii^D 
 - \zeta_\ii^{q+}Q_\ii^{max} + \zeta_\ii^{q-}Q_\ii^{min} + \beta_\ii Q_\ii^D \notag \\
   &+ \sum_{(i,j)=l \in L^* } p_{l}^{f}(\alpha_i-\lambda_l^f+\nu_l^{pf}) + p_{l}^{t}(\alpha_j-\lambda_l^t + \nu_l^{pt}) 
                  + q_{l}^{f}(\beta_i-\mu_l^f+\nu_l^{qf}) + q_{l}^{t}(\beta_j-\mu_l^t-\nu_l^{qt})  \notag \\
-  &+ \sum_{(i,j)=l \in L^0 } p_{l}^{f}(\alpha_i-\lambda_l^f) + p_{l}^{t}(\alpha_j-\lambda_l^t ) 
-                 + q_{l}^{f}(\beta_i-\mu_l^f) + q_{l}^{t}(\beta_j-\mu_l^t)  \notag \\
-& + \sum_{l \in L^* } u_l^{pf0}(x_l-|\nu_l^{pf}|) + u_l^{pt0}(x_l-|\nu_l^{pt}|) + u_l^{qf0}(x_l-|\nu_l^{qf}|) + u_l^{qt0}(x_l - |\nu_l^{qt}|) \notag \\
-& + \sum_{l \in L^* } u_l^{pf1}(1-x_l - |\lambda_l^f|) + u_l^{pt1}(1-x_l-|\lambda_l^t|) + u_l^{qf1}(1-x_l-|\mu_l^f|) + u_l^{qt1}(1-x_l-|\mu_l^t|) \notag\\
-& + \sum_{l \in L^0 } u_l^{pf1}(1-|\lambda_l^f|) + u_l^{pt1}(1-|\lambda_l^t|) + u_l^{qf1}(1-|\mu_l^f|) + u_l^{qt1}(1-|\mu_l^t|) \notag
+  & + \sum_{l \in L^* } u_l^{pf0}(x_l-|\nu_l^{pf}|) + u_l^{pt0}(x_l-|\nu_l^{pt}|) + u_l^{qf0}(x_l-|\nu_l^{qf}|) + u_l^{qt0}(x_l - |\nu_l^{qt}|) \notag \\
+& + \sum_{l \in L^* } u_l^{pf1}(1-x_l - |\lambda_l^f|) + u_l^{pt1}(1-x_l-|\lambda_l^t|) + u_l^{qf1}(1-x_l-|\mu_l^f|) + u_l^{qt1}(1-x_l-|\mu_l^t|) \notag
 \end{align}
 \end{subequations}
 (The dual feasibility conditions can be read-off readily...)
@@ -224,305 +228,26 @@ where $v,W,p^G,q^G,u$ are decision variables.
 \begin{tiny}
 \begin{subequations}
 \begin{align}
-& \max_{\substack{\gamma,\zeta \ge 0\\-1\le \alpha,\beta \le 1,\\,-1 \le \lambda,\mu \le 1,\\ x\; \text{free}}} \quad 
+& \max_{\substack{\gamma,\zeta \ge 0\\-1\le \alpha,\beta \le 1,\\ \lambda,\mu,x\; \text{free}}} \quad 
  \sum_{\ii \in N}  (V_\ii^{min})^2 \gamma_\ii^- - (V_\ii^{max})^2 \gamma_\ii^+ + \zeta_\ii^{p-}P_\ii^{min} - \zeta_\ii^{p+}P_\ii^{max} +\alpha_\ii P_\ii^D 
 + \zeta_\ii^{q-}Q_\ii^{min} - \zeta_\ii^{q+}Q_\ii^{max} + \beta_\ii Q_\ii^D \notag \\
 &s.t.\; (\zeta_\ii^{p+}-\zeta_\ii^{p-} - \alpha_\ii) = 0, \qquad (\zeta_\ii^{q+}-\zeta_\ii^{q-} - \beta_\ii) = 0,\quad \ii \in N. \notag \\
-&  \alpha_i -\lambda_\llll^f +  \nu_l^{pf} = 0, \quad \alpha_j - \lambda_l^t + \nu_l^{pt}=0, \quad \beta_i - \mu_l^f + \nu_l^{qf}=0,\quad -\beta_j - \mu_l^t + \nu_l^{qt}=0,\quad (i,j)=l \in L^* \notag \\
-&  \alpha_i -\lambda_\llll^f = 0, \quad \alpha_j - \lambda_l^t=0, \quad \beta_i - \mu_l^f=0,\quad \beta_j - \mu_l^t=,\quad (i,j)=l \in L^0 \notag \\
-& |\nu_l^{pf}| \le x_l,\quad|\nu_l^{pt}| \le x_l,\quad |\nu_l^{qf}| \le x_l,\quad|\nu_l^{qt}| \le x_l,\quad l \in L^* \notag \\
+& | \alpha_i -\lambda_\llll^f| \le x_l,\quad| \alpha_j - \lambda_l^t| \le x_l,\quad |\beta_i - \mu_l^f | \le x_l,\quad|\beta_j - \mu_l^t| \le x_l,\quad (i,j)=l \in L^* \notag \\
 & |\lambda_l^f| \le 1-x_l,\quad |\lambda_l^t| \le 1-x_l,\quad|\mu_l^f| \le 1-x_l,\quad |\mu_l^t| \le 1-x_l,\quad l \in L^* \notag \\
-& |\lambda_l^f| \le 1,\quad |\lambda_l^t| \le 1,\quad|\mu_l^f| \le 1,\quad |\mu_l^t| \le 1,\quad l \in L^0 \notag \\
-& (K-|L^1|-\sum_{l \in L^*} x_l) \ge 0, \qquad\qquad C \succeq 0\notag, \qquad C-H = 0\\
+%& \lambda_l^f = 0,\quad \lambda_l^t = 0,\quad \mu_l^f = 0,\quad \mu_l^t = 0,\quad l \in L^1 \notag \\
+& (K-|L^1|-\sum_{l \in L^*} x_l) \ge 0, \qquad\qquad C \succeq 0\notag, \qquad C=H\\
 \end{align}
 \end{subequations}
 where $H(\alpha,\beta,\gamma,\lambda,\mu)$ is the matrix such that for all $\WW$, 
 \begin{align*}
-\langle H(\alpha,\beta,\gamma,\lambda,\mu), W \rangle = &\sum_{\ii \in N} W_\ii(\gamma_\ii^+-\gamma_\ii^-) + \alpha_\ii p_\ii^{sh}(\WW_{ii}) + \beta_\ii q_\ii^{sh}(\WW_{ii}) \\
-&+ \sum_{l \in L} \lambda_l^f p_l^f(\WW_l) + \lambda_l^t p_l^t(\WW_l) + \mu_l^f q_l^f(\WW_l) + \mu_l^t q_l^t(\WW_l).
+\langle H(\alpha,\beta,\gamma,\lambda,\mu), W \rangle = &\sum_{\ii \in N} W_{\ii\ii}(\gamma_\ii^+-\gamma_\ii^-) + \alpha_\ii p_\ii^{sh}(\WW_{ii}) + \beta_\ii q_\ii^{sh}(\WW_{ii}) \\
+&+ \sum_{l \in L^*} \lambda_l^f p_l^f(\WW_l) + \lambda_l^t p_l^t(\WW_l) + \mu_l^f q_l^f(\WW_l) + \mu_l^t q_l^t(\WW_l) \notag \\
+&+ \sum_{(i,j)=l \in L^0} \alpha_i p_l^f(\WW_l) + \alpha_j p_l^t(\WW_l) + \beta_i q_l^f(\WW_l) + \beta_j q_l^t(\WW_l).
 \end{align*}
+Note: The dual variables $\lambda,\mu,x$ are indexed by $L^*$ and only appear for such indices.
 \end{tiny}
 \end{frame}
 
-\begin{frame}{Double-checking dual equivalence: Simplifying the dual problem}
-\begin{tiny}
-\begin{subequations}
-\begin{align}
-&\max_{\substack{\gamma,\zeta \geqq 0 \\ -1 \alpha,\beta \le 1,\\ -1 \le \lambda,\mu \le 1,\\ x\; \text{free}}} \quad 
- \sum_{\ii \in N}  (V_\ii^{min})^2 \gamma_\ii^- - (V_\ii^{max})^2 \gamma_\ii^+ + \zeta_\ii^{p-}P_\ii^{min} - \zeta_\ii^{p+}P_\ii^{max} +\alpha_\ii P_\ii^D 
-+ \zeta_\ii^{q-}Q_\ii^{min} - \zeta_\ii^{q+}Q_\ii^{max} + \beta_\ii Q_\ii^D \notag \\
-&s.t.\; \zeta_\ii^{p+}-\zeta_\ii^{p-} = \alpha_\ii , \qquad \zeta_\ii^{q+}-\zeta_\ii^{q-} = \beta_\ii,\quad \ii \in N. \notag\\
-&  \alpha_i - x_\llll \leq  \lambda_\llll^f \le \alpha_i + x_\llll   \qquad -(1- x_\llll) \leq \lambda_l^f  \le (1-x_\llll) \notag\\
-&  \alpha_j  -x_\llll \leq \lambda_\llll^t \le \alpha_j + x_\llll  \qquad -(1-x_l) \le \lambda_\llll^t \le (1-x_l) \notag\\
-&\beta_i  - x_\llll \leq \mu_\llll^f \le \beta_i + x_l \qquad -(1-x_l) \le \mu_\llll^f \le (1- x_l) \notag\\
-&\beta_j  -  x_\llll \leq \mu_\llll^t \le \beta_j + x_l \qquad  -(1-x_l) \le \mu_\llll^t \le (1-x_l)  \notag \\
-& \sum_{l \in L} x_l \le K, \qquad\qquad C \succeq 0\notag, \qquad C = H \\
-\end{align}
-\end{subequations}
-where $H(\alpha,\beta,\gamma,\lambda,\mu)$ is the matrix such that for all $\WW$, 
-\begin{align*}
-\langle H(\alpha,\beta,\gamma,\lambda,\mu), W \rangle = &\sum_{\ii \in N} W_\ii(\gamma_\ii^+-\gamma_\ii^-) + \alpha_\ii p_\ii^{sh}(\WW_{ii}) + \beta_\ii q_\ii^{sh}(\WW_{ii}) \\
-&+ \sum_{l \in L} \lambda_l^f p_l^f(\WW_l) + \lambda_l^t p_l^t(\WW_l) + \mu_l^f q_l^f(\WW_l) + \mu_l^t q_l^t(\WW_l).
-\end{align*}
-\end{tiny}
-\end{frame}
-
-\begin{frame}{Introduction}
-We model the bilevel contingency identification problem as follows: 
-\begin{equation}\label{MinmaxP}
-  \Phi := \max_x\; \left\{\; \phi^{AC}(x)\quad \;s.t.\; \quad \sum_{l\in L} x_l \leq K,\quad x_l \in \{0,1\}, \; l\in L \right\}, 
-\end{equation}
-where 
-\begin{enumerate}
-\item $x \mapsto \phi^{AC}(x)$ 
-is the value of a lower-level minimization of system infeasibility 
-due to a defender's optimal response to attack $x$; 
-\item the upper-level attacker problem~\eqref{MinmaxP} is restricted by the budget $\sum_{l\in L} x_l \leq K$; 
-\end{enumerate}
-\end{frame}
-
-\begin{frame}{Introduction}
-We model the lower-level defender subproblem to minimize the use of load shedding and/or excessive power generation
-to enforce the power flow balance equations. The lower-level defender's subproblem is modeled by
-\begin{footnotesize}
-\begin{subequations}
-\label{EqDSP}
-\begin{align}
-\phi^{AC}(x) := \min_{v,W,p^G,q^G,u} \quad 
-  &\sum_{i \in N} \left( u_i^p + u_i^q + u_i^{m} \right) \\
-  s.t. \quad
-  & W = v v^* \label{rank1}\\
-  & u:=(u_i^p,u_i^q,u_i^m)_{i\in N} \geq 0 \label{EqDSP:bounds}\\  
-  & P_i^{min} \leq p_i^G \leq P_i^{max}, \quad Q_i^{min} \leq q_i^G \leq Q_i^{max}, \quad i\in N \label{PGBds} \\
-  & -u_i^p \leq  p_i^{sh}(\WW_{ii}) 
-+ \sum_{\llll \in \Lines_\ii^{\from} } \left( 1 - x_\llll\right) \p{\from}_{\llll}(\WW_\llll)  
-	+\sum_{\llll \in \Lines_\ii^{\tto} } \left( 1 - x_\llll\right)\p{\tto}_{\llll}(\WW_\llll) - p^G_i + P^D_i \le u_i^p, \quad i\in N, \label{PFlowEq}\\ 
-  &-u_i^q \leq q_\ii^{sh}(\WW_{\ii\ii}) + \sum_{\llll \in \Lines_\ii^{\from} } \left( 1 - x_\llll\right) \q{\from}_{\llll}(\WW_\llll) +\sum_{\llll \in \Lines_\ii^{\tto} } \left( 1 - x_\llll\right) \q{\tto}_{\llll}(\WW_\llll) - q^G_i + Q^D_i \le u_i^q, \quad i\in N, \label{QFlowEq} \\
-  & (V_i^{min})^2 - u_i^{m} \leq W_{ii} \leq (V_i^{max})^2 + u_i^{m},\quad i\in N, \label{VMagBds} 
-\end{align}
-\end{subequations}
-\end{footnotesize}
-where $v,W,p^G,q^G,u$ are decision variables. 
-\end{frame}
-
-\begin{frame}{Introduction}
-\begin{footnotesize}
-\begin{subequations}
-\label{EqPFEq}
-\begin{align}
-  & -u_i^p \leq  p_i^{sh}(\WW_{ii}) 
-+ \sum_{\llll \in \Lines_\ii^{\from} } \left( 1 - x_\llll\right) \p{\from}_{\llll} 
-	+\sum_{\llll \in \Lines_\ii^{\tto} } \left( 1 - x_\llll\right)\p{\tto}_{\llll} - p^G_i + P^D_i \le u_i^p, \quad i\in N, \notag\\ 
-  &-u_i^q \leq q_\ii^{sh}(\WW_{\ii\ii}) + \sum_{\llll \in \Lines_\ii^{\from} } \left( 1 - x_\llll\right) \q{\from}_{\llll} +\sum_{\llll \in \Lines_\ii^{\tto} } \left( 1 - x_\llll\right) \q{\tto}_{\llll} - q^G_i + Q^D_i \le u_i^q, \quad i\in N, \notag \\
-& \p{\from}_{\llll}(\WW_\llll) - \p{\from}_{\llll} = 0, \quad \llll \in L, \notag \\
-& \p{\tto}_{\llll}(\WW_\llll) - \p{\tto}_{\llll} = 0, \quad \llll \in L, \notag \\
-& \q{\from}_{\llll}(\WW_\llll) - \q{\from}_{\llll} = 0, \quad \llll \in L, \notag \\
-& \q{\tto}_{\llll}(\WW_\llll) - \q{\tto}_{\llll} = 0, \quad \llll \in L, \notag 
-\end{align}
-\end{subequations}
-\end{footnotesize}
-
-\end{frame}
-
-\begin{frame}{Introduction}
-\begin{footnotesize}
-\begin{subequations}
-\label{EqPFEq}
-\begin{align}
-  & -u_i^p \leq  p_i^{sh}(\WW_{ii}) 
-+ \sum_{\llll \in \Lines_\ii^{\from} } \p{\from}_{\llll} 
-	+\sum_{\llll \in \Lines_\ii^{\tto} } \p{\tto}_{\llll} - p^G_i + P^D_i \le u_i^p, \quad i\in N, \notag\\ 
-  &-u_i^q \leq q_\ii^{sh}(\WW_{\ii\ii}) + \sum_{\llll \in \Lines_\ii^{\from} } \q{\from}_{\llll} +\sum_{\llll \in \Lines_\ii^{\tto} } \q{\tto}_{\llll} - q^G_i + Q^D_i \le u_i^q, \quad i\in N, \notag \\
-& \p{\from}_{\llll}(\WW_\llll) - \p{\from}_{\llll} = 0, \quad \llll \in L, \notag \\
-& \p{\tto}_{\llll}(\WW_\llll) - \p{\tto}_{\llll} = 0, \quad \llll \in L, \notag \\
-& \q{\from}_{\llll}(\WW_\llll) - \q{\from}_{\llll} = 0, \quad \llll \in L, \notag \\
-& \q{\tto}_{\llll}(\WW_\llll) - \q{\tto}_{\llll} = 0, \quad \llll \in L, \notag 
-\end{align}
-\end{subequations}
-\end{footnotesize}
-
-\end{frame}
-
-
-\begin{frame}{Introduction}
-We reformulate~\eqref{MinmaxP} using Lagrangian duality, ultimately obtaining a problem of the form
-\begin{footnotesize}
-\begin{subequations}\label{singlelevel}
-\begin{align}
-  \Phi_D^{AC} = \max_{x,\pi} \;
-	& \sum_{i \in N} \left[ \alpha_i P^D_i + \beta_i Q^D_i - \gamma_i^+ (V_i^{max})^2 + \gamma_i^- (V_i^{min})^2 \right]\\
-	& + \sum_{i \in N} \left[ -\delta_i^{p,+} P_i^{max} + \delta_i^{p,-} P_i^{min} - \delta_i^{q,+} Q_i^{max} + \delta_i^{q,-} Q_i^{min} \right]\notag \\
-	s.t.\; &\sum_{l\in L} x_l \leq K,\quad x_l \in \{0,1\}, \quad l\in L, \quad (x,\pi) \in \Pi\\
-	& \eta(\pi) \geq 0. \label{eq:etaconstraint}
-\end{align}
-\end{subequations}
-\end{footnotesize}
-\begin{enumerate}
-\item Only $\pi \mapsto \eta$ needs to be approximated with cutting planes.
-\item $\pi \mapsto \eta$ is a concave function modeling the problem of finding the eigenvalue/vector pair of lowest eigenvalue of a Hermitian matrix whose coefficients
-vary linearly in $\pi$. 
-\item I.e., we can evaluate $\eta(\pi)$ and compute a subgradient $s_\eta \in \partial \eta(\pi)$.
-\end{enumerate}
-\end{frame}
-
-% #1  
-\begin{frame}
-  
-    We are interested in solving problems of the form
-    %
-    \begin{align*}    
-      P:= ~ \min_{(x,y) \in X \times Y} \ & f_0(x,y) \\
-        \text{s.t.: } &f_i(x,y) \le 0, \quad i \in I:=\{1,\dots,m\}
-    \end{align*} 
-  %
-
-\onslide<2->{
-$(x,y) \in X \times Y$  decision variables; $X$ and $Y$ are bounded, and $Y$ include integrality constraints 
-}
-
-\onslide<3->{
-Each $f_i$, $i=0,\dots,m$, is convex and possibly nonsmooth 
-}
-
-\end{frame}
-
-\begin{frame}
-Some possible solution approaches to solving problem P:
-\begin{enumerate}
-\item Generalized extended cutting plane
-\item Outer approximation
-\item Bundle methods (proximal, level, etc.)
-\end{enumerate}
-To make use of the third types of methods, we can assume that either $y$ is fixed, or that integrality is relaxed.
-So, without loss of applicability, we assume that the bundle method applicable problem has the form
-    %
-    \begin{align*}    
-      P:= ~ \min_{x \in X } \ & \phi(x) \\
-        \text{s.t.: } &c(x) \le 0
-    \end{align*} 
-  %
-where $X$ is nonempty, polyhedral and bounded, and $x \mapsto \phi$ and $x \mapsto c$ are convex and nonsmooth.
-(Note that no generality is lost in assuming only one such constraint function $c$.)
-\end{frame}
-
-\begin{frame}
-Most bundle methods assume \alert{no} constraints, either of form $x \in X$ or $c(x) \le 0$.
-Any such constraints would be added as (exact) penalty terms (assuming the satisfaction of a constraint qualification,
-allowing for a finite $\rho > 0$ realizing exact penalization).
-    \begin{align*}    
-      P := ~ \min_{x \in X } \ & f_\rho(x) := \phi(x) + \rho c^+(x) \\
-    \end{align*} 
-We avoid solving any such problem \alert{directly} due to the poor conditioning when $\rho$ is large.
-\end{frame}
-
-\begin{frame}
-\begin{footnotesize}
-Within any cutting-plane methodology, at iteration $k+1$, we approximate the nonsmooth $\phi$ and $c$ using 
-\begin{enumerate}
-\item evaluations $\phi(x^j)$, $c(x^j)$ and
-\item subgradients $s_\phi^j \in \partial \phi(x^j)$ and $s_c^j \in \partial c(x^j)$ 
-\end{enumerate}
-at trial solutions $x^j$, $j=1,\dots,k$.
-
-We want to use GPUs 
-to solve instances of the following proximal master problem (MP) for $x^{k+1}$:
-    %
-    \begin{align*}    
-      \min_{x \in X } \ & r + \frac{t^k}{2} \| x - \hat{x}^k \|_2^2 \\
-        \text{s.t.: } & \phi(x^j) + (s_\phi^j)^\top (x-x^j) \le r, \quad j=1,\dots,k \\
-        & c(x^j) + (s_c^j)^\top (x-x^j) \le 0, \quad j=1,\dots,k.
-    \end{align*} 
-  %
-where $\hat{x}^k$ is the current proximal center at iteration $k+1$.
-\begin{enumerate}
-\item After each solve of MP, we either set $\hat{x}^{k+1}= \hat{x}^k$ (null step), or $\hat{x}^{k+1} = x^{k+1}$
-\item New cuts of the form
-        $\phi(x^{k+1}) + (s_\phi^{k+1})^\top (x-x^{k+1}) \le r$ and
-        $c(x^{k+1}) + (s_c^{k+1})^\top (x-x^{k+1}) \le 0$ are added.
-\item Furthermore, the proximal control parameter $t^{k}$ is updated.
-\item We aggregate cuts to keep the size down 
-\item Still, a large bundle of cuts is sometimes needed.
-\item \alert{This is a bottleneck that we hope the use of a parallelized interior point solver can address.}
-\end{enumerate}
-\end{footnotesize}
-\end{frame}
-
-
-
-\begin{frame}
-\begin{footnotesize}
-\begin{subequations}\label{LinBilin}
-\begin{align}
-  \alpha_i -\lambda_\llll^f - x_\llll \leq 0 \qquad -\alpha_i + \lambda_\llll^f  -x_\llll \leq 0 \qquad -\lambda_\llll^f + x_\llll \leq 1  \qquad \lambda_\llll^f + x_\llll \leq 1 \notag\\
-  \alpha_j -\lambda_\llll^t -x_\llll \leq 0 \qquad -\alpha_j + \lambda_\llll^t -x_\llll \leq 0 \qquad
- -\lambda_\llll^t + x_\llll \leq  1 \qquad \lambda_\llll^t + x_\llll \leq 1 \notag\\
-\beta_i - \mu_\llll^f - x_\llll \leq 0 \qquad -\beta_i + \mu_\llll^f -x_\llll \leq 0 \qquad
--\mu_\llll^f + x_\llll \leq 1 \qquad \mu_\llll^f + x_\llll \leq 1  \notag\\
-\beta_j - \mu_\llll^t -  x_\llll \leq 0 \qquad -\beta_j + \mu_\llll^t -x_\llll \leq 0 \qquad
- -\mu_\llll^t + x_\llll \leq 1  \qquad  \mu_\llll^t + x_\llll \leq 1 \notag \\
-0 \le x_\llll \le 1,\qquad \sum_{\llll \in L} x_\llll \le K. \notag
-\end{align}
-\end{subequations}
-\end{footnotesize}
-\end{frame}
-
-\begin{frame}{Reformulated model}
-\begin{footnotesize}
-\begin{subequations}
-\begin{align}
-&\phi^{AC}(x) := \min_{v,W,p^G,q^G,u\geqq 0} \quad 
-  \sum_{i \in N} \left( u_i^p + u_i^q + u_i^{m} \right) \notag \\
-  & s.t. \quad W = v v^* \notag \\
-  & P_i^{min} \leq p_i^G \leq P_i^{max}, \quad Q_i^{min} \leq q_i^G \leq Q_i^{max}, \quad i\in N \notag \\
-  & (V_i^{min})^2 - u_i^{m} \leq W_{ii} \leq (V_i^{max})^2 + u_i^{m},\quad i\in N, \notag \\
-  & -u_i^p \leq  p_i^{sh}(\WW_{ii}) 
-+ \sum_{\llll \in \Lines_\ii^{\from} } \p{\from}_{\llll} 
-	+\sum_{\llll \in \Lines_\ii^{\tto} } \p{\tto}_{\llll} - p^G_i + P^D_i \le u_i^p, \quad i\in N, \notag\\ 
-  &-u_i^q \leq q_\ii^{sh}(\WW_{\ii\ii}) + \sum_{\llll \in \Lines_\ii^{\from} } \q{\from}_{\llll} +\sum_{\llll \in \Lines_\ii^{\tto} } \q{\tto}_{\llll} - q^G_i + Q^D_i \le u_i^q, \quad i\in N, \notag \\
-& \p{\from}_{\llll}(\WW_\llll) - \p{\from}_{\llll} = 0, \quad \llll \in L, \notag \\
-& \p{\tto}_{\llll}(\WW_\llll) - \p{\tto}_{\llll} = 0, \quad \llll \in L, \notag \\
-& \q{\from}_{\llll}(\WW_\llll) - \q{\from}_{\llll} = 0, \quad \llll \in L, \notag \\
-& \q{\tto}_{\llll}(\WW_\llll) - \q{\tto}_{\llll} = 0, \quad \llll \in L, \notag 
-\end{align}
-\end{subequations}
-\end{footnotesize}
-where $v,W,p^G,q^G,u$ are decision variables. 
-\end{frame}
-
-
-\begin{frame}{Reformulated primal bilevel model}
-\begin{tiny}
-\begin{subequations}
-\begin{align}
-&\min_{\substack{v,W,p^G,q^G,\\ p^f,p^t,q^f,q^t,u_W,u_K\geqq 0}} \quad 
-  + Ku^K + \sum_{i \in N} u_i^W + \sum_{l \in L} p_{l}^{f,1,+} + p_{l}^{f,1,-} + p_{l}^{t,1,+} + p_{l}^{t,1,-} 
-                 + q_{l}^{f,1,+} + q_{l}^{f,1,-} + q_{l}^{t,1,+} + q_{l}^{t,1,-} \notag \\
-  & s.t. \quad W = v v^*  \notag \\
-  & P_i^{min} \leq p_i^G \leq P_i^{max}, \quad Q_i^{min} \leq q_i^G \leq Q_i^{max}, \quad (V_i^{min})^2 -u_{\ii}^W \leq W_{ii} \leq (V_i^{max})^2 + u_{\ii}^W,\quad i \in N, \notag \\
-  & p_i^{sh}(\WW_{ii}) - p^G_i + P^D_i 
-	+ \sum_{\llll \in \Lines_\ii^{\from} } p_{l}^{f}  
-	+\sum_{\llll \in \Lines_\ii^{\tto}   } p_{l}^{t} 
-	= 0 \quad i\in N, \notag\\ 
-  & q_i^{sh}(\WW_{ii}) - q^G_i + Q^D_i 
-	+ \sum_{\llll \in \Lines_\ii^{\from}} q_{l}^{f}
-	+ \sum_{\llll \in \Lines_\ii^{\tto} } q_{l}^{t} 
-	=0 \quad i\in N, \notag \\
-& p_l^f = (p_{l}^{f,0,-} - p_{l}^{f,0,+}),\; p_l^t=(p_{l}^{t,0,-} - p_{l}^{t,0,+}),\; q_l^f=(q_{l}^{f,0,-} - q_{l}^{f,0,+}),\; q_l^t=(q_{l}^{t,0,-} - q_{l}^{t,0,+}),\;\; l \in L \notag\\
-& \p{\from}_{\llll}(\WW_\llll) - (p_{l}^{f,0,-} - p_{l}^{f,0,+}) - (p_{l}^{f,1,-} - p_{l}^{f,1,+}) = 0, \quad \llll \in L, \notag \\
-& \p{\tto}_{\llll}(\WW_\llll)  - (p_{l}^{t,0,-} - p_{l}^{t,0,+}) - (p_{l}^{t,1,-} - p_{l}^{t,1,+}) = 0, \quad \llll \in L, \notag \\
-& \q{\from}_{\llll}(\WW_\llll) - (q_{l}^{f,0,-} - q_{l}^{f,0,+}) - (q_{l}^{f,1,-} - q_{l}^{f,1,+}) = 0, \quad \llll \in L, \notag \\
-& \q{\tto}_{\llll}(\WW_\llll)  - (q_{l}^{t,0,-} - q_{l}^{t,0,+}) - (q_{l}^{t,1,-} - q_{l}^{t,1,+}) = 0, \quad \llll \in L, \notag \\
-&  (p_{l}^{f,0,-} + p_{l}^{f,0,+}) + (p_{l}^{t,0,-} + p_{l}^{t,0,+}) + (q_{l}^{f,0,-} + q_{l}^{f,0,+}) + (q_{l}^{t,0,-} + q_{l}^{t,0,+})  \notag \\
-& =  (p_{l}^{f,1,-} + p_{l}^{f,1,+}) + (p_{l}^{t,1,-} + p_{l}^{t,1,+}) + (q_{l}^{f,1,-} + q_{l}^{f,1,+}) + (q_{l}^{t,1,-} + q_{l}^{t,1,+}) + u^K, \quad \llll \in L. \notag
-\end{align}
-\end{subequations}
-where $v,W,p^G,q^G,u$ are decision variables, and $p^{f,0},p^{t,0},q^{f,0},q^{t,0},p^{f,1},p^{t,1},q^{f,1},q^{t,1}$ are nonnegative auxiliary variables. 
-\begin{enumerate}
-\item To effect fixing $x_l=0$ for a given $l \in L$, relax the nonnegativity of $p^{f,0},p^{t,0},q^{f,0}$, and $q^{t,0}$.
-\item To effect fixing $x_l=1$ for a given $l \in L$, relax the nonnegativity of $p^{f,1},p^{t,1},q^{f,1}$, and $q^{t,1}$.
-\end{enumerate}
-\end{tiny}
-\end{frame}
 
 
 
