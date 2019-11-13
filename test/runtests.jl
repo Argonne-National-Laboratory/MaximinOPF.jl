@@ -4,6 +4,14 @@ using PowerModels
 using Mosek
 using MosekTools
 
+supportedCases = [
+	SOCWRPowerModel,
+	SOCWRConicPowerModel,
+	QCRMPowerModel,
+	SOCBFPowerModel,
+	SDPWRMPowerModel,
+	SparseSDPWRMPowerModel
+]
 #Set Default Input
 case = "../data/case9.m"
 powerfrom = SDPWRMPowerModel #SOCWRPowerModel
