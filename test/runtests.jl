@@ -12,11 +12,11 @@ supportedCases = [
 	SOCBFPowerModel, # Error constraint_ohms_yt_from()	
 	SparseSDPWRMPowerModel # Error variable_voltage()
 ]
-for i in 1:size(supportedCases)
+for i in 1:length(supportedCases)
 	#Set Default Input
 	case = "../data/case9.m"
 	powerfrom = supportedCases[i] #SOCWRPowerModel
-	nLineAttacked = 1
+	nLineAttacked = i
 	#Create PowerModels Model
 	model = MaximinOPF.MaximinOPFModel(case, powerfrom, nLineAttacked)
 	# println("Print PowerModels Model")
