@@ -3,6 +3,7 @@ using Ipopt
 using PowerModels
 using Mosek
 using MosekTools
+using JuMP
 
 supportedCases = [
 	SOCWRPowerModel, # Not Mosek
@@ -12,10 +13,10 @@ supportedCases = [
 	SOCBFPowerModel, # Error constraint_ohms_yt_from()	
 	SparseSDPWRMPowerModel # Error variable_voltage()
 ]
-for i in 1:size(supportedCases)
+#for i in 1:4
 	#Set Default Input
 	case = "../data/case9.m"
-	powerfrom = supportedCases[i] #SOCWRPowerModel
+	powerfrom = supportedCases[2] #SOCWRPowerModel
 	nLineAttacked = 1
 	#Create PowerModels Model
 	model = MaximinOPF.MaximinOPFModel(case, powerfrom, nLineAttacked)
@@ -24,10 +25,11 @@ for i in 1:size(supportedCases)
 
 	#Solve Model with PowerModels Solution Builder
 	println("Start Solving")
-	if i < 4
-		result = optimize_model!(model, with_optimizer(Ipopt.Optimizer))
-	else
+	#if i < 4
+	#	result = optimize_model!(model, with_optimizer(Ipopt.Optimizer))
+	#else
 		result = optimize_model!(model, with_optimizer(Mosek.Optimizer))
-	end
+	#end
 	println(result)
-end
+	println("The optimal value is: ",result["objective"])
+#end
