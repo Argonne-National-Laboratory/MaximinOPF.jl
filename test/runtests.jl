@@ -1,15 +1,19 @@
 using MaximinOPF
 using Ipopt
 using PowerModels
+using Mosek
+using MosekTools
 
 #Set Default Input
 case = "../data/case9.m"
-powerfrom = ACPPowerModel #SOCWRPowerModel
-Maxline = 1
+powerfrom = SDPWRMPowerModel #SOCWRPowerModel
+nLineAttacked = 1
 #Create PowerModels Model
-model = MaximinOPF.MaximinOPFModel(case, ACPPowerModel, Maxline)
-println(model.model)
+model = MaximinOPF.MaximinOPFModel(case, powerfrom, nLineAttacked)
+# println("Print PowerModels Model")
+# println(model.model)
 
 #Solve Model with PowerModels Solution Builder
-result = optimize_model!(model, with_optimizer(Ipopt.Optimizer))
+println("Start Solving")
+result = optimize_model!(model, with_optimizer(Mosek.Optimizer))
 println(result)
