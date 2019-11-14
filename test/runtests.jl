@@ -5,12 +5,12 @@ using Mosek
 using MosekTools
 
 supportedCases = [
-	SOCWRPowerModel, # Not Mosek
-	SOCWRConicPowerModel, # MoSek
+	SOCWRPowerModel, # Not Mosek	
 	QCRMPowerModel, # Not Mosek
-	SDPWRMPowerModel, # MoSek
-	SOCBFPowerModel, # Error constraint_ohms_yt_from()	
-	SparseSDPWRMPowerModel # Error variable_voltage()
+	SOCWRConicPowerModel, # MoSek
+	SDPWRMPowerModel#, # MoSek
+	#SOCBFPowerModel, # Error constraint_ohms_yt_from()	
+	#SparseSDPWRMPowerModel # Error variable_voltage()
 ]
 for i in 1:length(supportedCases)
 	#Set Default Input
@@ -24,10 +24,10 @@ for i in 1:length(supportedCases)
 
 	#Solve Model with PowerModels Solution Builder
 	println("Start Solving")
-	if i < 4
+	if i < 3
 		result = optimize_model!(model, with_optimizer(Ipopt.Optimizer))
 	else
 		result = optimize_model!(model, with_optimizer(Mosek.Optimizer))
 	end
-	println(result)
+	println(result["objective"])
 end
