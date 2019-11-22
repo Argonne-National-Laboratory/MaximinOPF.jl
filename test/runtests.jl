@@ -3,7 +3,25 @@ using Ipopt
 using PowerModels
 using Mosek
 using MosekTools
-using JuMP
+
+
+"active power only models"
+"abstract type AbstractActivePowerModel <: AbstractPowerModel end"
+
+"variants that target conic solvers"
+"abstract type AbstractConicModel <: AbstractPowerModel end"
+
+"for branch flow models"
+"abstract type AbstractBFModel <: AbstractPowerModel end"
+
+"for variants of branch flow models that target QP or NLP solvers"
+"abstract type AbstractBFQPModel <: AbstractBFModel end"
+
+"for variants of branch flow models that target conic solvers"
+"abstract type AbstractBFConicModel <: AbstractBFModel end"
+
+"Branch flow versus bus injection"
+"Conic versus general QP/NL" "NOTE: Any algorithm using Dualization.jl must use a ConicModel"
 
 supportedCases = [
 	SOCWRPowerModel, # Not Mosek
@@ -16,7 +34,9 @@ supportedCases = [
 #for i in 1:4
 	#Set Default Input
 	case = "../data/case9.m"
-	powerfrom = supportedCases[2] #SOCWRPowerModel
+	#powerfrom = supportedCases[1] #SOCWRPowerModel
+	powerfrom = supportedCases[2] #SOCWRConicPowerModel
+	println(powerfrom)
 	nLineAttacked = 1
 	#Create PowerModels Model
 	model = MaximinOPF.MaximinOPFModel(case, powerfrom, nLineAttacked)
