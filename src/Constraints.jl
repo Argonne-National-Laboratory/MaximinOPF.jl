@@ -163,6 +163,27 @@ function constraint_ohms_yt_to_slacks(pm::AbstractPowerModel, i::Int; nw::Int=pm
     constraint_ohms_yt_to_slacks(pm, nw, cnd, f_bus, t_bus, f_idx, t_idx, g[cnd,cnd], b[cnd,cnd], g_to, b_to, tr[cnd], ti[cnd], tm)
 end
 
+function constraint_def_abs_flow_values(pm::AbstractPowerModel, f_idx, t_idx; nw::Int=pm.cnw, cnd::Int=pm.ccnd)
+    p_fr = var(pm, nw, cnd, :p, f_idx)
+    p_to = var(pm, nw, cnd, :p, t_idx)
+    q_fr = var(pm, nw, cnd, :q, f_idx)
+    q_to = var(pm, nw, cnd, :q, t_idx)
+    upf0 = var(pm,nw,cnd, :upf0, f_idx)
+    upt0 = var(pm,nw,cnd, :upt0, t_idx)
+    uqf0 = var(pm,nw,cnd, :uqf0, f_idx)
+    uqt0 = var(pm,nw,cnd, :uqt0, t_idx)
+
+    JuMP.@constraint(mp.model, p_fr - upf0[f_idx] <= 0)
+    JuMP.@constraint(mp.model, -p_fr - upf0[f_idx] <= 0)
+    JuMP.@constraint(mp.model, p_fr - upt0[t_idx] <= 0)
+    JuMP.@constraint(mp.model, -p_fr - upt0[t_idx] <= 0)
+
+    JuMP.@constraint(mp.model, q_fr - uqf0[f_idx] <= 0)
+    JuMP.@constraint(mp.model, -q_fr - uqf0[f_idx] <= 0)
+    JuMP.@constraint(mp.model, q_to - uqt0[t_idx] <= 0)
+    JuMP.@constraint(mp.model, -q_to - uqt0[t_idx] <= 0)
+end
+
 "checks if a sufficient number of variables exist for the given keys collection"
 function _check_var_keys(vars, keys, var_name, comp_name)
     if length(vars) < length(keys)
