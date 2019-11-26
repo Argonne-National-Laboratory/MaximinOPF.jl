@@ -9,3 +9,5 @@ Run the instaruction below to install and test MaximinOPF
 (v1.2) pkg> activate .
 (MaximinOPF) pkg> test
 ```
+
+EOF
