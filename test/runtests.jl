@@ -19,7 +19,8 @@ supportedCases = [
 # "Case30 feas problem with lines 8,9,10,40 cut should have value 0.937"
 # "Case30 feas problem with all lines cut should have value 2.57327375"
 # "Case57 feas problem with no lines cut should have value 0.0"
-# "Case57 feas problem with lines 41,80 cut should have value "
+# "Case57 feas problem with lines 41,80 cut should have value 0.7597369902683009"
+# "Case57 feas problem with all lines cut should have value 6.2313456"
 for i in 1:length(supportedCases)
 	#Set Default Input
 	#case = "../data/case9.m"
@@ -31,10 +32,10 @@ for i in 1:length(supportedCases)
 	  #if line["index"]==1 || line["index"]==4 || line["index"]==7
 	  #if line["index"]==8 || line["index"]==9 || line["index"]==10 || line["index"]==40
 	  #if line["index"]==8 || line["index"]==9 || line["index"]==10 || line["index"]==40
-	  if line["index"]==41 || line["index"]==80
+	  #if line["index"]==41 || line["index"]==80
 	    line["br_status"]=0
 	    print(" ",line["index"])
-	  end
+	  #end
         end
 	print("\n")
 	powerfrom = supportedCases[i] #SOCWRPowerModel
