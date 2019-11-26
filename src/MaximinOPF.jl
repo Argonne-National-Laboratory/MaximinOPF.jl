@@ -5,9 +5,9 @@ include("Objectives.jl")
 include("Constraints.jl")
 greet() = print("Hello World!")
 
-function MaximinOPFModel(case, powerform, nLineAttacked)
+function MaximinOPFModel(pm_data, powerform, nLineAttacked)
 	println("Hello MaximinOPFModel")
-	println(case)
+	#println(case)
 	println(powerform)
 	println(nLineAttacked)
 	pm = ""
@@ -15,7 +15,7 @@ function MaximinOPFModel(case, powerform, nLineAttacked)
 
     if powerform == SOCWRConicPowerModel
         println("Prototyping Algo")
-        pm = build_model(case, powerform, SOCWRConicPost_OPF)
+        pm = build_model(pm_data, powerform, SOCWRConicPost_OPF)
 	elseif (powerform == SDPWRMPowerModel)
 		println("Brian Algo")
 		pm = build_model(case, powerform, post_pf_feas)
@@ -32,6 +32,7 @@ function SOCWRConicPost_OPF(pm::AbstractPowerModel)
     variable_generation(pm)
     variable_branch_flow(pm)
     variable_dcline_flow(pm)
+    remove_infinity_bnds(pm)
 
     # Add new variables
     variable_bus_slacks(pm)
