@@ -184,6 +184,26 @@ function constraint_def_abs_flow_values(pm::AbstractPowerModel, f_idx, t_idx; nw
     JuMP.@constraint(mp.model, -q_to - uqt0[t_idx] <= 0)
 end
 
+function constraint_abs_branch_flow_ordering(pm::AbstractPowerModel, l::Int; nw::Int=pm.cnw, cnd::Int=pm.ccnd)
+    branch = ref(pm, nw, :branch, l)
+    f_bus = branch["f_bus"]
+    t_bus = branch["t_bus"]
+    f_idx = (l, f_bus, t_bus)
+    t_idx = (l, t_bus, f_bus)
+    upf0 = var(pm,nw,cnd, :upf0, f_idx)
+    upt0 = var(pm,nw,cnd, :upt0, t_idx)
+    uqf0 = var(pm,nw,cnd, :uqf0, f_idx)
+    uqt0 = var(pm,nw,cnd, :uqt0, t_idx)
+    upf1 = var(pm,nw,cnd, :upf1, f_idx)
+    upt1 = var(pm,nw,cnd, :upt1, t_idx)
+    uqf1 = var(pm,nw,cnd, :uqf1, f_idx)
+    uqt1 = var(pm,nw,cnd, :uqt1, t_idx)
+    u_ord_aux(pm,nw,cnd,:u_ord_aux,l)
+    u_K(pm,nw,cnd,:u_K)
+
+    JuMP.@constraint(mp.model, (upf0[f_idx] + upt0[t_idx] + uqf0[f_idx] + uqt0[t_idx]) - (upf1[f_idx] + upt1[t_idx] + uqf1[f_idx] + uqt1[t_idx]) - u_ord_aux - u_K <= 0)
+end
+
 "checks if a sufficient number of variables exist for the given keys collection"
 function _check_var_keys(vars, keys, var_name, comp_name)
     if length(vars) < length(keys)

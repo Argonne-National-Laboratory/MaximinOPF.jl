@@ -35,6 +35,7 @@ function variable_branch_flow_slacks(pm::AbstractPowerModel; nw::Int=pm.cnw, cnd
         start = 0
     )
 end
+
 function variable_branch_flow_slacks0(pm::AbstractPowerModel; nw::Int=pm.cnw, cnd::Int=pm.ccnd)
     upf0 = var(pm, nw, cnd)[:upf0] = JuMP.@variable(pm.model,
         [(l,i,j) in ref(pm, nw, :arcs_from)], base_name="$(nw)_$(cnd)_upf0",
@@ -56,6 +57,15 @@ function variable_branch_flow_slacks0(pm::AbstractPowerModel; nw::Int=pm.cnw, cn
         lower_bound = 0,
         start = 0
     )
+end
+
+function variable_ordering_auxiliary(pm::AbstractPowerModel; nw::Int=pm.cnw, cnd::Int=pm.ccnd)
+    u_ord_aux = var(pm, nw, cnd)[:u_ord_aux] = JuMP.@variable(pm.model,
+        [b in ids(pm, nw, :branch)], base_name="$(nw)_$(cnd)_u_ord_aux",
+        lower_bound = 0,
+        start = 0
+    )
+    u_K = var(pm.nw,cnd)[:u_K] = JuMP.@variable(pm.model, base_name="$(nw)_$(cnd)_u_K",lower_bound=0,start=0)
 end
 
 function remove_infinity_bnds(pm::AbstractPowerModel; nw::Int=pm.cnw, cnd::Int=pm.ccnd)
