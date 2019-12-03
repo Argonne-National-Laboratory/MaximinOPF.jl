@@ -27,7 +27,8 @@ end
 
 testresults = []
 for i in 1:length(supportedPMOptions)
-	pm_datas = getTestcases()
+	#pm_datas = getTestcasesFP()
+	pm_datas = getTestcasesRMinmax()
 	powerfrom = supportedPMOptions[i] #PowerModel Options
 	print(length(pm_datas))
 	for j in 1:length(pm_datas)

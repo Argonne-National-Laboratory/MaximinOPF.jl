@@ -15,7 +15,8 @@ function MaximinOPFModel(pm_data, powerform, nLineAttacked)
 
     if powerform == SOCWRConicPowerModel
         println("Prototyping Algo")
-        pm = build_model(pm_data, powerform, SOCWRConicPost_OPF)
+        #pm = build_model(pm_data, powerform, SOCWRConicPost_PF_Feas)
+        pm = build_model(pm_data, powerform, SOCWRConicPost_PF_RMinmax)
 	elseif (powerform == SDPWRMPowerModel)
 		println("Brian Algo")
 		pm = build_model(case, powerform, post_pf_feas)
@@ -27,7 +28,24 @@ function MaximinOPFModel(pm_data, powerform, nLineAttacked)
 	return pm
 end
 
-function SOCWRConicPost_OPF(pm::AbstractPowerModel)
+function SOCWRConicPost_PF_Feas(pm::AbstractPowerModel)
+    SOCWRConicPost_PF(pm)
+    objective_feasibility_problem(pm)
+end
+
+function SOCWRConicPost_PF_RMinmax(pm::AbstractPowerModel)
+    SOCWRConicPost_PF(pm)
+    variable_branch_flow_slacks0(pm)
+    variable_ordering_auxiliary(pm)
+    for l in ids(pm, :branch)
+      constraint_def_abs_flow_values(pm, l)
+      constraint_abs_branch_flow_ordering(pm, l)
+    end
+    K=pm.data["attacker_budget"]
+    objective_robust_minmax_problem(pm,K)
+end
+
+function SOCWRConicPost_PF(pm::AbstractPowerModel)
     variable_voltage(pm)
     variable_generation(pm)
     variable_branch_flow(pm)
@@ -38,7 +56,7 @@ function SOCWRConicPost_OPF(pm::AbstractPowerModel)
     variable_bus_slacks(pm)
     variable_branch_flow_slacks(pm)
 
-    # Replace objective function
+    # Post objective function later
     # objective_min_fuel_and_flow_cost(pm)
     objective_feasibility_problem(pm)
 
@@ -71,6 +89,7 @@ function SOCWRConicPost_OPF(pm::AbstractPowerModel)
         constraint_dcline(pm, i)
     end
 end
+
 
 function myPost_OPF(pm::AbstractPowerModel)
 	variable_voltage(pm)

@@ -65,7 +65,7 @@ function variable_ordering_auxiliary(pm::AbstractPowerModel; nw::Int=pm.cnw, cnd
         lower_bound = 0,
         start = 0
     )
-    u_K = var(pm.nw,cnd)[:u_K] = JuMP.@variable(pm.model, base_name="$(nw)_$(cnd)_u_K",lower_bound=0,start=0)
+    u_K = var(pm,nw,cnd)[:u_K] = JuMP.@variable(pm.model, base_name="$(nw)_$(cnd)_u_K",lower_bound=0,start=0)
 end
 
 function remove_infinity_bnds(pm::AbstractPowerModel; nw::Int=pm.cnw, cnd::Int=pm.ccnd)

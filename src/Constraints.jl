@@ -163,7 +163,13 @@ function constraint_ohms_yt_to_slacks(pm::AbstractPowerModel, i::Int; nw::Int=pm
     constraint_ohms_yt_to_slacks(pm, nw, cnd, f_bus, t_bus, f_idx, t_idx, g[cnd,cnd], b[cnd,cnd], g_to, b_to, tr[cnd], ti[cnd], tm)
 end
 
-function constraint_def_abs_flow_values(pm::AbstractPowerModel, f_idx, t_idx; nw::Int=pm.cnw, cnd::Int=pm.ccnd)
+function constraint_def_abs_flow_values(pm::AbstractPowerModel, l::Int; nw::Int=pm.cnw, cnd::Int=pm.ccnd)
+    branch = ref(pm, nw, :branch, l)
+    f_bus = branch["f_bus"]
+    t_bus = branch["t_bus"]
+    f_idx = (l, f_bus, t_bus)
+    t_idx = (l, t_bus, f_bus)
+
     p_fr = var(pm, nw, cnd, :p, f_idx)
     p_to = var(pm, nw, cnd, :p, t_idx)
     q_fr = var(pm, nw, cnd, :q, f_idx)
@@ -173,15 +179,15 @@ function constraint_def_abs_flow_values(pm::AbstractPowerModel, f_idx, t_idx; nw
     uqf0 = var(pm,nw,cnd, :uqf0, f_idx)
     uqt0 = var(pm,nw,cnd, :uqt0, t_idx)
 
-    JuMP.@constraint(mp.model, p_fr - upf0[f_idx] <= 0)
-    JuMP.@constraint(mp.model, -p_fr - upf0[f_idx] <= 0)
-    JuMP.@constraint(mp.model, p_fr - upt0[t_idx] <= 0)
-    JuMP.@constraint(mp.model, -p_fr - upt0[t_idx] <= 0)
+    JuMP.@constraint(pm.model, p_fr - upf0 <= 0)
+    JuMP.@constraint(pm.model, -p_fr - upf0 <= 0)
+    JuMP.@constraint(pm.model, p_to - upt0 <= 0)
+    JuMP.@constraint(pm.model, -p_to - upt0 <= 0)
 
-    JuMP.@constraint(mp.model, q_fr - uqf0[f_idx] <= 0)
-    JuMP.@constraint(mp.model, -q_fr - uqf0[f_idx] <= 0)
-    JuMP.@constraint(mp.model, q_to - uqt0[t_idx] <= 0)
-    JuMP.@constraint(mp.model, -q_to - uqt0[t_idx] <= 0)
+    JuMP.@constraint(pm.model, q_fr - uqf0 <= 0)
+    JuMP.@constraint(pm.model, -q_fr - uqf0 <= 0)
+    JuMP.@constraint(pm.model, q_to - uqt0 <= 0)
+    JuMP.@constraint(pm.model, -q_to - uqt0 <= 0)
 end
 
 function constraint_abs_branch_flow_ordering(pm::AbstractPowerModel, l::Int; nw::Int=pm.cnw, cnd::Int=pm.ccnd)
@@ -190,6 +196,7 @@ function constraint_abs_branch_flow_ordering(pm::AbstractPowerModel, l::Int; nw:
     t_bus = branch["t_bus"]
     f_idx = (l, f_bus, t_bus)
     t_idx = (l, t_bus, f_bus)
+
     upf0 = var(pm,nw,cnd, :upf0, f_idx)
     upt0 = var(pm,nw,cnd, :upt0, t_idx)
     uqf0 = var(pm,nw,cnd, :uqf0, f_idx)
@@ -198,10 +205,10 @@ function constraint_abs_branch_flow_ordering(pm::AbstractPowerModel, l::Int; nw:
     upt1 = var(pm,nw,cnd, :upt1, t_idx)
     uqf1 = var(pm,nw,cnd, :uqf1, f_idx)
     uqt1 = var(pm,nw,cnd, :uqt1, t_idx)
-    u_ord_aux(pm,nw,cnd,:u_ord_aux,l)
-    u_K(pm,nw,cnd,:u_K)
+    u_ord_aux = var(pm,nw,cnd,:u_ord_aux,l)
+    u_K = var(pm,nw,cnd,:u_K)
 
-    JuMP.@constraint(mp.model, (upf0[f_idx] + upt0[t_idx] + uqf0[f_idx] + uqt0[t_idx]) - (upf1[f_idx] + upt1[t_idx] + uqf1[f_idx] + uqt1[t_idx]) - u_ord_aux - u_K <= 0)
+    JuMP.@constraint(pm.model, (upf0 + upt0 + uqf0 + uqt0) - (upf1 + upt1 + uqf1 + uqt1) - u_ord_aux - u_K <= 0)
 end
 
 "checks if a sufficient number of variables exist for the given keys collection"
