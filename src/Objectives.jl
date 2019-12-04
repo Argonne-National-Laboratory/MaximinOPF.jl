@@ -14,7 +14,7 @@ function objective_feasibility_problem(pm::AbstractPowerModel; nw::Int=pm.cnw, c
     )
 end
 
-function objective_robust_minmax_problem(pm::AbstractPowerModel, K::Int; nw::Int=pm.cnw, cnd::Int=pm.ccnd)
+function objective_minmax_problem(pm::AbstractPowerModel, K::Int; nw::Int=pm.cnw, cnd::Int=pm.ccnd)
     upbus = var(pm,nw,cnd,:upbus)
     uqbus = var(pm,nw,cnd,:uqbus)
     upf1 = var(pm,nw,cnd,:upf1)

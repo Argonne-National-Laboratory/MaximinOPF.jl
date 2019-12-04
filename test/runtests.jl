@@ -16,8 +16,21 @@ supportedPMOptions = [
 	#SparseSDPWRMPowerModel # Error variable_voltage()
 ]
 
+function evaluateMinMax(expectedvalue, model, tol)
+	lk = []
+	println("Printing dual values x:")
+	for l in setdiff(ids(model, :branch),model.data["protected_branches"])
+      if abs(JuMP.dual(con(model, model.cnw, model.ccnd)[:x][l])) > tol
+      		push!(lk, l)	        
+      end
+    end
 
-function evaluation(expectedvalue, solvedvalue, tol)
+    println(lk)
+    # return 1
+    
+end
+
+function evaluateResult(expectedvalue, solvedvalue, tol)
 	if expectedvalue - solvedvalue < tol
 		return 1
 	else
@@ -28,14 +41,21 @@ end
 
 testresults = []
 for i in 1:length(supportedPMOptions)
-	#pm_datas = getTestcasesFP()
-	pm_datas = getTestcasesRMinmax()
+	# pm_datas = getTestcasesFP()
+	pm_datas = getTestcasesMinmax()
 	powerfrom = supportedPMOptions[i] #PowerModel Options
-	print(length(pm_datas))
+	println(length(pm_datas))
 	for j in 1:length(pm_datas)
+		casename = pm_datas[j]["name"]
+		expect = pm_datas[j]["expectedvalue"]		
 		pm_data = pm_datas[j]["pm_data"]
 		nLineAttacked = pm_datas[j]["K"]
+		protected_indices = pm_datas[j]["protected_indices"]
+		lineindexs = pm_datas[j]["inactive_indices"]
 		
+		pm_data["attacker_budget"]=nLineAttacked ###Adding another key and entry
+		pm_data["inactive_branches"]=lineindexs ###Adding another key and entry
+		pm_data["protected_branches"]=protected_indices ###Adding another key and entry
 		#Create PowerModels Model
 		model = MaximinOPF.MaximinOPFModel(pm_data, powerfrom, nLineAttacked)
 		#println(model)
@@ -51,11 +71,9 @@ for i in 1:length(supportedPMOptions)
 		end
 		#println(result["objective"])
 		
-		expect = pm_datas[j]["expectedvalue"]
-		protected_indices = pm_data["protected_branches"]
-		lineindexs = pm_data["inactive_branches"]
-		casename = pm_datas[j]["name"]
-		testresult = evaluation(expect, result["objective"], 0.001)
+		evaluateMinMax(expect, model, 0.001)
+		testresult = evaluateResult(expect, result["objective"], 0.001)
+		
 		push!(testresults, 
 			Dict(
 				"testresult" => testresult,
@@ -65,15 +83,6 @@ for i in 1:length(supportedPMOptions)
 				"expectedvalue" => expect,
 				"solvedvalue" => result["objective"]
 				))
-	    println("Printing dual values x:")
-    	    for l in setdiff(ids(model, :branch),pm_data["protected_branches"])
-	      if abs(JuMP.dual(con(model, model.cnw, model.ccnd)[:x][l])) > 1e-4
-    	        print(" x[$l]=",abs(JuMP.dual(con(model, model.cnw, model.ccnd)[:x][l])))
-	      end
-	    end
-	    println("\nSum of x is: ", sum(
-    	        abs(JuMP.dual(con(model, model.cnw, model.ccnd)[:x][l]))
-    	        for l in setdiff(ids(model, :branch),pm_data["protected_branches"]) ))
 	end
 end
 

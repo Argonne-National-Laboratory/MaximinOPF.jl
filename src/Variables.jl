@@ -68,21 +68,22 @@ function variable_ordering_auxiliary(pm::AbstractPowerModel; nw::Int=pm.cnw, cnd
     u_K = var(pm,nw,cnd)[:u_K] = JuMP.@variable(pm.model, base_name="$(nw)_$(cnd)_u_K",lower_bound=0,start=0)
 end
 
+# Remove bound variables that are not used in MaxminOPF from PowerModel
 function remove_infinity_bnds(pm::AbstractPowerModel; nw::Int=pm.cnw, cnd::Int=pm.ccnd)
     p = var(pm, nw, cnd, :p)
     q = var(pm, nw, cnd, :q)
     for l in ref(pm,nw, :arcs)
       if lower_bound(p[l])==-Inf
-	delete_lower_bound(p[l])
+        delete_lower_bound(p[l])
       end      
       if lower_bound(q[l])==-Inf
-	delete_lower_bound(q[l])
+        delete_lower_bound(q[l])
       end      
       if upper_bound(p[l])==Inf
-	delete_upper_bound(p[l])
+        delete_upper_bound(p[l])
       end      
       if upper_bound(q[l])==Inf
-	delete_upper_bound(q[l])
+        delete_upper_bound(q[l])
       end      
     end
 end

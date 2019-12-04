@@ -32,7 +32,7 @@ casesFP = [
 	)
 ]
 
-casesRMinmax = [
+casesMinmax = [
 	Dict("file" => "../data/case9.m", 
 		"name" => "case9", 
 		"expectedvalue" => 3.4519, 
@@ -96,10 +96,7 @@ function getTestcasesFP()
 		inactive_branches = casesFP[i]["inactive_indices"]
 		protected_branches = casesFP[i]["protected_indices"]
 		K = casesFP[i]["attack_budget"]
-		pm_data = PowerModels.parse_file(case)
-		pm_data["attacker_budget"]=K ###Adding another key and entry
-		pm_data["inactive_branches"]=inactive_branches ###Adding another key and entry
-		pm_data["protected_branches"]=protected_branches ###Adding another key and entry
+		pm_data = PowerModels.parse_file(case)		
 	    push!(pm_datas, 
 	    	Dict("pm_data" => pm_data, 
 	    		"K" => K, 
@@ -112,21 +109,18 @@ function getTestcasesFP()
 	return pm_datas
 end
 
-function getTestcasesRMinmax()
+function getTestcasesMinmax()
 	pm_datas = []
 
-	for i in 1:length(casesRMinmax)
+	for i in 1:length(casesMinmax)
 	#Set Default Input
-		case = casesRMinmax[i]["file"]
-		casename = casesRMinmax[i]["name"]
-		expect = casesRMinmax[i]["expectedvalue"]
-		protected_branches = casesRMinmax[i]["protected_indices"]
-		inactive_branches = casesRMinmax[i]["inactive_indices"]
-		K = casesRMinmax[i]["attack_budget"]-length(inactive_branches)
+		case = casesMinmax[i]["file"]
+		casename = casesMinmax[i]["name"]
+		expect = casesMinmax[i]["expectedvalue"]
+		protected_branches = casesMinmax[i]["protected_indices"]
+		inactive_branches = casesMinmax[i]["inactive_indices"]
+		K = casesMinmax[i]["attack_budget"]-length(inactive_branches)
 		pm_data = PowerModels.parse_file(case)
-		pm_data["attacker_budget"]=K ###Adding another key and entry
-		pm_data["protected_branches"]=protected_branches ###Adding another key and entry
-		pm_data["inactive_branches"]=inactive_branches ###Adding another key and entry
 	    push!(pm_datas, 
 	    	Dict("pm_data" => pm_data, 
 	    		"K" => K, 
