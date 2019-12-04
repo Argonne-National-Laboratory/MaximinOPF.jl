@@ -3,6 +3,7 @@ using Ipopt
 using PowerModels
 using Mosek
 using MosekTools
+using JuMP
 
 include("testcases.jl")
 
@@ -64,7 +65,25 @@ for i in 1:length(supportedPMOptions)
 				"expectedvalue" => expect,
 				"solvedvalue" => result["objective"]
 				))
+	    println("Printing dual values x:")
+    	    for l in setdiff(ids(model, :branch),pm_data["protected_branches"])
+	      if abs(JuMP.dual(con(model, model.cnw, model.ccnd)[:x][l])) > 1e-4
+    	        print(" x[$l]=",abs(JuMP.dual(con(model, model.cnw, model.ccnd)[:x][l])))
+	      end
+	    end
+	    println("\nSum of x is: ", sum(
+    	        abs(JuMP.dual(con(model, model.cnw, model.ccnd)[:x][l]))
+    	        for l in setdiff(ids(model, :branch),pm_data["protected_branches"]) ))
 	end
 end
 
 println(testresults)
+println("Printing results of the tests:")
+for kk=1:length(testresults)
+  print("Test ",kk," ")
+  if testresults[kk]["testresult"]==1
+    println("passed.")
+  else
+    println("FAILED!")
+  end
+end

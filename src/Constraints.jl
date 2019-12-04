@@ -208,6 +208,7 @@ function constraint_abs_branch_flow_ordering(pm::AbstractPowerModel, l::Int; nw:
     u_ord_aux = var(pm,nw,cnd,:u_ord_aux,l)
     u_K = var(pm,nw,cnd,:u_K)
 
+    con(pm, nw, cnd)[:x][l] = 
     JuMP.@constraint(pm.model, (upf0 + upt0 + uqf0 + uqt0) - (upf1 + upt1 + uqf1 + uqt1) - u_ord_aux - u_K <= 0)
 end
 

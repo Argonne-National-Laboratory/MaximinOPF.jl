@@ -15,12 +15,12 @@ function MaximinOPFModel(pm_data, powerform, nLineAttacked)
 
     if powerform == SOCWRConicPowerModel
         println("Prototyping Algo")
-        #pm = build_model(pm_data, powerform, SOCWRConicPost_PF_Feas)
         for (k,line) in pm_data["branch"]
           if line["index"] in pm_data["inactive_branches"]
 	    line["br_status"]=0
           end			
         end		
+        #pm = build_model(pm_data, powerform, SOCWRConicPost_PF_Feas)
         pm = build_model(pm_data, powerform, SOCWRConicPost_PF_RMinmax)
 	elseif (powerform == SDPWRMPowerModel)
 		println("Brian Algo")
@@ -42,6 +42,12 @@ function SOCWRConicPost_PF_RMinmax(pm::AbstractPowerModel)
     SOCWRConicPost_PF(pm)
     variable_branch_flow_slacks0(pm)
     variable_ordering_auxiliary(pm)
+println(ids(pm,:branch))
+    con(pm, pm.cnw, pm.ccnd)[:x] = Dict{Int,ConstraintRef}()
+    #for l in ids(pm, :branch)
+    #  dict[l]=undef
+    #end
+    #con(pm, pm.cnw, pm.ccnd)[:x] = JuMP.Containers.SparseAxisArray(dict) #Array{ConstraintRef,1}(undef,length(ids(pm,:branch)))
     for l in ids(pm, :branch)
       if !(l in pm.data["protected_branches"])
         constraint_def_abs_flow_values(pm, l)
