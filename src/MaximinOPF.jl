@@ -16,6 +16,11 @@ function MaximinOPFModel(pm_data, powerform, nLineAttacked)
     if powerform == SOCWRConicPowerModel
         println("Prototyping Algo")
         #pm = build_model(pm_data, powerform, SOCWRConicPost_PF_Feas)
+        for (k,line) in pm_data["branch"]
+          if line["index"] in pm_data["inactive_branches"]
+	    line["br_status"]=0
+          end			
+        end		
         pm = build_model(pm_data, powerform, SOCWRConicPost_PF_RMinmax)
 	elseif (powerform == SDPWRMPowerModel)
 		println("Brian Algo")
@@ -38,8 +43,10 @@ function SOCWRConicPost_PF_RMinmax(pm::AbstractPowerModel)
     variable_branch_flow_slacks0(pm)
     variable_ordering_auxiliary(pm)
     for l in ids(pm, :branch)
-      constraint_def_abs_flow_values(pm, l)
-      constraint_abs_branch_flow_ordering(pm, l)
+      if !(l in pm.data["protected_branches"])
+        constraint_def_abs_flow_values(pm, l)
+        constraint_abs_branch_flow_ordering(pm, l)
+      end
     end
     K=pm.data["attacker_budget"]
     objective_robust_minmax_problem(pm,K)
@@ -72,21 +79,23 @@ function SOCWRConicPost_PF(pm::AbstractPowerModel)
         constraint_power_balance_slacks(pm, i)
     end
 
-    for i in ids(pm, :branch)
-        # Replace line flow constraint function
-        # constraint_ohms_yt_from(pm, i)
-        # constraint_ohms_yt_to(pm, i)
-        constraint_ohms_yt_from_slacks(pm, i)
-        constraint_ohms_yt_to_slacks(pm, i)
+    for l in ids(pm, :branch)
+	if l in pm.data["protected_branches"]
+          constraint_ohms_yt_from(pm, l)
+          constraint_ohms_yt_to(pm, l)
+	else
+          constraint_ohms_yt_from_slacks(pm, l)
+          constraint_ohms_yt_to_slacks(pm, l)
+	end
 
-        constraint_voltage_angle_difference(pm, i)
+        constraint_voltage_angle_difference(pm, l)
 
-        constraint_thermal_limit_from(pm, i)
-        constraint_thermal_limit_to(pm, i)
+        constraint_thermal_limit_from(pm, l)
+        constraint_thermal_limit_to(pm, l)
     end
 
-    for i in ids(pm, :dcline)
-        constraint_dcline(pm, i)
+    for l in ids(pm, :dcline)
+        constraint_dcline(pm, l)  # DO WE NEED TO TREAT THESE CONSTRAINTS DIFFERENTLY
     end
 end
 

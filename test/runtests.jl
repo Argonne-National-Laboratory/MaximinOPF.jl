@@ -51,14 +51,16 @@ for i in 1:length(supportedPMOptions)
 		#println(result["objective"])
 		
 		expect = pm_datas[j]["expectedvalue"]
-		lineindexs = pm_datas[j]["cutindex"]
+		protected_indices = pm_data["protected_branches"]
+		lineindexs = pm_data["inactive_branches"]
 		casename = pm_datas[j]["name"]
 		testresult = evaluation(expect, result["objective"], 0.001)
 		push!(testresults, 
 			Dict(
 				"testresult" => testresult,
 				"casename" => casename,
-				"cutindex" => lineindexs,
+				"protected_branches" => protected_indices,
+				"inactive_branches" => lineindexs,
 				"expectedvalue" => expect,
 				"solvedvalue" => result["objective"]
 				))
