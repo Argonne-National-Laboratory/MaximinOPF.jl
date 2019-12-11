@@ -54,6 +54,21 @@ casesMinmax = [
 		"inactive_indices" => [],
 		"protected_indices" => []
 	),
+	Dict("file" => "../data/case30.m", 
+		"name" => "case30", 
+		"expectedvalue" => 0.937, 
+		"attack_budget" => 4,
+		"inactive_indices" => [8,9,10,40],
+		"protected_indices" => []
+	),
+	Dict("file" => "../data/case30.m", 
+		"name" => "case30", 
+		"expectedvalue" => 0.937, 
+		"attack_budget" => 4,
+		"inactive_indices" => [],
+		"protected_indices" => setdiff([1:41],[8,9,10,40]) 
+	),
+#=
 	Dict("file" => "../data/case57.m", 
 		"name" => "case57", 
 		"expectedvalue" => 2.768, 
@@ -82,6 +97,7 @@ casesMinmax = [
 		"inactive_indices" => [],
 		"protected_indices" => []
 	),
+=#
 ]
 
 
