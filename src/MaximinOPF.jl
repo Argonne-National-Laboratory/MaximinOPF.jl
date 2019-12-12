@@ -1,11 +1,33 @@
 module MaximinOPF
 using PowerModels
+using Dualization
 include("Variables.jl")
 include("Objectives.jl")
 include("Constraints.jl")
 greet() = print("Hello World!")
 
 function MaximinOPFModel(pm_data, powerform, nLineAttacked)
+   minmax_model_pm=MinimaxOPFModel(pm_data, powerform, nLineAttacked)
+   MaximinOPFModel(minimax_model_pm.model)
+end
+
+function MaximinOPFModel(minmax_model_pm::AbstractPowerModel)
+    maxmin_model = dualize(minmax_model_pm.model)
+    for l in ids(minmax_model_pm, :branch)
+        if !(l in minmax_model_pm.data["protected_branches"])
+     	  if has_lower_bound(variable_by_name(maxmin_model,"x[$l]_1"))
+     	      delete_lower_bound(variable_by_name(maxmin_model,"x[$l]_1"))
+     	  end
+     	  if has_upper_bound(variable_by_name(maxmin_model,"x[$l]_1"))
+     	      delete_upper_bound(variable_by_name(maxmin_model,"x[$l]_1"))
+     	  end
+	  JuMP.set_binary(variable_by_name(maxmin_model,"x[$l]_1"))
+	end
+    end
+    return maxmin_model
+end
+
+function MinimaxOPFModel(pm_data, powerform, nLineAttacked)
 	println("Hello MaximinOPFModel")
 	#println(case)
 	println(powerform)

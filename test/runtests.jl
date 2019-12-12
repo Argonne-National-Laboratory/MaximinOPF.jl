@@ -81,21 +81,21 @@ for i in 1:length(supportedPMOptions)
 		pm_data["inactive_branches"]=lineindexs ###Adding another key and entry
 		pm_data["protected_branches"]=protected_indices ###Adding another key and entry
 		#Create PowerModels Model
-		model = MaximinOPF.MaximinOPFModel(pm_data, powerfrom, nLineAttacked)
-		#println(model)
+		minmax_model_pm = MaximinOPF.MinimaxOPFModel(pm_data, powerfrom, nLineAttacked)
+		#println(minmax_model_pm)
 		#println("Print PowerModels Model")
-		#println(model.model)
+		#println(minmax_model_pm.model)
 
 		#Solve Model with PowerModels Solution Builder
 		println("Start Solving")
 		if i > 2
-			result = optimize_model!(model, with_optimizer(Ipopt.Optimizer))
+			result = optimize_model!(minmax_model_pm, with_optimizer(Ipopt.Optimizer))
 		else
-			result = optimize_model!(model, with_optimizer(Mosek.Optimizer))
+			result = optimize_model!(minmax_model_pm, with_optimizer(Mosek.Optimizer))
 		end
 		#println(result["objective"])
 		
-		evaluateMinMax(expect, model, 0.001)
+		evaluateMinMax(expect, minmax_model_pm, 0.001)
 		testresult = evaluateResult(expect, result["objective"], 0.001)
 		
 		push!(testresults, 
@@ -107,6 +107,25 @@ for i in 1:length(supportedPMOptions)
 				"expectedvalue" => expect,
 				"solvedvalue" => result["objective"]
 				))
+		maxmin_model = MaximinOPF.MaximinOPFModel(minmax_model_pm)
+		f_name_base="maxmin_out_"
+		f_name = string(f_name_base,j,".txt")
+		io=open(f_name, "w")
+		println(io,maxmin_model)
+		wtime = @elapsed JuMP.optimize!(maxmin_model,with_optimizer(Mosek.Optimizer))
+		status=JuMP.termination_status(maxmin_model)
+		println(io,"Time taken to solve is: ", wtime, " with status ",status,".")
+		println(io,"The optimal value is: ",JuMP.objective_value(maxmin_model),".")
+		println(io,"The x solutions are: ")
+		for l in ids(minmax_model_pm, :branch)
+		    if !(l in minmax_model_pm.data["protected_branches"]) 
+			x_val=JuMP.value(variable_by_name(maxmin_model,"x[$l]_1"))
+			if x_val > 1e-4
+		          println(io," x[$l]=",x_val)
+			end
+		    end
+		end
+		close(io)
 	end
 end
 

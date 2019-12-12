@@ -86,18 +86,32 @@ end
 function remove_infinity_bnds(pm::AbstractPowerModel; nw::Int=pm.cnw, cnd::Int=pm.ccnd)
     p = var(pm, nw, cnd, :p)
     q = var(pm, nw, cnd, :q)
+    #io=open("temp.txt","w")
     for l in ref(pm,nw, :arcs)
-      if lower_bound(p[l])==-Inf
+     if has_lower_bound(p[l])
+      if lower_bound(p[l])==-Inf 
         delete_lower_bound(p[l])
+        #println(io,"Removing -Inf lower bound for p[$l]")
       end      
-      if lower_bound(q[l])==-Inf
+     end
+     if has_lower_bound(q[l])
+      if lower_bound(q[l])==-Inf 
         delete_lower_bound(q[l])
+        #println(io,"Removing -Inf lower bound for q[$l]")
       end      
-      if upper_bound(p[l])==Inf
+     end
+     if has_upper_bound(p[l])
+      if upper_bound(p[l])==Inf 
         delete_upper_bound(p[l])
+        #println(io,"Removing Inf upper bound for p[$l]")
       end      
-      if upper_bound(q[l])==Inf
+     end
+     if has_upper_bound(q[l])
+      if upper_bound(q[l])==Inf 
         delete_upper_bound(q[l])
+        #println(io,"Removing Inf upper bound for q[$l]")
       end      
+     end
     end
+    #close(io)
 end

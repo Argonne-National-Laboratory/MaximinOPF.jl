@@ -93,6 +93,7 @@ end
 Creates Ohms constraints (yt post fix indicates that Y and T values are in rectangular form)
 """
 function constraint_ohms_yt_from_slacks(pm::AbstractWRModels, n::Int, c::Int, f_bus, t_bus, f_idx, t_idx, g, b, g_fr, b_fr, tr, ti, tm)
+    l=f_idx[1]
     p_fr = var(pm, n, c, :p, f_idx)
     q_fr = var(pm, n, c, :q, f_idx)
     w_fr = var(pm, n, c, :w, f_bus)
@@ -101,10 +102,14 @@ function constraint_ohms_yt_from_slacks(pm::AbstractWRModels, n::Int, c::Int, f_
     upf1 = var(pm,n,c, :up_br)[f_idx,1]
     uqf1 = var(pm,n,c, :uq_br)[f_idx,1]
 
-    JuMP.@constraint(pm.model,  (g+g_fr)/tm^2*w_fr + (-g*tr+b*ti)/tm^2*wr + (-b*tr-g*ti)/tm^2*wi - p_fr - upf1 <= 0)
-    JuMP.@constraint(pm.model, -(g+g_fr)/tm^2*w_fr - (-g*tr+b*ti)/tm^2*wr - (-b*tr-g*ti)/tm^2*wi + p_fr - upf1 <= 0)
-    JuMP.@constraint(pm.model, -(b+b_fr)/tm^2*w_fr - (-b*tr-g*ti)/tm^2*wr + (-g*tr+b*ti)/tm^2*wi - q_fr - uqf1 <= 0)
-    JuMP.@constraint(pm.model, (b+b_fr)/tm^2*w_fr + (-b*tr-g*ti)/tm^2*wr - (-g*tr+b*ti)/tm^2*wi + q_fr - uqf1 <= 0)
+    cref=JuMP.@constraint(pm.model,  (g+g_fr)/tm^2*w_fr + (-g*tr+b*ti)/tm^2*wr + (-b*tr-g*ti)/tm^2*wi - p_fr - upf1 <= 0)
+      JuMP.set_name(cref,"lambda_f+[$l]")  
+    cref=JuMP.@constraint(pm.model, -(g+g_fr)/tm^2*w_fr - (-g*tr+b*ti)/tm^2*wr - (-b*tr-g*ti)/tm^2*wi + p_fr - upf1 <= 0)
+      JuMP.set_name(cref,"lambda_f-[$l]")  
+    cref=JuMP.@constraint(pm.model, -(b+b_fr)/tm^2*w_fr - (-b*tr-g*ti)/tm^2*wr + (-g*tr+b*ti)/tm^2*wi - q_fr - uqf1 <= 0)
+      JuMP.set_name(cref,"mu_f+[$l]")  
+    cref=JuMP.@constraint(pm.model, (b+b_fr)/tm^2*w_fr + (-b*tr-g*ti)/tm^2*wr - (-g*tr+b*ti)/tm^2*wi + q_fr - uqf1 <= 0)
+      JuMP.set_name(cref,"mu_f-[$l]")  
 end
 
 
@@ -112,6 +117,7 @@ end
 Creates Ohms constraints (yt post fix indicates that Y and T values are in rectangular form)
 """
 function constraint_ohms_yt_to_slacks(pm::AbstractWRModels, n::Int, c::Int, f_bus, t_bus, f_idx, t_idx, g, b, g_to, b_to, tr, ti, tm)
+    l=t_idx[1]
     q_to = var(pm, n, c, :q, t_idx)
     p_to = var(pm, n, c, :p, t_idx)
     w_to = var(pm, n, c, :w, t_bus)
@@ -120,10 +126,14 @@ function constraint_ohms_yt_to_slacks(pm::AbstractWRModels, n::Int, c::Int, f_bu
     upt1 = var(pm,n,c, :up_br)[t_idx,1]
     uqt1 = var(pm,n,c, :uq_br)[t_idx,1]
 
-    JuMP.@constraint(pm.model,  (g+g_to)*w_to + (-g*tr-b*ti)/tm^2*wr + (-b*tr+g*ti)/tm^2*-wi - p_to - upt1 <= 0)
-    JuMP.@constraint(pm.model,  -(g+g_to)*w_to - (-g*tr-b*ti)/tm^2*wr - (-b*tr+g*ti)/tm^2*-wi + p_to - upt1 <= 0)
-    JuMP.@constraint(pm.model, -(b+b_to)*w_to - (-b*tr+g*ti)/tm^2*wr + (-g*tr-b*ti)/tm^2*-wi - q_to - uqt1 <= 0)
-    JuMP.@constraint(pm.model, (b+b_to)*w_to + (-b*tr+g*ti)/tm^2*wr - (-g*tr-b*ti)/tm^2*-wi + q_to - uqt1 <= 0)
+    cref=JuMP.@constraint(pm.model,  (g+g_to)*w_to + (-g*tr-b*ti)/tm^2*wr + (-b*tr+g*ti)/tm^2*-wi - p_to - upt1 <= 0)
+      JuMP.set_name(cref,"lambda_t+[$l]")  
+    cref=JuMP.@constraint(pm.model,  -(g+g_to)*w_to - (-g*tr-b*ti)/tm^2*wr - (-b*tr+g*ti)/tm^2*-wi + p_to - upt1 <= 0)
+      JuMP.set_name(cref,"lambda_t-[$l]")  
+    cref=JuMP.@constraint(pm.model, -(b+b_to)*w_to - (-b*tr+g*ti)/tm^2*wr + (-g*tr-b*ti)/tm^2*-wi - q_to - uqt1 <= 0)
+      JuMP.set_name(cref,"mu_t+[$l]")  
+    cref=JuMP.@constraint(pm.model, (b+b_to)*w_to + (-b*tr+g*ti)/tm^2*wr - (-g*tr-b*ti)/tm^2*-wi + q_to - uqt1 <= 0)
+      JuMP.set_name(cref,"mu_t-[$l]")  
 end
 
 ### Branch - Ohm's Law Constraints ###
@@ -179,15 +189,23 @@ function constraint_def_abs_flow_values(pm::AbstractPowerModel, l::Int; nw::Int=
     uqf0 = var(pm,nw,cnd, :uq_br)[f_idx,0]
     uqt0 = var(pm,nw,cnd, :uq_br)[t_idx,0]
 
-    JuMP.@constraint(pm.model, p_fr - upf0 <= 0)
-    JuMP.@constraint(pm.model, -p_fr - upf0 <= 0)
-    JuMP.@constraint(pm.model, p_to - upt0 <= 0)
-    JuMP.@constraint(pm.model, -p_to - upt0 <= 0)
+    cref=JuMP.@constraint(pm.model, p_fr - upf0 <= 0)
+      JuMP.set_name(cref,"pi_f+[$l]")  
+    cref=JuMP.@constraint(pm.model, -p_fr - upf0 <= 0)
+      JuMP.set_name(cref,"pi_f-[$l]")  
+    cref=JuMP.@constraint(pm.model, p_to - upt0 <= 0)
+      JuMP.set_name(cref,"pi_t+[$l]")  
+    cref=JuMP.@constraint(pm.model, -p_to - upt0 <= 0)
+      JuMP.set_name(cref,"pi_t-[$l]")  
 
-    JuMP.@constraint(pm.model, q_fr - uqf0 <= 0)
-    JuMP.@constraint(pm.model, -q_fr - uqf0 <= 0)
-    JuMP.@constraint(pm.model, q_to - uqt0 <= 0)
-    JuMP.@constraint(pm.model, -q_to - uqt0 <= 0)
+    cref=JuMP.@constraint(pm.model, q_fr - uqf0 <= 0)
+      JuMP.set_name(cref,"phi_f+[$l]")  
+    cref=JuMP.@constraint(pm.model, -q_fr - uqf0 <= 0)
+      JuMP.set_name(cref,"phi_f-[$l]")  
+    cref=JuMP.@constraint(pm.model, q_to - uqt0 <= 0)
+      JuMP.set_name(cref,"phi_t+[$l]")  
+    cref=JuMP.@constraint(pm.model, -q_to - uqt0 <= 0)
+      JuMP.set_name(cref,"phi_t-[$l]")  
 end
 
 function constraint_abs_branch_flow_ordering(pm::AbstractPowerModel, l::Int; nw::Int=pm.cnw, cnd::Int=pm.ccnd)
@@ -209,7 +227,10 @@ function constraint_abs_branch_flow_ordering(pm::AbstractPowerModel, l::Int; nw:
     u_K = var(pm,nw,cnd,:u_K)
 
     con(pm, nw, cnd)[:x][l] = 
-    JuMP.@constraint(pm.model, (upf0 + upt0 + uqf0 + uqt0) - (upf1 + upt1 + uqf1 + uqt1) - u_ord_aux - u_K <= 0)
+    JuMP.@constraint(pm.model, -(upf0 + upt0 + uqf0 + uqt0) + (upf1 + upt1 + uqf1 + uqt1) + u_ord_aux + u_K >= 0)
+
+    JuMP.set_name(con(pm, nw, cnd)[:x][l],"x[$l]")  
+    #println("Constraint name: ",JuMP.name(con(pm, nw, cnd)[:x][l]))  
 end
 
 "checks if a sufficient number of variables exist for the given keys collection"
