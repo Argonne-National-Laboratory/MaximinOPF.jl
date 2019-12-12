@@ -68,7 +68,6 @@ casesMinmax = [
 		"inactive_indices" => [],
 		"protected_indices" => setdiff([1:41],[8,9,10,40]) 
 	),
-#=
 	Dict("file" => "../data/case57.m", 
 		"name" => "case57", 
 		"expectedvalue" => 2.768, 
@@ -97,7 +96,6 @@ casesMinmax = [
 		"inactive_indices" => [],
 		"protected_indices" => []
 	),
-=#
 ]
 
 

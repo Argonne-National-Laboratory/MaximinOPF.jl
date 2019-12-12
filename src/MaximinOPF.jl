@@ -36,7 +36,6 @@ end
 
 function SOCWRConicPost_PF_Minmax(pm::AbstractPowerModel)
     SOCWRConicPost_PF(pm)
-    variable_branch_flow_slacks0(pm)
     variable_ordering_auxiliary(pm)
     con(pm, pm.cnw, pm.ccnd)[:x] = Dict{Int,ConstraintRef}()
     for l in ids(pm, :branch)
