@@ -37,65 +37,65 @@ casesMinmax = [
 		"name" => "case9", 
 		"expectedvalue" => 3.4519, 
 		"attack_budget" => 3,
-		"inactive_indices" => [1,4,7],
-		"protected_indices" => []
-	),
-	Dict("file" => "../data/case9.m", 
-		"name" => "case9", 
-		"expectedvalue" => 3.4519, 
-		"attack_budget" => 3,
-		"inactive_indices" => [],
-		"protected_indices" => [2,3,5,6,8,9]
-	),
-	Dict("file" => "../data/case30.m", 
-		"name" => "case30", 
-		"expectedvalue" => 1.971, 
-		"attack_budget" => 4,
 		"inactive_indices" => [],
 		"protected_indices" => []
 	),
-	Dict("file" => "../data/case30.m", 
-		"name" => "case30", 
-		"expectedvalue" => 0.937, 
-		"attack_budget" => 4,
-		"inactive_indices" => [8,9,10,40],
-		"protected_indices" => []
-	),
-	Dict("file" => "../data/case30.m", 
-		"name" => "case30", 
-		"expectedvalue" => 0.937, 
-		"attack_budget" => 4,
-		"inactive_indices" => [],
-		"protected_indices" => setdiff([1:41],[8,9,10,40]) 
-	),
-	Dict("file" => "../data/case57.m", 
-		"name" => "case57", 
-		"expectedvalue" => 2.768, 
-		"attack_budget" => 2,
-		"inactive_indices" => [],
-		"protected_indices" => []
-	),
-	Dict("file" => "../data/case57.m", 
-		"name" => "case57", 
-		"expectedvalue" => 4.511, 
-		"attack_budget" => 4,
-		"inactive_indices" => [],
-		"protected_indices" => []
-	),
-	Dict("file" => "../data/case118.m", 
-		"name" => "case118", 
-		"expectedvalue" => 2.645, 
-		"attack_budget" => 2,
-		"inactive_indices" => [],
-		"protected_indices" => []
-	),
-	Dict("file" => "../data/case118.m", 
-		"name" => "case118", 
-		"expectedvalue" => 4.051, 
-		"attack_budget" => 4,
-		"inactive_indices" => [],
-		"protected_indices" => []
-	),
+	# Dict("file" => "../data/case9.m", 
+	# 	"name" => "case9", 
+	# 	"expectedvalue" => 3.4519, 
+	# 	"attack_budget" => 3,
+	# 	"inactive_indices" => [],
+	# 	"protected_indices" => [2,3,5,6,8,9]
+	# ),
+	# Dict("file" => "../data/case30.m", 
+	# 	"name" => "case30", 
+	# 	"expectedvalue" => 1.971, 
+	# 	"attack_budget" => 4,
+	# 	"inactive_indices" => [],
+	# 	"protected_indices" => []
+	# ),
+	# Dict("file" => "../data/case30.m", 
+	# 	"name" => "case30", 
+	# 	"expectedvalue" => 0.937, 
+	# 	"attack_budget" => 4,
+	# 	"inactive_indices" => [8,9,10,40],
+	# 	"protected_indices" => []
+	# ),
+	# Dict("file" => "../data/case30.m", 
+	# 	"name" => "case30", 
+	# 	"expectedvalue" => 0.937, 
+	# 	"attack_budget" => 4,
+	# 	"inactive_indices" => [],
+	# 	"protected_indices" => setdiff([1:41],[8,9,10,40]) 
+	# ),
+	# Dict("file" => "../data/case57.m", 
+	# 	"name" => "case57", 
+	# 	"expectedvalue" => 2.768, 
+	# 	"attack_budget" => 2,
+	# 	"inactive_indices" => [],
+	# 	"protected_indices" => []
+	# ),
+	# Dict("file" => "../data/case57.m", 
+	# 	"name" => "case57", 
+	# 	"expectedvalue" => 4.511, 
+	# 	"attack_budget" => 4,
+	# 	"inactive_indices" => [],
+	# 	"protected_indices" => []
+	# ),
+	# Dict("file" => "../data/case118.m", 
+	# 	"name" => "case118", 
+	# 	"expectedvalue" => 2.645, 
+	# 	"attack_budget" => 2,
+	# 	"inactive_indices" => [],
+	# 	"protected_indices" => []
+	# ),
+	# Dict("file" => "../data/case118.m", 
+	# 	"name" => "case118", 
+	# 	"expectedvalue" => 4.051, 
+	# 	"attack_budget" => 4,
+	# 	"inactive_indices" => [],
+	# 	"protected_indices" => []
+	# ),
 ]
 
 
@@ -127,7 +127,6 @@ function getTestcasesMinmax()
 	pm_datas = []
 
 	for i in 1:length(casesMinmax)
-	#Set Default Input
 		case = casesMinmax[i]["file"]
 		casename = casesMinmax[i]["name"]
 		expect = casesMinmax[i]["expectedvalue"]

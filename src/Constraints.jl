@@ -230,7 +230,6 @@ function constraint_abs_branch_flow_ordering(pm::AbstractPowerModel, l::Int; nw:
     JuMP.@constraint(pm.model, -(upf0 + upt0 + uqf0 + uqt0) + (upf1 + upt1 + uqf1 + uqt1) + u_ord_aux + u_K >= 0)
 
     JuMP.set_name(con(pm, nw, cnd)[:x][l],"x[$l]")  
-    #println("Constraint name: ",JuMP.name(con(pm, nw, cnd)[:x][l]))  
 end
 
 "checks if a sufficient number of variables exist for the given keys collection"

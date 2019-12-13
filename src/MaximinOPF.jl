@@ -7,12 +7,17 @@ include("Constraints.jl")
 greet() = print("Hello World!")
 
 function MaximinOPFModel(pm_data, powerform, nLineAttacked)
-   minmax_model_pm=MinimaxOPFModel(pm_data, powerform, nLineAttacked)
-   MaximinOPFModel(minimax_model_pm.model)
+    println("Hello MaximinOPFModel")
+    m = MinimaxOPFModel(pm_data, powerform, nLineAttacked)
+    m = DualizeModel(m)
+    return m
 end
 
-function MaximinOPFModel(minmax_model_pm::AbstractPowerModel)
+function DualizeModel(minmax_model_pm::AbstractPowerModel)
     maxmin_model = dualize(minmax_model_pm.model)
+    println("After Dual")
+    println(maxmin_model)
+    println("----------")
     for l in ids(minmax_model_pm, :branch)
         if !(l in minmax_model_pm.data["protected_branches"])
      	  if has_lower_bound(variable_by_name(maxmin_model,"x[$l]_1"))
@@ -21,28 +26,27 @@ function MaximinOPFModel(minmax_model_pm::AbstractPowerModel)
      	  if has_upper_bound(variable_by_name(maxmin_model,"x[$l]_1"))
      	      delete_upper_bound(variable_by_name(maxmin_model,"x[$l]_1"))
      	  end
-	  JuMP.set_binary(variable_by_name(maxmin_model,"x[$l]_1"))
-	end
+	    JuMP.set_binary(variable_by_name(maxmin_model,"x[$l]_1"))
+	    end
     end
     return maxmin_model
 end
 
 function MinimaxOPFModel(pm_data, powerform, nLineAttacked)
-	println("Hello MaximinOPFModel")
+	
 	#println(case)
-	println(powerform)
-	println(nLineAttacked)
-	pm = ""
-	#Output Model from PowerModels
+	#println(powerform)
+	#println(nLineAttacked)
 
+	
+    pm = ""
     if powerform == SOCWRConicPowerModel
         println("Prototyping Algo")
         for (k,line) in pm_data["branch"]
           if line["index"] in pm_data["inactive_branches"]
 	    line["br_status"]=0
           end			
-        end		
-        #pm = build_model(pm_data, powerform, SOCWRConicPost_PF_Feas)
+        end        
         pm = build_model(pm_data, powerform, SOCWRConicPost_PF_Minmax)
 	elseif (powerform == SDPWRMPowerModel)
 		println("Brian Algo")
@@ -91,8 +95,6 @@ function SOCWRConicPost_PF(pm::AbstractPowerModel)
     end
 
     for i in ids(pm, :bus)
-        # Replace power balnce constraint function
-        # constraint_power_balance(pm, i)
         constraint_power_balance_slacks(pm, i)
     end
 
