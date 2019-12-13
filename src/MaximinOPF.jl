@@ -15,9 +15,6 @@ end
 
 function DualizeModel(minmax_model_pm::AbstractPowerModel)
     maxmin_model = dualize(minmax_model_pm.model)
-    println("After Dual")
-    println(maxmin_model)
-    println("----------")
     for l in ids(minmax_model_pm, :branch)
         if !(l in minmax_model_pm.data["protected_branches"])
      	  if has_lower_bound(variable_by_name(maxmin_model,"x[$l]_1"))
