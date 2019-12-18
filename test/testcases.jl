@@ -132,7 +132,7 @@ function getTestcasesMinmax()
 		expect = casesMinmax[i]["expectedvalue"]
 		protected_branches = casesMinmax[i]["protected_indices"]
 		inactive_branches = casesMinmax[i]["inactive_indices"]
-		K = casesMinmax[i]["attack_budget"]-length(inactive_branches)
+		K = casesMinmax[i]["attack_budget"]
 		pm_data = PowerModels.parse_file(case)
 	    push!(pm_datas, 
 	    	Dict("pm_data" => pm_data, 

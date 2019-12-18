@@ -14,6 +14,8 @@ function MaximinOPFModel(pm_data, powerform, nLineAttacked)
 end
 
 function DualizeModel(minmax_model_pm::AbstractPowerModel)
+    println("MinMax Model")
+    println(minmax_model_pm.model)
     maxmin_model = dualize(minmax_model_pm.model)
     for l in ids(minmax_model_pm, :branch)
         if !(l in minmax_model_pm.data["protected_branches"])
@@ -30,27 +32,22 @@ function DualizeModel(minmax_model_pm::AbstractPowerModel)
 end
 
 function MinimaxOPFModel(pm_data, powerform, nLineAttacked)
-	
-	#println(case)
-	#println(powerform)
-	#println(nLineAttacked)
 
-	
     pm = ""
     if powerform == SOCWRConicPowerModel
-        println("Prototyping Algo")
+        # println("Prototyping Algo")
         for (k,line) in pm_data["branch"]
           if line["index"] in pm_data["inactive_branches"]
-	    line["br_status"]=0
+	           line["br_status"]=0
           end			
         end        
         pm = build_model(pm_data, powerform, SOCWRConicPost_PF_Minmax)
 	elseif (powerform == SDPWRMPowerModel)
 		println("Brian Algo")
-		pm = build_model(case, powerform, post_pf_feas)
+		pm = build_model(case, powerform, DefaultPost_OPF)
 	else
 		println("Default Algo")
-		pm = build_model(case, powerform, myPost_OPF)
+		pm = build_model(case, powerform, DefaultPost_OPF)
 	end
 
 	return pm
@@ -68,6 +65,8 @@ function SOCWRConicPost_PF_Minmax(pm::AbstractPowerModel)
       end
     end
     K=pm.data["attacker_budget"]
+    println("KKK")
+    println(K)
     objective_minmax_problem(pm,K)
 end
 
@@ -116,7 +115,7 @@ function SOCWRConicPost_PF(pm::AbstractPowerModel)
 end
 
 
-function myPost_OPF(pm::AbstractPowerModel)
+function DefaultPost_OPF(pm::AbstractPowerModel)
 	variable_voltage(pm)
     variable_generation(pm)
     variable_branch_flow(pm)
