@@ -18,8 +18,8 @@ function objective_minmax_problem(pm::AbstractPowerModel, K::Int; nw::Int=pm.cnw
     uq_br = var(pm,nw,cnd,:uq_br)
     u_ord_aux = var(pm,nw,cnd,:u_ord_aux)
     u_K = var(pm,nw,cnd,:u_K)
-    return JuMP.@objective(pm.model, Min, K*u_K + sum( u_ord_aux[l] for l in ids(pm,nw,:branch) )
+    return JuMP.@objective(pm.model, Min, K*u_K + sum( u_ord_aux[l] for l in setdiff(ids(pm,nw,:branch),pm.data["protected_branches"]) )
         + sum( upbus[i] + uqbus[i] for i in ids(pm,nw,:bus)) 
-	+ sum( up_br[l,1] + uq_br[l,1] for l in ref(pm,nw,:arcs))
+	+ sum( up_br[l,1] + uq_br[l,1] for l in filter(l->!(l[1] in pm.data["protected_branches"]),ref(pm,nw,:arcs)))
     )
 end

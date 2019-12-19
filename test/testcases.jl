@@ -38,7 +38,7 @@ casesMinmax = [
 		"expectedvalue" => 3.4519, 
 		"attack_budget" => 3,
 		"inactive_indices" => [],
-		"protected_indices" => []
+		"protected_indices" => [1,4,7]
 	),
 	# Dict("file" => "../data/case9.m", 
 	# 	"name" => "case9", 

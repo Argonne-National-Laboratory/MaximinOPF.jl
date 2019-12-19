@@ -14,6 +14,9 @@ function MaximinOPFModel(pm_data, powerform, nLineAttacked)
 end
 
 function DualizeModel(minmax_model_pm::AbstractPowerModel)
+    io = open("minmax.txt","w")
+    println(io,minmax_model_pm.model)
+    close(io)
     maxmin_model = dualize(minmax_model_pm.model)
     for l in ids(minmax_model_pm, :branch)
         if !(l in minmax_model_pm.data["protected_branches"])
