@@ -10,10 +10,10 @@ include("testcases.jl")
 supportedPMOptions = [	
 #	SOCWRConicPowerModel, # MoSek
 #	SDPWRMPowerModel, # MoSek
+	SparseSDPWRMPowerModel # MoSek, requires minor editing of PowerModels wrm.jl code as of 5 Jan 2020, open issue with PowerModels is in progress.
 #	SOCWRPowerModel, # Not Mosek	
 #	QCRMPowerModel # Not Mosek
-	#SOCBFPowerModel, # Error constraint_ohms_yt_from()	
-	SparseSDPWRMPowerModel # MoSek, requires minor editing of PowerModels wrm.jl code as of 5 Jan 2020, open issue with PowerModels is in progress.
+#	SOCBFPowerModel, # Error constraint_ohms_yt_from()	
 ]
 
 function evaluateModel(expectedvalue, model, tol)
@@ -59,6 +59,7 @@ for i in 1:length(supportedPMOptions)
 	powerform = supportedPMOptions[i] #PowerModel Options
 	for j in 1:length(casesConic)
 		pm_data = PowerModels.parse_file( casesConic[j]["file"] )
+		pm_data["name"]=casesConic[j]["name"]
 		pm_data["attacker_budget"] = casesConic[j]["attack_budget"] ###Adding another key and entry
 		pm_data["inactive_branches"] = casesConic[j]["inactive_indices"] ###Adding another key and entry
 		pm_data["protected_branches"] = casesConic[j]["protected_indices"] ###Adding another key and entry
@@ -73,8 +74,8 @@ for i in 1:length(supportedPMOptions)
 		pf_model_pm = MaximinOPF.MinimaxOPFModel(pm_data, powerform)
 		pm_data["undecided_branches"]= filter(l->!(l in pm_data["protected_branches"] || l in pm_data["inactive_branches"]), ids(pf_model_pm,pf_model_pm.cnw,:branch)) 
 			###Adding another key and entry
-		pf_model = pf_model_pm.model
-		#pf_model = MaximinOPF.DualizeModel(pf_model_pm)
+		#pf_model = pf_model_pm.model
+		pf_model = MaximinOPF.DualizeModel(pf_model_pm)
 		
 		#Print Model Status		
 		println(io,"inactive_branches: ",pm_data["inactive_branches"])
@@ -84,8 +85,9 @@ for i in 1:length(supportedPMOptions)
 		println(io,pf_model)
 
 		#Solve Model with PowerModels Solution Builder
+#=
 		println("Start Solving")
-		if i > 2
+		if i > 3 
 			result = @elapsed JuMP.optimize!(pf_model,with_optimizer(Ipopt.Optimizer))
 		else
 			result = @elapsed JuMP.optimize!(pf_model,with_optimizer(Mosek.Optimizer))
@@ -96,6 +98,7 @@ for i in 1:length(supportedPMOptions)
 		status=JuMP.termination_status(pf_model)
 		println(io,"Time taken to solve is: ", result, " with status ",status,".")
 		println(io,"The optimal value is: ",JuMP.objective_value(pf_model)," versus the expected value of ",casesConic[j]["expected_values"]["SDP_Minmax"])
+=#
 		close(io)
 		
 	end

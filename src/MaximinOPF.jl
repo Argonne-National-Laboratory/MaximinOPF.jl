@@ -1,6 +1,7 @@
 module MaximinOPF
 using PowerModels
 using Dualization
+using MathOptInterface
 include("Variables.jl")
 include("Objectives.jl")
 include("Constraints.jl")
@@ -26,9 +27,16 @@ function DualizeModel(minmax_model_pm::AbstractPowerModel)
      	  if has_upper_bound(variable_by_name(maxmin_model,"x[$l]_1"))
      	      delete_upper_bound(variable_by_name(maxmin_model,"x[$l]_1"))
      	  end
-	  JuMP.set_binary(variable_by_name(maxmin_model,"x[$l]_1"))
+	  JuMP.set_integer(variable_by_name(maxmin_model,"x[$l]_1"))
 	end
     end
+    fn_base=string(minmax_model_pm.data["name"],".cbf")
+println(fn_base)
+    mathoptformat_model = MathOptInterface.FileFormats.CBF.Model()
+    MOI.copy_to(MOI.Bridges.full_bridge_optimizer(mathoptformat_model,Float64), backend(maxmin_model))
+    #MOI.copy_to(mathoptformat_model, backend(maxmin_model))
+    MOI.write_to_file(mathoptformat_model, fn_base)
+
     return maxmin_model
 end
 
