@@ -8,15 +8,15 @@ using JuMP
 include("testcases.jl")
 
 supportedPMOptions = [	
-	SOCWRConicPowerModel, # MoSek
+#	SOCWRConicPowerModel, # MoSek
 #	SDPWRMPowerModel, # MoSek
 #	SOCWRPowerModel, # Not Mosek	
 #	QCRMPowerModel # Not Mosek
 	#SOCBFPowerModel, # Error constraint_ohms_yt_from()	
-	#SparseSDPWRMPowerModel # Error variable_voltage()
+	SparseSDPWRMPowerModel # MoSek, requires minor editing of PowerModels wrm.jl code as of 5 Jan 2020, open issue with PowerModels is in progress.
 ]
 
-function evaluateMinMax(expectedvalue, model, tol)
+function evaluateModel(expectedvalue, model, tol)
     println("Protected branches: ",model.data["protected_branches"])
     println("Inactive branches: ",model.data["inactive_branches"])
     println("All other branches: ",setdiff(ids(model, :branch),model.data["protected_branches"]))
@@ -56,46 +56,46 @@ end
 
 testresults = []
 for i in 1:length(supportedPMOptions)
-	# pm_datas = getTestcasesFP()
-	pm_datas = getTestcasesMinmax()
-	powerfrom = supportedPMOptions[i] #PowerModel Options
-	#println(length(pm_datas))
-	for j in 1:length(pm_datas)
-		f_name_base="maxmin_out_"
-		f_name = string(f_name_base,j,".txt")
-		io=open(f_name, "w")
+	powerform = supportedPMOptions[i] #PowerModel Options
+	for j in 1:length(casesConic)
+		pm_data = PowerModels.parse_file( casesConic[j]["file"] )
+		pm_data["attacker_budget"] = casesConic[j]["attack_budget"] ###Adding another key and entry
+		pm_data["inactive_branches"] = casesConic[j]["inactive_indices"] ###Adding another key and entry
+		pm_data["protected_branches"] = casesConic[j]["protected_indices"] ###Adding another key and entry
 
-		casename = pm_datas[j]["name"]
-		expect = pm_datas[j]["expectedvalue"]		
-		pm_data = pm_datas[j]["pm_data"]
-		nLineAttacked = pm_datas[j]["K"]
-		protected_indices = pm_datas[j]["protected_indices"]
-		lineindexs = pm_datas[j]["inactive_indices"]
-		
-		pm_data["attacker_budget"]=nLineAttacked ###Adding another key and entry
-		pm_data["inactive_branches"]=lineindexs ###Adding another key and entry
-		pm_data["protected_branches"]=protected_indices ###Adding another key and entry
+
+		f_name_base="output_"
+		f_name = string(f_name_base,"_",casesConic[j]["name"],"_", pm_data["attacker_budget"],"_",j,".txt")
+		io=open(f_name, "w")
 		
 		#Create JUMP Model
-		maximin_model = MaximinOPF.MaximinOPFModel(pm_data, powerfrom, nLineAttacked)
+		#pf_model_pm = MaximinOPF.PF_FeasModel(pm_data, powerform)
+		pf_model_pm = MaximinOPF.MinimaxOPFModel(pm_data, powerform)
+		pm_data["undecided_branches"]= filter(l->!(l in pm_data["protected_branches"] || l in pm_data["inactive_branches"]), ids(pf_model_pm,pf_model_pm.cnw,:branch)) 
+			###Adding another key and entry
+		pf_model = pf_model_pm.model
+		#pf_model = MaximinOPF.DualizeModel(pf_model_pm)
 		
 		#Print Model Status		
+		println(io,"inactive_branches: ",pm_data["inactive_branches"])
+		println(io,"protected_branches: ",pm_data["protected_branches"])
+		println(io,"undecided_branches: ",pm_data["undecided_branches"])
 		println(io,"Print Model")
-		println(io,maximin_model)
+		println(io,pf_model)
 
 		#Solve Model with PowerModels Solution Builder
 		println("Start Solving")
 		if i > 2
-			result = @elapsed JuMP.optimize!(maximin_model,with_optimizer(Ipopt.Optimizer))
+			result = @elapsed JuMP.optimize!(pf_model,with_optimizer(Ipopt.Optimizer))
 		else
-			result = @elapsed JuMP.optimize!(maximin_model,with_optimizer(Mosek.Optimizer))
+			result = @elapsed JuMP.optimize!(pf_model,with_optimizer(Mosek.Optimizer))
 		end
 		
 		#Print Result
-		#evaluateMinMax(expect, maximin_model, 0.001)
-		status=JuMP.termination_status(maximin_model)
+		#evaluateModel(expect, pf_model_pm, 0.001)
+		status=JuMP.termination_status(pf_model)
 		println(io,"Time taken to solve is: ", result, " with status ",status,".")
-		println(io,"The optimal value is: ",JuMP.objective_value(maximin_model),".")
+		println(io,"The optimal value is: ",JuMP.objective_value(pf_model)," versus the expected value of ",casesConic[j]["expected_values"]["SDP_Minmax"])
 		close(io)
 		
 	end

@@ -27,8 +27,9 @@ function variable_branch_flow_slacks(pm::AbstractPowerModel; nw::Int=pm.cnw, cnd
 end
 
 function variable_ordering_auxiliary(pm::AbstractPowerModel; nw::Int=pm.cnw, cnd::Int=pm.ccnd)
+    undecided_branches = filter(l->!(l in pm.data["protected_branches"] || l in pm.data["inactive_branches"]), ids(pm,nw,:branch))
     u_ord_aux = var(pm, nw, cnd)[:u_ord_aux] = JuMP.@variable(pm.model,
-        [b in ids(pm, nw, :branch)], base_name="$(nw)_$(cnd)_u_ord_aux",
+        [b in undecided_branches], base_name="$(nw)_$(cnd)_u_ord_aux",
         lower_bound = 0,
         start = 0
     )
