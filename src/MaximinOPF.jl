@@ -36,6 +36,14 @@ println(fn_base)
     MOI.copy_to(MOI.Bridges.full_bridge_optimizer(mathoptformat_model,Float64), backend(maxmin_model))
     #MOI.copy_to(mathoptformat_model, backend(maxmin_model))
     MOI.write_to_file(mathoptformat_model, fn_base)
+#=
+    fn_base=string(minmax_model_pm.data["name"],".")
+println(fn_base)
+    mathoptformat_model = MathOptInterface.FileFormats.CBF.Model()
+    MOI.copy_to(MOI.Bridges.full_bridge_optimizer(mathoptformat_model,Float64), backend(maxmin_model))
+    #MOI.copy_to(mathoptformat_model, backend(maxmin_model))
+    MOI.write_to_file(mathoptformat_model, fn_base)
+=#
 
     return maxmin_model
 end
@@ -107,11 +115,15 @@ function WRConicPost_PF(pm::AbstractPowerModel)
         constraint_ohms_yt_to_slacks(pm, l)
         constraint_def_abs_flow_values(pm, l)
 	#end
-
         constraint_voltage_angle_difference(pm, l)
-
-        constraint_thermal_limit_from(pm, l)
-        constraint_thermal_limit_to(pm, l)
+	if pm isa AbstractSDPWRMModel
+	  ## leave only the bounds on the branch flows set during initialization when there is need to avoid SOC or quadratic constraints
+           #constraint_thermal_limit_from(pm, l)
+           #constraint_thermal_limit_to(pm, l)
+	else
+          constraint_thermal_limit_from(pm, l)
+          constraint_thermal_limit_to(pm, l)
+	end
     end
 
     for l in ids(pm, :dcline)

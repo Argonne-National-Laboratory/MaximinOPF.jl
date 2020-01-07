@@ -238,3 +238,4 @@ function _check_var_keys(vars, keys, var_name, comp_name)
         error(_LOGGER, "$(var_name) decision variables appear to be missing for $(comp_name) components")
     end
 end
+
