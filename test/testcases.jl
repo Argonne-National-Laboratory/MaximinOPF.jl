@@ -88,6 +88,38 @@ casesConic = [
 	 	"protected_indices" => [],
 		"expected_values" => Dict{String,Float64}("SOC_FP"=>0.0, "SOC_Minmax"=>4.051, "SOC_Maxmin"=>2.567, "SDP_FP"=>0.0, "SDP_Minmax"=>4.296, "SDP_Maxmin"=>2.568 )
 	),
+	Dict("file" => "../data/case300.m", 
+	 	"name" => "case300K1", 
+	 	"expectedvalue" => 0, 
+	 	"attack_budget" => 1,
+	 	"inactive_indices" => [],
+	 	"protected_indices" => [],
+		"expected_values" => Dict{String,Float64}("SOC_FP"=>0.0, "SOC_Minmax"=>0, "SOC_Maxmin"=>0, "SDP_FP"=>0.0, "SDP_Minmax"=>0, "SDP_Maxmin"=>0 )
+	),
+	Dict("file" => "../data/case300.m", 
+	 	"name" => "case300K2", 
+	 	"expectedvalue" => 0, 
+	 	"attack_budget" => 2,
+	 	"inactive_indices" => [],
+	 	"protected_indices" => [],
+		"expected_values" => Dict{String,Float64}("SOC_FP"=>0.0, "SOC_Minmax"=>0, "SOC_Maxmin"=>0, "SDP_FP"=>0.0, "SDP_Minmax"=>0, "SDP_Maxmin"=>0 )
+	),
+	Dict("file" => "../data/case300.m", 
+	 	"name" => "case300K3", 
+	 	"expectedvalue" => 0, 
+	 	"attack_budget" => 3,
+	 	"inactive_indices" => [],
+	 	"protected_indices" => [],
+		"expected_values" => Dict{String,Float64}("SOC_FP"=>0.0, "SOC_Minmax"=>0, "SOC_Maxmin"=>0, "SDP_FP"=>0.0, "SDP_Minmax"=>0, "SDP_Maxmin"=>0 )
+	),
+	Dict("file" => "../data/case300.m", 
+	 	"name" => "case300K4", 
+	 	"expectedvalue" => 0, 
+	 	"attack_budget" => 4,
+	 	"inactive_indices" => [],
+	 	"protected_indices" => [],
+		"expected_values" => Dict{String,Float64}("SOC_FP"=>0.0, "SOC_Minmax"=>0, "SOC_Maxmin"=>0, "SDP_FP"=>0.0, "SDP_Minmax"=>0, "SDP_Maxmin"=>0 )
+	),
 ]
 
 #=
