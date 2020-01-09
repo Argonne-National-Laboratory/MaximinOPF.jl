@@ -124,7 +124,7 @@ function WRConicPost_PF(pm::AbstractPowerModel)
     con(pm, pm.cnw, pm.ccnd)[:abs_qflow_fr_lb] = Dict{Int,JuMP.ConstraintRef}()
     con(pm, pm.cnw, pm.ccnd)[:abs_qflow_to_ub] = Dict{Int,JuMP.ConstraintRef}()
     con(pm, pm.cnw, pm.ccnd)[:abs_qflow_to_lb] = Dict{Int,JuMP.ConstraintRef}()
-    for l in ids(pm, :branch)
+    for l in setdiff(ids(pm, :branch),pm.data["inactive_branches"])
         cref1,cref2,cref3,cref4 = constraint_ohms_yt_from_slacks(pm, l)
         con(pm, pm.cnw, pm.ccnd)[:abs_pflow_fr_disc_ub][l] = cref1
         JuMP.set_name(cref1,"lambda_f+[$l]")  
@@ -144,7 +144,9 @@ function WRConicPost_PF(pm::AbstractPowerModel)
         JuMP.set_name(cref3,"mu_t+[$l]")  
         con(pm, pm.cnw, pm.ccnd)[:abs_qflow_to_disc_lb][l] = cref4
         JuMP.set_name(cref4,"mu_t-[$l]")  
+    end
 
+    for l in setdiff(ids(pm, :branch),pm.data["protected_branches"])
         ref_p1,ref_p2,ref_p3,ref_p4,ref_q1,ref_q2,ref_q3,ref_q4 = constraint_def_abs_flow_values(pm, l)
         con(pm, pm.cnw, pm.ccnd)[:abs_pflow_fr_ub][l] = ref_p1
         JuMP.set_name(ref_p2,"pi_f+[$l]")  
@@ -162,8 +164,10 @@ function WRConicPost_PF(pm::AbstractPowerModel)
         JuMP.set_name(ref_q4,"phi_t+[$l]")  
         con(pm, pm.cnw, pm.ccnd)[:abs_qflow_to_lb][l] = ref_q4
         JuMP.set_name(ref_q3,"phi_t-[$l]")  
+    end
 
 
+    for l in ids(pm, :branch)
         constraint_voltage_angle_difference(pm, l)
 	if pm isa AbstractSDPWRMModel
 	  ## leave only the bounds on the branch flows set during initialization when there is need to avoid SOC or quadratic constraints

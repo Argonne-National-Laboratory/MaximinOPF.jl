@@ -35,6 +35,7 @@ function evaluateMinmaxModel(expected_value, pm, tol, io)
     psival = pm.data["attacker_budget"]*JuMP.value(var(pm, pm.cnw, pm.ccnd)[:u_K])
     psival += sum( JuMP.value(var(pm, pm.cnw, pm.ccnd)[:u_ord_aux][l]) for l in pm.data["undecided_branches"] ) 
     println("uK: ",JuMP.value(var(pm, pm.cnw, pm.ccnd)[:u_K])," psival: ",psival)
+#=
     for l in ids(pm, :branch)
       branch = ref(pm, pm.cnw, :branch, l)
       f_bus = branch["f_bus"]
@@ -73,6 +74,7 @@ function evaluateMinmaxModel(expected_value, pm, tol, io)
       println(io,"x subgrad value: ",(l,upf0+upt0+uqf0+uqt0-upf1-upt1-uqf1-uqt1))	        
       println(io,"Comparing u: ",(l,(upf0,upt0,uqf0,uqt0),(upf1,upt1,uqf1,uqt1,)))	        
     end
+=#
     
     
     discrep = abs(JuMP.objective_value(pm.model)-expected_value)

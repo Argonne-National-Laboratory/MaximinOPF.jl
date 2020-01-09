@@ -24,6 +24,18 @@ function variable_branch_flow_slacks(pm::AbstractPowerModel; nw::Int=pm.cnw, cnd
             lower_bound = 0,
             start = 0
     )
+
+    ### Delete nonproductive variables
+    inactive_arcs = filter(a->(a[1] in pm.data["inactive_branches"]),ref(pm,nw,:arcs))
+    protected_arcs = filter(a->(a[1] in pm.data["protected_branches"]),ref(pm,nw,:arcs))
+    for a in inactive_arcs
+      delete(pm.model,up_br[a,1])
+      delete(pm.model,uq_br[a,1])
+    end
+    for a in protected_arcs
+      delete(pm.model,up_br[a,0])
+      delete(pm.model,uq_br[a,0])
+    end
 end
 
 function variable_ordering_auxiliary(pm::AbstractPowerModel; nw::Int=pm.cnw, cnd::Int=pm.ccnd)
