@@ -15,9 +15,20 @@ function MaximinOPFModel(pm_data, powerform)
 end
 
 function DualizeModel(minmax_model_pm::AbstractPowerModel)
+#=
     io = open("minmax.txt","w")
     println(io,minmax_model_pm.model)
     close(io)
+    #minmax_bridge = MOI.Bridges.Variable.(backend(minmax_model_pm.model), Float64)
+    #minmax_dualizable = DualizableModel()
+    minmax_dualizable = Model()
+    io=open("temp", "w")
+
+    MOI.copy_to(MOI.Bridges.Variable.SOCtoRSOCBridge{Float64}(backend(minmax_dualizable),Float64), backend(minmax_model_pm.model))
+    println(io,minmax_dualizable)
+    close(io)
+    maxmin_model = dualize(minmax_bridge)
+=#
     maxmin_model = dualize(minmax_model_pm.model)
     for l in ids(minmax_model_pm, :branch)
         if !(l in minmax_model_pm.data["protected_branches"] || l in minmax_model_pm.data["inactive_branches"])
@@ -31,19 +42,7 @@ function DualizeModel(minmax_model_pm::AbstractPowerModel)
 	end
     end
     fn_base=string(minmax_model_pm.data["name"],".cbf")
-println(fn_base)
-    mathoptformat_model = MathOptInterface.FileFormats.CBF.Model()
-    MOI.copy_to(MOI.Bridges.full_bridge_optimizer(mathoptformat_model,Float64), backend(maxmin_model))
-    #MOI.copy_to(mathoptformat_model, backend(maxmin_model))
-    MOI.write_to_file(mathoptformat_model, fn_base)
-#=
-    fn_base=string(minmax_model_pm.data["name"],".")
-println(fn_base)
-    mathoptformat_model = MathOptInterface.FileFormats.CBF.Model()
-    MOI.copy_to(MOI.Bridges.full_bridge_optimizer(mathoptformat_model,Float64), backend(maxmin_model))
-    #MOI.copy_to(mathoptformat_model, backend(maxmin_model))
-    MOI.write_to_file(mathoptformat_model, fn_base)
-=#
+    JuMP.write_to_file( maxmin_model, fn_base, format = MOI.FileFormats.FORMAT_CBF)
 
     return maxmin_model
 end

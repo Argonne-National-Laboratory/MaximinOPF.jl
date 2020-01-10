@@ -90,7 +90,8 @@ testresults = []
 for i in 1:length(supportedPMOptions)
 	powerform = supportedPMOptions[i] #PowerModel Options
 	ncases = length(casesConic)
-	for j in 1:(ncases)
+	for j in 1:1
+	#for j in 1:(ncases)
 	#for j = ncases:ncases
 		pm_data = PowerModels.parse_file( casesConic[j]["file"] )
 		pm_data["name"]=casesConic[j]["name"]
@@ -128,11 +129,15 @@ for i in 1:length(supportedPMOptions)
 		opt_expected = "SDP_Minmax"
 		println("Start Solving")
 		if i > 3 
-			result = @elapsed JuMP.optimize!(opt_model,with_optimizer(Ipopt.Optimizer))
+			set_optimizer(opt_model,Ipopt.Optimizer)
+			#result = @elapsed JuMP.optimize!(opt_model,with_optimizer(Ipopt.Optimizer))
 		else
-			result = @elapsed JuMP.optimize!(opt_model,with_optimizer(Mosek.Optimizer))
+			set_optimizer(opt_model,Mosek.Optimizer)
+			#set_optimizer(opt_model,SDPA.Optimizer)
+			#result = @elapsed JuMP.optimize!(opt_model,with_optimizer(Mosek.Optimizer))
 			#result = @elapsed JuMP.optimize!(opt_model,with_optimizer(SDPA.Optimizer))
 		end
+		result = @elapsed JuMP.optimize!(opt_model)
 		
 		#Print Result
 		#evaluateModel(expect, pf_model_pm, 0.001)

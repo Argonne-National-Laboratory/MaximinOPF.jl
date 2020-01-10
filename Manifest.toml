@@ -83,7 +83,9 @@ uuid = "8ba89e20-285c-5b6f-9357-94700520ee1b"
 
 [[Dualization]]
 deps = ["JuMP", "MathOptInterface"]
-git-tree-sha1 = "d61ff00001e929ab1a4e9068d2a42c334e7f1ce3"
+git-tree-sha1 = "150f6559822d17836f566234e7bf5eed619aa1ff"
+repo-rev = "master"
+repo-url = "https://github.com/JuliaOpt/Dualization.jl.git"
 uuid = "191a621a-6537-11e9-281d-650236a99e60"
 version = "0.2.1"
 
@@ -146,10 +148,12 @@ uuid = "7d188eb4-7ad8-530c-ae41-71a32a6d4692"
 version = "0.2.0"
 
 [[JuMP]]
-deps = ["Calculus", "DataStructures", "ForwardDiff", "LinearAlgebra", "MathOptInterface", "NaNMath", "Random", "SparseArrays", "Statistics"]
-git-tree-sha1 = "ba7f96010ed290d77d5c941c32e5df107ca688a4"
+deps = ["Calculus", "DataStructures", "ForwardDiff", "LinearAlgebra", "MathOptInterface", "MutableArithmetics", "NaNMath", "Random", "SparseArrays", "Statistics"]
+git-tree-sha1 = "34a4c33037e42bb60fd2d2c7fec7791a3a2ba1d8"
+repo-rev = "master"
+repo-url = "https://github.com/JuliaOpt/JuMP.jl.git"
 uuid = "4076af6c-e467-56ae-b986-b466b2749572"
-version = "0.20.1"
+version = "0.20.0"
 
 [[LibGit2]]
 uuid = "76f85450-5226-5b5a-8eaa-529ad045b433"
