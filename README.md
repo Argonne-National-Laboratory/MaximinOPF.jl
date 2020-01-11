@@ -1,5 +1,4 @@
 # CAPS.jl
--
 
 CAPS.jl is a Julia/JuMP package for modeling *N-k* **C**ontingency **A**nalysis in **P**ower **S**ystems.
 This package creates a maximin optimization model that maximizes the minimum system infeasibility by modeling an attacker and a defender of the power system operator.
