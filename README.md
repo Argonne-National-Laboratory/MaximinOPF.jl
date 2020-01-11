@@ -1,3 +1,11 @@
+# CAPS.jl
+-
+
+CAPS.jl is a Julia/JuMP package for modeling *N-k* **C**ontingency **A**nalysis in **P**ower **S**ystems.
+This package creates a maximin optimization model that maximizes the minimum system infeasibility by modeling an attacker and a defender of the power system operator.
+For a given budget *K*, the attacker finds a set of critical assets that maximizes the total system infeasibility to the system, whereas the defender minimizes the damange from the attack.
+The formulations supported for the underlying power system include the SDP and SOCP relaxations and DC approximation of the optimal power flow.
+
 The proximal bundle methods implemented here solve problems of the following form:
 
 min c^T x + f(x)
