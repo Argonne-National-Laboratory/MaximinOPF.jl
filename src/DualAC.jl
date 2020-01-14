@@ -115,7 +115,7 @@ function solveNodeAC(opfdata,ndata)
       end
   end
 
-  @expression(mMP, C[i=1:(2*nbuses),j=i:(2*nbuses)], 0)
+  @expression(mMP, C[i=1:(2*nbuses),j=i:(2*nbuses)], AffExpr(0.0))
   for i in N
     C[i,i] += γp[i] - γm[i] + α[i]*Y["shR"][i] - β[i]*Y["shI"][i]
         C[nbuses+i,nbuses+i] += γp[i] - γm[i] + α[i]*Y["shR"][i] - β[i]*Y["shI"][i]
@@ -150,7 +150,7 @@ function solveNodeAC(opfdata,ndata)
 
     # Applying Agler's theorem (matrix decomposition)
       subH = Dict{Int64,Any}()
-      @expression(mMP, sumH[i=1:(2*nbuses),j=i:(2*nbuses)], 0)
+      @expression(mMP, sumH[i=1:(2*nbuses),j=i:(2*nbuses)], AffExpr(0.0))
       @show length(max_cliques)
       for k in 1:length(max_cliques)
         clique = sort(max_cliques[k])

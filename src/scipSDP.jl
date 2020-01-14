@@ -148,7 +148,7 @@ function createSCIPModel(opfdata)
     @constraint(mMP, LambdaMuConstr2[l in L], λF[l]*Y["tfR"][l] - λT[l]*Y["ftR"][l] - μF[l]*Y["tfI"][l] + μT[l]*Y["ftI"][l] == 0.0)
   end
 
-  # Now write the model
+  # Now write the model to a .cbf file
   
   fn_base=string("CBF/","case",CASE_NUM,"-",K,"-",HEUR,".cbf")
   mathoptformat_model = MathOptFormat.CBF.Model()

@@ -55,6 +55,13 @@ end
 print("Loading data ... "); start_load = time_ns()
 # Load the bus system topology
   opfdata = opf_loaddata(CASE_NUM)
+
+  data_path = "data/case"
+  fn_base=string(data_path,CASE_NUM)
+  fn_mat=string(fn_base,".m")
+  pm_data = PowerModels.parse_file(fn_mat)
+  pm_data["attacker_budget"]=K
+  pm_data["name"]=string(fn_base,"K",K)
 print("finished loading the data after ",(time_ns()-start_load)/1e9," seconds.\n")
 
 #include("../src/EvalDSP.jl") ### Initialize the defender subproblems with power flow balance enforced
@@ -234,11 +241,22 @@ if write_data
 end
 
 elseif FORM == AC
-  include("../src/DualAC.jl")
+  #include("../src/DualAC.jl")
+  include("../src/SDPBnB.jl")
 
   #testSCSonRoot(opfdata)
 
-  finalXSoln=create_node(opfdata)
+  #finalXSoln=create_node(opfdata)
+#=
+  init_node=Dict()
+  init_node["inactive_branches"] = []
+  init_node["protected_branches"] = [] 
+  init_node["bound_value"]=1e20
+  init_node["attacker_budget"]=pm_data["attacker_budget"]
+  solveNodeMinmaxSDP(pm_data,init_node)
+=#
+  solveBnBSDP(pm_data)
+#=
   bestUBVal,nNodes,runtime = solveBnBSDP(opfdata,finalXSoln)
   println("No. Nodes: ", nNodes)
   println("Best bound:  ", bestUBVal)
@@ -247,6 +265,7 @@ elseif FORM == AC
   printX(opfdata,finalXSoln.x_soln)
   print("\n")
   @show finalXSoln.nodeBd
+=#
 elseif FORM == SOCP
   include("../src/DualSOCP.jl")
 elseif FORM == DC

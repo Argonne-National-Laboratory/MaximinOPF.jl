@@ -7,13 +7,15 @@ Brian Dandurand
 =#
 
 include("utils.jl")
+using CPLEX 
+using GLPK 
 TOL=1e-4
 
 function solveLECP(opfdata,K,HEUR)
 
   # OBTAIN SHORTHAND PROBLEM INFORMATION FROM opfdata
     nbuses, nlines, ngens = opfdata.nbuses, opfdata.nlines, opfdata.ngens
-    N, L, G = opfdata.N, opfdata.L, opfdata.G 
+    N, L, G = 1:nbuses, 1:nlines, 1:ngens
     fromLines,toLines,fromBus,toBus = opfdata.fromLines, opfdata.toLines, opfdata.fromBus, opfdata.toBus
     BusGeners, Y = opfdata.BusGeners, opfdata.Y_AC
   # DONE OBTAINING PROBLEM INFORMATION FROM opfdata
@@ -39,7 +41,11 @@ function solveLECP(opfdata,K,HEUR)
 
 
   # The master problem MP
-    mMP = Model(with_optimizer(Cplex.Optimizer,
+    #mMP = Model(with_optimizer(CPLEX.Optimizer))
+    #mMP = direct_model(CPLEX.Optimizer())
+    mMP = direct_model(GLPK.Optimizer())
+    #MOI.set(mMP, MOI.RawParameter("CPX_PARAM_THREADS"), 1)
+#=,
       CPX_PARAM_SCRIND=1,
       CPX_PARAM_TILIM=MAX_TIME,
       CPX_PARAM_MIPDISPLAY=4,
@@ -48,14 +54,15 @@ function solveLECP(opfdata,K,HEUR)
       # CPX_PARAM_HEURFREQ=-1,
       CPX_PARAM_THREADS=1,
       CPX_PARAM_ADVIND=0))
+=#
 
     #mMP = Model(with_optimizer(Cplex.Optimizer,CPX_PARAM_SCRIND=1,CPX_PARAM_TILIM=MAX_TIME,CPX_PARAM_MIPINTERVAL=50,CPX_PARAM_LPMETHOD=4,CPX_PARAM_SOLUTIONTYPE=2,CPX_PARAM_STARTALG=4))
     # each x[l] is either 0 (line l active) or 1 (line l is cut)
-      @variable(mMP, x[l=L], Bin, start=0)
+      @variable(mMP, x[l=L], Bin)
     # dual multipliers associated with active power flow balance constraints
-      @variable(mMP, -1 <= α[i=N] <= 1, start=0)
+      @variable(mMP, -1 <= α[i=N] <= 1)
     # dual multipliers associated with active power flow balance constraints
-      @variable(mMP, -1 <= β[i=N] <= 1, start=0)
+      @variable(mMP, -1 <= β[i=N] <= 1)
     # dual multipliers associated with the voltage magnitude bounds
       @variable(mMP, δ[i=N] >= 0); @variable(mMP, γ[i=N] >= 0); @constraint(mMP, [i=N], δ[i]+γ[i] <= 1)
     # dual multipliers associated with the power generation bounds
@@ -73,7 +80,7 @@ function solveLECP(opfdata,K,HEUR)
 
  # McCormick inequalities enforcing bilinear equalities
     # auxiliary dual variables due to McCormick reformulation of cross terms appearing in the Lagrangian
-      @variable(mMP, λF[l=L], start=0); @variable(mMP, λT[l=L], start=0); @variable(mMP, μF[l=L], start=0); @variable(mMP, μT[l=L], start=0)
+      @variable(mMP, λF[l=L]); @variable(mMP, λT[l=L]); @variable(mMP, μF[l=L]); @variable(mMP, μT[l=L])
     @constraint(mMP, AMcf1[l in L], α[fromBus[l]] - x[l] <= λF[l]); @constraint(mMP, AMcf2[l in L], α[fromBus[l]] + x[l] >= λF[l])
     @constraint(mMP, AMcf3[l in L], -(1 - x[l]) <= λF[l]); @constraint(mMP, AMcf4[l in L], (1 - x[l]) >= λF[l])
     @constraint(mMP, AMct1[l in L], α[toBus[l]] - x[l] <= λT[l]); @constraint(mMP, AMct2[l in L], α[toBus[l]] + x[l] >= λT[l])
@@ -108,7 +115,7 @@ function solveLECP(opfdata,K,HEUR)
 
 
   # CONTINUING WITH CHORDAL DECOMPOSITION
-    @expression(mMP, C[i=1:(2*nbuses),j=i:(2*nbuses)], 0)
+    @expression(mMP, C[i=1:(2*nbuses),j=i:(2*nbuses)],AffExpr(0.0))
     for i in N
         C[i,i] += δ[i] - γ[i] + α[i]*Y["shR"][i] - β[i]*Y["shI"][i]
         C[nbuses+i,nbuses+i] += δ[i] - γ[i] + α[i]*Y["shR"][i] - β[i]*Y["shI"][i]
@@ -138,7 +145,7 @@ function solveLECP(opfdata,K,HEUR)
         # Smaller PSD matrices to apply Agler's theorem
         # Each matrix will be approximated by linear inequalities.
         @variable(mMP, subH[k=1:length(max_cliques),i=1:num_nodes[k],j=i:num_nodes[k]])
-        @expression(mMP, sumH[i=1:(2*nbuses),j=i:(2*nbuses)], 0)
+        @expression(mMP, sumH[i=1:(2*nbuses),j=i:(2*nbuses)], AffExpr(0.0))
         for k in 1:length(max_cliques)
             clique = sort(max_cliques[k])
             # @show (k,clique)
@@ -187,26 +194,27 @@ function solveLECP(opfdata,K,HEUR)
   # CALLBACK FUNCTION FOR ADDING CUTS
     function addMPCutsLazyCB(cb)
       for l in L
-        x_val[l] = round(getvalue(x[l]))
+        x_val[l] = round(callback_value(cb,x[l]))
       end
       time_Eta0Start = time_ns()
 
       if chordal_decomposition
+#=
         for k in 1:length(max_cliques)
           clique = sort(max_cliques[k])
 
           Is = Int64[]; Js = Int64[]; Vs = Float64[]
           for i=1:num_nodes[k], j=i:num_nodes[k]
-            # @show (k,i,j,getvalue(subH[k,i,j]))
-            if abs(getvalue(subH[k,i,j])) > 1e-10
+            # @show (k,i,j,callback_value(cb,subH[k,i,j]))
+            if abs(callback_value(cb,subH[k,i,j])) > 1e-10
               push!(Is, i)
               push!(Js, j)
-              push!(Vs, getvalue(subH[k,i,j]))
+              push!(Vs, callback_value(cb,subH[k,i,j]))
               # Make it symmetric for off-diagonal elements
               if i != j
                 push!(Is, j)
                 push!(Js, i)
-                push!(Vs, getvalue(subH[k,i,j]))
+                push!(Vs, callback_value(cb,subH[k,i,j]))
               end
             end
           end
@@ -226,22 +234,23 @@ function solveLECP(opfdata,K,HEUR)
             ncuts += 1
           end
         end # for loop
+=#
     else  # NOT USING CHORDAL DECOMPOSITION
       # generate cut(s)
         for i in N
-          pi_val["α"][i] = getvalue(α[i]); pi_val["β"][i] = getvalue(β[i]); pi_val["γ"][i] = getvalue(γ[i]); pi_val["δ"][i] = getvalue(δ[i])
+          pi_val["α"][i] = callback_value(cb,α[i]); pi_val["β"][i] = callback_value(cb,β[i]); pi_val["γ"][i] = callback_value(cb,γ[i]); pi_val["δ"][i] = callback_value(cb,δ[i])
         end
         for l in L
-          pi_val["λF"][l] = getvalue(λF[l])
-          pi_val["λT"][l] = getvalue(λT[l])
-          pi_val["μF"][l] = getvalue(μF[l])
-          pi_val["μT"][l] = getvalue(μT[l])
+          pi_val["λF"][l] = callback_value(cb,λF[l])
+          pi_val["λT"][l] = callback_value(cb,λT[l])
+          pi_val["μF"][l] = callback_value(cb,μF[l])
+          pi_val["μT"][l] = callback_value(cb,μT[l])
         end
         H=spzeros(2*nbuses,2*nbuses)
         updateHess(opfdata,pi_val,H)
 
-        try
           η0Val = solveEta0Eigs(H,opfdata,v)
+        try
         catch exc
           println("Exception caught with eigs(), solving η0Val subproblem with Ipopt as recourse.")
           println(exc)
@@ -249,21 +258,27 @@ function solveLECP(opfdata,K,HEUR)
         end
         if η0Val < -TOL
           computeSG(opfdata,v,sg)
-          @lazyconstraint(cb, 0 <=  η0Val + sum( (sg["α"][i,1])* (α[i]-pi_val["α"][i]) for i in N) + sum( (sg["β"][i,1])*(β[i]-pi_val["β"][i]) for i in N )
+          con = @build_constraint( sum( (sg["α"][i,1])* (α[i]-pi_val["α"][i]) for i in N) + sum( (sg["β"][i,1])*(β[i]-pi_val["β"][i]) for i in N )
             + sum( (sg["γ"][i,1])*(γ[i]-pi_val["γ"][i]) for i in N)  + sum( (sg["δ"][i,1])*(δ[i]-pi_val["δ"][i]) for i in N)
-            + sum( (sg["λF"][l,1])*(λF[l]-pi_val["λF"][l]) + (sg["λT"][l,1])*(λT[l]-pi_val["λT"][l]) for l in L) + sum( (sg["μF"][l,1])*(μF[l]-pi_val["μF"][l]) + (sg["μT"][l,1])*(μT[l]-pi_val["μT"][l]) for l in L),
-            localcut=useLocalCuts
+            + sum( (sg["λF"][l,1])*(λF[l]-pi_val["λF"][l]) + (sg["λT"][l,1])*(λT[l]-pi_val["λT"][l]) for l in L) 
+	    + sum( (sg["μF"][l,1])*(μF[l]-pi_val["μF"][l]) + (sg["μT"][l,1])*(μT[l]-pi_val["μT"][l]) for l in L) >= -η0Val
 	  )
+#println(con)
+#println("ncuts: ",ncuts," etaVal: ",η0Val)
+#printX(opfdata,x_val)
+	  MOI.submit(mMP, MOI.LazyConstraint(cb), con)
+#println("submit successful")
           ncuts += 1
         else
           println("Tolerance met for not generating a new lazy cut.")
+printX(opfdata,x_val)
         end
     end
     time_Eta0SP += (time_ns()-time_Eta0Start)/1e9
     numcalls_Eta0SP += 1
   end
 
-  addlazycallback(mMP, addMPCutsLazyCB)
+  MOI.set(mMP, MOI.LazyConstraintCallback(), addMPCutsLazyCB)
   ncuts = 0   # collect number of cuts applied
   mpRootStartTime = time_ns() #For solving root node
   # Collect the timing results
@@ -276,7 +291,7 @@ function solveLECP(opfdata,K,HEUR)
   @show wtime
   @printf("LAST ATTACK COMPUTED&& ")
   for l in L
-    if round(getvalue(x[l])) == 1
+    if round(JuMP.value(x[l])) == 1
         println("Cut line $l")
     end
   end
@@ -297,26 +312,28 @@ function solveLECP(opfdata,K,HEUR)
 
 
   @printf("%d  & ", ncuts)
-  @printf("%.2f  & ", 100*time_Eta0SP/getsolvetime(mMP))
-  @printf("%d   &  ", getnodecount(mMP))
-  @printf("%.2f   &  ", getsolvetime(mMP)/getnodecount(mMP))
-  @printf("%d   &  ", getsolvetime(mMP))
- #@printf("%.3f   &  ", getobjectivebound(mMP))
+  #@printf("%.2f  & ", 100*time_Eta0SP/JuMP.solve_time(mMP))
+  @printf("%.2f  & ", 100*time_Eta0SP/JuMP.solve_time(mMP))
+  #@printf("%d   &  ", MOI.get(mMP,MOI.NodeCount()))
+  #@printf("%.2f   &  ", JuMP.solve_time(mMP)/MOI.get(mMP,MOI.NodeCount()))
+  #@printf("%d   &  ", JuMP.solve_time(mMP))
+  @printf("%d   &  ", wtime)
+ #@printf("%.3f   &  ", JuMP.objective_bound(mMP))
 
  #@printf("%d    &   ", round(time_root-tShift))
  #@printf("%d   &  ", round(time_Eta0SP))
  #@printf("%d   &  ", round(total_TimeMP))
   for l in L
-   if getvalue(x[l]) > 0.5
+   if JuMP.value(x[l]) > 0.5
         @printf(" %d",l)
    end
   end
   #@printf("\t&\t%.3f \t&\t%.3f\t & \t%.3f", bestAttack[nlines+1+SDP], bestAttack[nlines+1+SOCP],bestAttack[nlines+1+DC])
- @printf("  & %.3f ", getobjectivevalue(mMP))
- if abs(getobjectivebound(mMP)-getobjectivevalue(mMP)) < 1e-3
+ @printf("  & %.3f ", JuMP.objective_value(mMP))
+ if abs(JuMP.objective_bound(mMP)-JuMP.objective_value(mMP)) < 1e-3
   @printf("&  0.0\\%% ")
- elseif getobjectivevalue(mMP) > 1e-3
-  percentGap= 100*(getobjectivebound(mMP)-getobjectivevalue(mMP))/getobjectivevalue(mMP)
+ elseif JuMP.objective_value(mMP) > 1e-3
+  percentGap= 100*(JuMP.objective_bound(mMP)-JuMP.objective_value(mMP))/JuMP.objective_value(mMP)
   @printf("&  %.1f\\%% ",percentGap)
  else
   print("& ---     ")
@@ -329,7 +346,7 @@ function solveLECP(opfdata,K,HEUR)
   # Update Hessian
     function updateHess(opfdata,pi_val,H)
       #lines, buses, generators, baseMVA = opfdata.lines, opfdata.buses, opfdata.generators, opfdata.baseMVA
-      nbuses, nlines, ngens, N, L, G = opfdata.nbuses, opfdata.nlines, opfdata.ngens, opfdata.N, opfdata.L, opfdata.G 
+      nbuses, nlines, ngens, N, L, G = opfdata.nbuses, opfdata.nlines, opfdata.ngens, 1:opfdata.nbuses, 1:opfdata.nlines, 1:opfdata.ngens 
       fromBus,toBus = opfdata.fromBus, opfdata.toBus  
       Y = opfdata.Y_AC
       for i in N
@@ -355,10 +372,10 @@ function solveLECP(opfdata,K,HEUR)
 
   # SUBROUTINE FOR COMPUTING THE MINIMUM EIGENVALUE OF H WITH A CORRESPONDING EIGENVECTOR
     function solveEta0Eigs(H,optdata,v)
-      nbuses, nlines, ngens, N, L, G = opfdata.nbuses, opfdata.nlines, opfdata.ngens, opfdata.N, opfdata.L, opfdata.G 
+      nbuses, nlines, ngens, N, L, G = opfdata.nbuses, opfdata.nlines, opfdata.ngens, 1:opfdata.nbuses, 1:opfdata.nlines, 1:opfdata.ngens
       fromBus,toBus = opfdata.fromBus, opfdata.toBus
 
-      E=eigs(H,nev=6,which=:SR, maxiter=100000, tol=1e-8)
+      E=eigs(H,nev=1,which=:SR, maxiter=100000, tol=1e-4)
       η0Val = E[1][1]
       for i in N
         v["R"][i] = E[2][i,1]; v["I"][i] = E[2][nbuses+i,1]
@@ -369,28 +386,27 @@ function solveLECP(opfdata,K,HEUR)
   # SUBROUTINE FOR COMPUTING THE MINIMUM EIGENVALUE OF H WITH A CORRESPONDING EIGENVECTOR
     # VIA AN OPTIMIZATION PROBLEM
     function solveEta0SDP(H,opfdata,v)
-      nbuses, nlines, ngens, N, L, G = opfdata.nbuses, opfdata.nlines, opfdata.ngens, opfdata.N, opfdata.L, opfdata.G 
+      nbuses, nlines, ngens, N, L, G = opfdata.nbuses, opfdata.nlines, opfdata.ngens, 1:opfdata.nbuses, 1:opfdata.nlines, 1:opfdata.ngens
       fromBus,toBus = opfdata.fromBus, opfdata.toBus
 
       #The QP subproblem
-      mSDP = Model(solver=IpoptSolver())
-      @variable(mSDP, e[i=N], start=0); @variable(mSDP, f[i=N], start=0)
+      mSDP = Model(with_optimizer(Ipopt.Optimizer))
+      @variable(mSDP, e[i=N], start=1); @variable(mSDP, f[i=N], start=0)
       η0Val = 0
 
-      for i in N
-        setvalue(e[i], 1); setvalue(f[i], 0)
-      end
 
       # Adjust QP subproblem
       @NLobjective(mSDP, Min, sum( H[i,i]*(e[i]^2+f[i]^2) for i in N)
         + 2*sum( H[fromBus[l],toBus[l]]*(e[fromBus[l]]*e[toBus[l]]+f[fromBus[l]]*f[toBus[l]])   for l in L)
         - 2*sum( H[fromBus[l],nbuses+toBus[l]]*(f[fromBus[l]]*e[toBus[l]]-e[fromBus[l]]*f[toBus[l]])   for l in L)
       )
-      status = solve(mSDP)
-      if status == :Optimal || status == :UserLimit
+      JuMP.optimize!(mSDP)
+      status=JuMP.termination_status(mSDP)
+      #if status == :Optimal || status == :UserLimit
+      if true
         η0Val = getobjectivevalue(mSDP)
         for i in N
-          v["R"][i]=getvalue(e[i]); v["I"][i]=getvalue(f[i])
+          v["R"][i]=JuMP.value(e[i]); v["I"][i]=JuMP.value(f[i])
         end
         if(status == :UserLimit)
           println("solveEta0SDP solve status $status")
@@ -404,7 +420,7 @@ function solveLECP(opfdata,K,HEUR)
 
   # SUBROUTINE FOR COMPUTING A SUBGRADIENT OF ETA(PI), WHICH IS THE FUNCTION TAKING THE VALUE OF THE MINIMUM EIGENVALUE OF H(PI)
     function computeSG(opfdata,v,sg)
-      nbuses, nlines, ngens, N, L, G = opfdata.nbuses, opfdata.nlines, opfdata.ngens, opfdata.N, opfdata.L, opfdata.G 
+      nbuses, nlines, ngens, N, L, G = opfdata.nbuses, opfdata.nlines, opfdata.ngens, 1:opfdata.nbuses, 1:opfdata.nlines, 1:opfdata.ngens
       fromBus,toBus,Y = opfdata.fromBus, opfdata.toBus, opfdata.Y_AC
 
       for i in N

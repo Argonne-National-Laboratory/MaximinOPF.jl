@@ -55,11 +55,12 @@ function opf_loaddata(case_name)
   # set bus demands
       PD = zeros(nbuses); QD = zeros(nbuses)
       for (k,load_data) in pm_data["load"]
-        PD[load_data["load_bus"]] = load_data["pd"]; QD[load_data["load_bus"]] = load_data["qd"]
+        PD[load_data["index"]] = load_data["pd"]; QD[load_data["index"]] = load_data["qd"]
       end
   # set squared bounds for bus voltage magnitude
       Wmin = zeros(nbuses); Wmax = zeros(nbuses)
       for (k,bus) in pm_buses
+println(k,bus)
         Wmin[bus["index"]] = bus["vmin"]^2; Wmax[bus["index"]] = bus["vmax"]^2
       end
   # set bounds for generator power generation

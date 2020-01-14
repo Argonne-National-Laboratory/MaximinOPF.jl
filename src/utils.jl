@@ -17,6 +17,7 @@ function printX(opfdata,x_soln)
 	@printf(" %d",l)
    end
   end
+  @printf("\n")
 end
 function printX2(opfdata,x_soln)
   for l in 1:opfdata.nlines
