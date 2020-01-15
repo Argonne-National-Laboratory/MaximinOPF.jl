@@ -4,8 +4,11 @@ using PowerModels
 using Mosek
 using MosekTools
 using JuMP
+using SDPA
 
 include("testcases.jl")
+
+PowerModels.silence()
 
 supportedPMOptions = [	
 	SOCWRConicPowerModel, # MoSek
@@ -16,48 +19,77 @@ supportedPMOptions = [
 #	SOCBFPowerModel, # Error constraint_ohms_yt_from()	
 ]
 
-function evaluateModel(expectedvalue, model, tol)
-    println("Protected branches: ",model.data["protected_branches"])
-    println("Inactive branches: ",model.data["inactive_branches"])
-    println("All other branches: ",setdiff(ids(model, :branch),model.data["protected_branches"]))
-    lk = []
-    println("Printing dual values x:")
-    for l in setdiff(ids(model, :branch),model.data["protected_branches"])
-      if abs(JuMP.dual(con(model, model.cnw, model.ccnd)[:x][l])) > tol
-        push!(lk, l)	        
+function evaluateMinmaxModel(expected_value, pm, tol, io)
+    println(io,"Protected branches: ",pm.data["protected_branches"])
+    println(io,"Inactive branches: ",pm.data["inactive_branches"])
+    println(io,"All other branches: ",setdiff(ids(pm, :branch),pm.data["protected_branches"]))
+    println(io,"Printing dual values x:")
+    for l in pm.data["undecided_branches"]
+      x_val=abs(JuMP.dual(con(pm, pm.cnw, pm.ccnd)[:x][l])) 
+      if x_val > tol
+        println(io,"(",l,",",x_val,")")
       end
     end
-    println(lk)
 
     lkx = []
-    psival = model.data["attacker_budget"]*JuMP.value(var(model, model.cnw, model.ccnd)[:u_K])
-    psival += sum( JuMP.value(var(model, model.cnw, model.ccnd)[:u_ord_aux][l]) for l in setdiff(ids(model, :branch),model.data["protected_branches"])  )
-    println("uK: ",JuMP.value(var(model, model.cnw, model.ccnd)[:u_K])," psival: ",psival)
-    for l in setdiff(ids(model, :branch),model.data["protected_branches"])
-      branch = ref(model, model.cnw, :branch, l)
+    psival = pm.data["attacker_budget"]*JuMP.value(var(pm, pm.cnw, pm.ccnd)[:u_K])
+    psival += sum( JuMP.value(var(pm, pm.cnw, pm.ccnd)[:u_ord_aux][l]) for l in pm.data["undecided_branches"] ) 
+    println("uK: ",JuMP.value(var(pm, pm.cnw, pm.ccnd)[:u_K])," psival: ",psival)
+    for l in ids(pm, :branch)
+      branch = ref(pm, pm.cnw, :branch, l)
       f_bus = branch["f_bus"]
       t_bus = branch["t_bus"]
       f_idx = (l, f_bus, t_bus)
       t_idx = (l, t_bus, f_bus)
-      upf0 = JuMP.value(var(model, model.cnw, model.ccnd,:up_br)[f_idx,0])
-      upt0 = JuMP.value(var(model, model.cnw, model.ccnd,:up_br)[t_idx,0])
-      uqf0 = JuMP.value(var(model, model.cnw, model.ccnd,:uq_br)[f_idx,0])
-      uqt0 = JuMP.value(var(model, model.cnw, model.ccnd,:uq_br)[t_idx,0])
-      upf1 = JuMP.value(var(model, model.cnw, model.ccnd,:up_br)[f_idx,1])
-      upt1 = JuMP.value(var(model, model.cnw, model.ccnd,:up_br)[t_idx,1])
-      uqf1 = JuMP.value(var(model, model.cnw, model.ccnd,:uq_br)[f_idx,1])
-      uqt1 = JuMP.value(var(model, model.cnw, model.ccnd,:uq_br)[t_idx,1])
+      upf0 = JuMP.value(var(pm, pm.cnw, pm.ccnd,:up_br)[f_idx,0])
+      upt0 = JuMP.value(var(pm, pm.cnw, pm.ccnd,:up_br)[t_idx,0])
+      uqf0 = JuMP.value(var(pm, pm.cnw, pm.ccnd,:uq_br)[f_idx,0])
+      uqt0 = JuMP.value(var(pm, pm.cnw, pm.ccnd,:uq_br)[t_idx,0])
+      upf1 = JuMP.value(var(pm, pm.cnw, pm.ccnd,:up_br)[f_idx,1])
+      upt1 = JuMP.value(var(pm, pm.cnw, pm.ccnd,:up_br)[t_idx,1])
+      uqf1 = JuMP.value(var(pm, pm.cnw, pm.ccnd,:uq_br)[f_idx,1])
+      uqt1 = JuMP.value(var(pm, pm.cnw, pm.ccnd,:uq_br)[t_idx,1])
+
+      upf1x = min(abs(JuMP.value(con(pm, pm.cnw, pm.ccnd)[:abs_pflow_fr_disc_ub][l])), abs(JuMP.value(con(pm, pm.cnw, pm.ccnd)[:abs_pflow_fr_disc_lb][l]))) 
+      upt1x = min(abs(JuMP.value(con(pm, pm.cnw, pm.ccnd)[:abs_pflow_to_disc_ub][l])), abs(JuMP.value(con(pm, pm.cnw, pm.ccnd)[:abs_pflow_to_disc_lb][l]))) 
+      uqf1x = min(abs(JuMP.value(con(pm, pm.cnw, pm.ccnd)[:abs_qflow_fr_disc_ub][l])), abs(JuMP.value(con(pm, pm.cnw, pm.ccnd)[:abs_qflow_fr_disc_lb][l]))) 
+      uqt1x = min(abs(JuMP.value(con(pm, pm.cnw, pm.ccnd)[:abs_qflow_to_disc_ub][l])), abs(JuMP.value(con(pm, pm.cnw, pm.ccnd)[:abs_qflow_to_disc_lb][l]))) 
+
+      upf0x = min(abs(JuMP.value(con(pm, pm.cnw, pm.ccnd)[:abs_pflow_fr_ub][l])), abs(JuMP.value(con(pm, pm.cnw, pm.ccnd)[:abs_pflow_fr_lb][l]))) 
+      upt0x = min(abs(JuMP.value(con(pm, pm.cnw, pm.ccnd)[:abs_pflow_to_ub][l])), abs(JuMP.value(con(pm, pm.cnw, pm.ccnd)[:abs_pflow_to_lb][l]))) 
+      uqf0x = min(abs(JuMP.value(con(pm, pm.cnw, pm.ccnd)[:abs_qflow_fr_ub][l])), abs(JuMP.value(con(pm, pm.cnw, pm.ccnd)[:abs_qflow_fr_lb][l]))) 
+      uqt0x = min(abs(JuMP.value(con(pm, pm.cnw, pm.ccnd)[:abs_qflow_to_ub][l])), abs(JuMP.value(con(pm, pm.cnw, pm.ccnd)[:abs_qflow_to_lb][l]))) 
+
+      upf0 -= upf0x
+      upt0 -= upt0x
+      uqf0 -= uqf0x
+      uqt0 -= uqt0x
+      upf1 -= upf1x
+      upt1 -= upt1x
+      uqf1 -= uqf1x
+      uqt1 -= uqt1x
+
       push!(lkx, (l,upf0+upt0+uqf0+uqt0,-upf1-upt1-uqf1-uqt1,upf0+upt0+uqf0+uqt0-upf1-upt1-uqf1-uqt1))	        
-      println((l,upf0+upt0+uqf0+uqt0,-upf1-upt1-uqf1-uqt1,upf0+upt0+uqf0+uqt0-upf1-upt1-uqf1-uqt1))	        
+      println(io,"x subgrad value: ",(l,upf0+upt0+uqf0+uqt0-upf1-upt1-uqf1-uqt1))	        
+      println(io,"Comparing u: ",(l,(upf0,upt0,uqf0,uqt0),(upf1,upt1,uqf1,uqt1,)))	        
     end
-    # return 1
+    
+    
+    discrep = abs(JuMP.objective_value(pm.model)-expected_value)
+    if discrep < tol
+	println(io,"The test for ",pm.data["name"]," PASSES: Obj value is: ",JuMP.objective_value(pm.model),", and the expected value was: ",expected_value,".")
+    else
+	println(io,"The test for ",pm.data["name"]," FAILED: Obj value is: ",JuMP.objective_value(pm.model),", but the expected value was: ",expected_value,".")
+    end
     
 end
 
 testresults = []
 for i in 1:length(supportedPMOptions)
 	powerform = supportedPMOptions[i] #PowerModel Options
-	for j in 1:length(casesConic)
+	ncases = length(casesConic)
+	for j in 1:(ncases)
+	#for j = ncases:ncases
 		pm_data = PowerModels.parse_file( casesConic[j]["file"] )
 		pm_data["name"]=casesConic[j]["name"]
 		pm_data["attacker_budget"] = casesConic[j]["attack_budget"] ###Adding another key and entry
@@ -66,7 +98,7 @@ for i in 1:length(supportedPMOptions)
 
 
 		f_name_base="output_"
-		f_name = string(f_name_base,"_",casesConic[j]["name"],"_", pm_data["attacker_budget"],"_",j,".txt")
+		f_name = string(f_name_base,casesConic[j]["name"],"_", pm_data["attacker_budget"],"_",j,".txt")
 		io=open(f_name, "w")
 		
 		#Create JUMP Model
@@ -97,13 +129,14 @@ for i in 1:length(supportedPMOptions)
 			result = @elapsed JuMP.optimize!(opt_model,with_optimizer(Ipopt.Optimizer))
 		else
 			result = @elapsed JuMP.optimize!(opt_model,with_optimizer(Mosek.Optimizer))
+			#result = @elapsed JuMP.optimize!(opt_model,with_optimizer(SDPA.Optimizer))
 		end
 		
 		#Print Result
 		#evaluateModel(expect, pf_model_pm, 0.001)
 		status=JuMP.termination_status(opt_model)
 		println(io,"Time taken to solve is: ", result, " with status ",status,".")
-		println(io,"The optimal value is: ",JuMP.objective_value(opt_model)," versus the expected value of ",casesConic[j]["expected_values"][opt_expected])
+                evaluateMinmaxModel(casesConic[j]["expected_values"][opt_expected], pf_model_pm, 1e-3,io)
 		close(io)
 	end
 end

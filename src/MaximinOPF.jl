@@ -73,10 +73,11 @@ end
 function WRConicPost_PF_Minmax(pm::AbstractPowerModel)
     WRConicPost_PF(pm)
     variable_ordering_auxiliary(pm)
-    con(pm, pm.cnw, pm.ccnd)[:x] = Dict{Int,ConstraintRef}()
+    con(pm, pm.cnw, pm.ccnd)[:x] = Dict{Int,JuMP.ConstraintRef}()
     undecided_branches = filter(l->!(l in pm.data["protected_branches"] || l in pm.data["inactive_branches"]), ids(pm,pm.cnw,:branch))
     for l in undecided_branches
-        constraint_abs_branch_flow_ordering(pm, l)
+        con(pm, pm.cnw, pm.ccnd)[:x][l] = constraint_abs_branch_flow_ordering(pm, l)
+        JuMP.set_name(con(pm, pm.cnw, pm.ccnd)[:x][l],"x[$l]")  
     end
     objective_minmax_problem(pm)
 end
@@ -106,15 +107,63 @@ function WRConicPost_PF(pm::AbstractPowerModel)
         constraint_power_balance(pm, i)
     end
 
+    con(pm, pm.cnw, pm.ccnd)[:abs_pflow_fr_disc_ub] = Dict{Int,JuMP.ConstraintRef}()
+    con(pm, pm.cnw, pm.ccnd)[:abs_pflow_fr_disc_lb] = Dict{Int,JuMP.ConstraintRef}()
+    con(pm, pm.cnw, pm.ccnd)[:abs_qflow_fr_disc_ub] = Dict{Int,JuMP.ConstraintRef}()
+    con(pm, pm.cnw, pm.ccnd)[:abs_qflow_fr_disc_lb] = Dict{Int,JuMP.ConstraintRef}()
+    con(pm, pm.cnw, pm.ccnd)[:abs_pflow_to_disc_ub] = Dict{Int,JuMP.ConstraintRef}()
+    con(pm, pm.cnw, pm.ccnd)[:abs_pflow_to_disc_lb] = Dict{Int,JuMP.ConstraintRef}()
+    con(pm, pm.cnw, pm.ccnd)[:abs_qflow_to_disc_ub] = Dict{Int,JuMP.ConstraintRef}()
+    con(pm, pm.cnw, pm.ccnd)[:abs_qflow_to_disc_lb] = Dict{Int,JuMP.ConstraintRef}()
+
+    con(pm, pm.cnw, pm.ccnd)[:abs_pflow_fr_ub] = Dict{Int,JuMP.ConstraintRef}()
+    con(pm, pm.cnw, pm.ccnd)[:abs_pflow_fr_lb] = Dict{Int,JuMP.ConstraintRef}()
+    con(pm, pm.cnw, pm.ccnd)[:abs_pflow_to_ub] = Dict{Int,JuMP.ConstraintRef}()
+    con(pm, pm.cnw, pm.ccnd)[:abs_pflow_to_lb] = Dict{Int,JuMP.ConstraintRef}()
+    con(pm, pm.cnw, pm.ccnd)[:abs_qflow_fr_ub] = Dict{Int,JuMP.ConstraintRef}()
+    con(pm, pm.cnw, pm.ccnd)[:abs_qflow_fr_lb] = Dict{Int,JuMP.ConstraintRef}()
+    con(pm, pm.cnw, pm.ccnd)[:abs_qflow_to_ub] = Dict{Int,JuMP.ConstraintRef}()
+    con(pm, pm.cnw, pm.ccnd)[:abs_qflow_to_lb] = Dict{Int,JuMP.ConstraintRef}()
     for l in ids(pm, :branch)
-	#if l in pm.data["protected_branches"]
-        #  constraint_ohms_yt_from(pm, l)
-        #  constraint_ohms_yt_to(pm, l)
-	#else
-        constraint_ohms_yt_from_slacks(pm, l)
-        constraint_ohms_yt_to_slacks(pm, l)
-        constraint_def_abs_flow_values(pm, l)
-	#end
+        cref1,cref2,cref3,cref4 = constraint_ohms_yt_from_slacks(pm, l)
+        con(pm, pm.cnw, pm.ccnd)[:abs_pflow_fr_disc_ub][l] = cref1
+        JuMP.set_name(cref1,"lambda_f+[$l]")  
+        con(pm, pm.cnw, pm.ccnd)[:abs_pflow_fr_disc_lb][l] = cref2
+        JuMP.set_name(cref2,"lambda_f-[$l]")  
+        con(pm, pm.cnw, pm.ccnd)[:abs_qflow_fr_disc_ub][l] = cref3
+        JuMP.set_name(cref3,"mu_f+[$l]")  
+        con(pm, pm.cnw, pm.ccnd)[:abs_qflow_fr_disc_lb][l] = cref4
+        JuMP.set_name(cref4,"mu_f-[$l]")  
+
+        cref1,cref2,cref3,cref4 = constraint_ohms_yt_to_slacks(pm, l)
+        con(pm, pm.cnw, pm.ccnd)[:abs_pflow_to_disc_ub][l] = cref1
+        JuMP.set_name(cref1,"lambda_t+[$l]")  
+        con(pm, pm.cnw, pm.ccnd)[:abs_pflow_to_disc_lb][l] = cref2
+        JuMP.set_name(cref2,"lambda_t-[$l]")  
+        con(pm, pm.cnw, pm.ccnd)[:abs_qflow_to_disc_ub][l] = cref3
+        JuMP.set_name(cref3,"mu_t+[$l]")  
+        con(pm, pm.cnw, pm.ccnd)[:abs_qflow_to_disc_lb][l] = cref4
+        JuMP.set_name(cref4,"mu_t-[$l]")  
+
+        ref_p1,ref_p2,ref_p3,ref_p4,ref_q1,ref_q2,ref_q3,ref_q4 = constraint_def_abs_flow_values(pm, l)
+        con(pm, pm.cnw, pm.ccnd)[:abs_pflow_fr_ub][l] = ref_p1
+        JuMP.set_name(ref_p2,"pi_f+[$l]")  
+        con(pm, pm.cnw, pm.ccnd)[:abs_pflow_fr_lb][l] = ref_p2
+        JuMP.set_name(ref_p1,"pi_f-[$l]")  
+        con(pm, pm.cnw, pm.ccnd)[:abs_pflow_to_ub][l] = ref_p3
+        JuMP.set_name(ref_p4,"pi_t+[$l]")  
+        con(pm, pm.cnw, pm.ccnd)[:abs_pflow_to_lb][l] = ref_p4
+        JuMP.set_name(ref_p3,"pi_t-[$l]")  
+        con(pm, pm.cnw, pm.ccnd)[:abs_qflow_fr_ub][l] = ref_q1
+        JuMP.set_name(ref_q1,"phi_f+[$l]")  
+        con(pm, pm.cnw, pm.ccnd)[:abs_qflow_fr_lb][l] = ref_q2
+        JuMP.set_name(ref_q2,"phi_f-[$l]")  
+        con(pm, pm.cnw, pm.ccnd)[:abs_qflow_to_ub][l] = ref_q3
+        JuMP.set_name(ref_q4,"phi_t+[$l]")  
+        con(pm, pm.cnw, pm.ccnd)[:abs_qflow_to_lb][l] = ref_q4
+        JuMP.set_name(ref_q3,"phi_t-[$l]")  
+
+
         constraint_voltage_angle_difference(pm, l)
 	if pm isa AbstractSDPWRMModel
 	  ## leave only the bounds on the branch flows set during initialization when there is need to avoid SOC or quadratic constraints
