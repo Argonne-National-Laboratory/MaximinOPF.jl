@@ -8,9 +8,9 @@ using JuMP
 include("testcases.jl")
 
 supportedPMOptions = [	
-#	SOCWRConicPowerModel, # MoSek
+	SOCWRConicPowerModel, # MoSek
 #	SDPWRMPowerModel, # MoSek
- 	SparseSDPWRMPowerModel # MoSek, requires minor editing of PowerModels wrm.jl code as of 5 Jan 2020, open issue with PowerModels is in progress.
+#	SparseSDPWRMPowerModel, # MoSek, requires minor editing of PowerModels wrm.jl code as of 5 Jan 2020, open issue with PowerModels is in progress.
 #	SOCWRPowerModel, # Not Mosek	
 #	QCRMPowerModel # Not Mosek
 #	SOCBFPowerModel, # Error constraint_ohms_yt_from()	
