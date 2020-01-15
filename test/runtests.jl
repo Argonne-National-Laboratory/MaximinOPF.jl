@@ -4,7 +4,7 @@ using PowerModels
 using Mosek
 using MosekTools
 using JuMP
-using SDPA
+#using SDPA
 
 include("testcases.jl")
 
