@@ -4,7 +4,7 @@ using PowerModels
 using Mosek
 using MosekTools
 using JuMP
-using SDPA
+#using SDPA
 
 include("testcases.jl")
 
@@ -13,7 +13,7 @@ PowerModels.silence()
 supportedPMOptions = [	
 #	SOCWRConicPowerModel, # MoSek
 #	SDPWRMPowerModel, # MoSek
- 	SparseSDPWRMPowerModel # MoSek, requires minor editing of PowerModels wrm.jl code as of 5 Jan 2020, open issue with PowerModels is in progress.
+	SparseSDPWRMPowerModel, # MoSek, requires minor editing of PowerModels wrm.jl code as of 5 Jan 2020, open issue with PowerModels is in progress.
 #	SOCWRPowerModel, # Not Mosek	
 #	QCRMPowerModel # Not Mosek
 #	SOCBFPowerModel, # Error constraint_ohms_yt_from()	
@@ -110,7 +110,7 @@ for i in 1:length(supportedPMOptions)
 		pm_data["undecided_branches"]= filter(l->!(l in pm_data["protected_branches"] || l in pm_data["inactive_branches"]), ids(pf_model_pm,pf_model_pm.cnw,:branch)) 
 			###Adding another key and entry
 		pf_minmax_model = pf_model_pm.model
-		pf_maxmin_model = MaximinOPF.DualizeModel(pf_model_pm)
+		#pf_maxmin_model = MaximinOPF.DualizeModel(pf_model_pm)
 		
 		#Print Model Status		
 		println(io,"inactive_branches: ",pm_data["inactive_branches"])
@@ -120,9 +120,9 @@ for i in 1:length(supportedPMOptions)
 	        println(io,"\n**********BEGIN MINMAX MODEL**********")
 		println(io,pf_minmax_model)
 	        println(io,"\n**********END MINMAX MODEL**********")
-	        println(io,"\n**********BEGIN MAXMIN MODEL**********")
-		println(io,pf_maxmin_model)
-	        println(io,"\n**********END MAXMIN MODEL**********")
+	        #println(io,"\n**********BEGIN MAXMIN MODEL**********")
+		#println(io,pf_maxmin_model)
+	        #println(io,"\n**********END MAXMIN MODEL**********")
 
 		#Solve Model with PowerModels Solution Builder
 		opt_model = pf_minmax_model

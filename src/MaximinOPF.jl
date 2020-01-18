@@ -42,14 +42,19 @@ function DualizeModel(minmax_model_pm::AbstractPowerModel)
 	end
     end
     fn_base=string(minmax_model_pm.data["name"],".cbf")
-    JuMP.write_to_file( maxmin_model, fn_base, format = MOI.FileFormats.FORMAT_CBF)
+    #JuMP.write_to_file( maxmin_model, fn_base, format = MOI.FileFormats.FORMAT_CBF)
 
     return maxmin_model
+end
+
+function write_to_cbf(model,fn_base::String)
+    JuMP.write_to_file( maxmin_model, string(fn_base,".cbf"), format = MOI.FileFormats.FORMAT_CBF)
 end
 
 function MinimaxOPFModel(pm_data, powerform)
     if powerform == SOCWRConicPowerModel || powerform == SDPWRMPowerModel || powerform == SparseSDPWRMPowerModel 
         println("Prototyping Algo with WRConic Forms")
+        #pm = instantiate_model(pm_data, powerform, WRConicPost_PF_Minmax)
         pm = build_model(pm_data, powerform, WRConicPost_PF_Minmax)
     else
 	println("Do nothing")
@@ -61,6 +66,7 @@ end
 function PF_FeasModel(pm_data, powerform)
     if powerform == SOCWRConicPowerModel || powerform == SDPWRMPowerModel || powerform == SparseSDPWRMPowerModel 
         println("Prototyping Algo with WRConic Forms")
+        #pm = instantiate_model(pm_data, powerform, WRConicPost_PF)
         pm = build_model(pm_data, powerform, WRConicPost_PF)
         objective_feasibility_problem(pm)
     else
@@ -123,6 +129,9 @@ function WRConicPost_PF(pm::AbstractPowerModel)
     con(pm, pm.cnw, pm.ccnd)[:abs_qflow_fr_lb] = Dict{Int,JuMP.ConstraintRef}()
     con(pm, pm.cnw, pm.ccnd)[:abs_qflow_to_ub] = Dict{Int,JuMP.ConstraintRef}()
     con(pm, pm.cnw, pm.ccnd)[:abs_qflow_to_lb] = Dict{Int,JuMP.ConstraintRef}()
+io=open("temp", "w")
+println(io,var(pm,pm.cnw,pm.ccnd))
+close(io)
     for l in setdiff(ids(pm, :branch),pm.data["inactive_branches"])
         cref1,cref2,cref3,cref4 = constraint_ohms_yt_from_slacks(pm, l)
         con(pm, pm.cnw, pm.ccnd)[:abs_pflow_fr_disc_ub][l] = cref1
