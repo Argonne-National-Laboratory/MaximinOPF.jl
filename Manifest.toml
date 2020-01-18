@@ -245,7 +245,7 @@ uuid = "44cfe95a-1eb2-52ea-b672-e2afdf69b78f"
 
 [[PowerModels]]
 deps = ["InfrastructureModels", "JSON", "JuMP", "LinearAlgebra", "MathOptInterface", "Memento", "SparseArrays"]
-git-tree-sha1 = "8ea51963455310560259acff6e7cdc03d94e3520"
+git-tree-sha1 = "7ce77d290d0f3c9bbc891e175ffc7da67ffa0b03"
 repo-rev = "master"
 repo-url = "https://github.com/bcdandurand/PowerModels.jl"
 uuid = "c36e90e8-916a-50a6-bd94-075b64ef4655"

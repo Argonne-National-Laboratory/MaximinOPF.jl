@@ -90,8 +90,8 @@ testresults = []
 for i in 1:length(supportedPMOptions)
 	powerform = supportedPMOptions[i] #PowerModel Options
 	ncases = length(casesConic)
-	for j in 1:1
-	#for j in 1:(ncases)
+	#for j in 1:1
+	for j in 1:(ncases)
 	#for j = ncases:ncases
 		pm_data = PowerModels.parse_file( casesConic[j]["file"] )
 		pm_data["name"]=casesConic[j]["name"]

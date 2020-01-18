@@ -54,8 +54,7 @@ end
 function MinimaxOPFModel(pm_data, powerform)
     if powerform == SOCWRConicPowerModel || powerform == SDPWRMPowerModel || powerform == SparseSDPWRMPowerModel 
         println("Prototyping Algo with WRConic Forms")
-        #pm = instantiate_model(pm_data, powerform, WRConicPost_PF_Minmax)
-        pm = build_model(pm_data, powerform, WRConicPost_PF_Minmax)
+        pm = instantiate_model(pm_data, powerform, WRConicPost_PF_Minmax)
     else
 	println("Do nothing")
     end
@@ -66,8 +65,7 @@ end
 function PF_FeasModel(pm_data, powerform)
     if powerform == SOCWRConicPowerModel || powerform == SDPWRMPowerModel || powerform == SparseSDPWRMPowerModel 
         println("Prototyping Algo with WRConic Forms")
-        #pm = instantiate_model(pm_data, powerform, WRConicPost_PF)
-        pm = build_model(pm_data, powerform, WRConicPost_PF)
+        pm = instantiate_model(pm_data, powerform, WRConicPost_PF)
         objective_feasibility_problem(pm)
     else
 	println("Do nothing")
