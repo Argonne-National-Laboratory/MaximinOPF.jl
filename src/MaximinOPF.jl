@@ -10,41 +10,36 @@ greet() = print("Hello World!")
 function MaximinOPFModel(pm_data, powerform)
     println("Hello MaximinOPFModel")
     m = MinimaxOPFModel(pm_data, powerform)
+
+    #Test Out
+    # io = open(string(pm_data["name"],".out"), "w")
+    # println(io,"name: ", pm_data["name"])
+    # println(io,"attacker_budget: ", pm_data["attacker_budget"])
+    # println(io,"inactive_branches: ", pm_data["inactive_branches"])
+    # println(io,"protected_branches: ", pm_data["protected_branches"])
+    # println(io, "Model:")
+    # println(io, m.model)
+    # close(io)
+
     m = DualizeModel(m)
     return m
 end
 
-function DualizeModel(minmax_model_pm::AbstractPowerModel)
-    io = open("minmax.txt","w")
-    println(io,minmax_model_pm.model)
-    close(io)
+function DualizeModel(minmax_model_pm::AbstractPowerModel)    
     maxmin_model = dualize(minmax_model_pm.model)
     for l in ids(minmax_model_pm, :branch)
         if !(l in minmax_model_pm.data["protected_branches"] || l in minmax_model_pm.data["inactive_branches"])
-     	  if has_lower_bound(variable_by_name(maxmin_model,"x[$l]_1"))
-     	      delete_lower_bound(variable_by_name(maxmin_model,"x[$l]_1"))
+            if has_lower_bound(variable_by_name(maxmin_model,"x[$l]_1"))
+                delete_lower_bound(variable_by_name(maxmin_model,"x[$l]_1"))
+            end
+            if has_upper_bound(variable_by_name(maxmin_model,"x[$l]_1"))
+                delete_upper_bound(variable_by_name(maxmin_model,"x[$l]_1"))
      	  end
-     	  if has_upper_bound(variable_by_name(maxmin_model,"x[$l]_1"))
-     	      delete_upper_bound(variable_by_name(maxmin_model,"x[$l]_1"))
-     	  end
-	  JuMP.set_integer(variable_by_name(maxmin_model,"x[$l]_1"))
-	end
-    end
-    fn_base=string(minmax_model_pm.data["name"],".cbf")
-println(fn_base)
+        JuMP.set_integer(variable_by_name(maxmin_model,"x[$l]_1"))
+        end
+    end   
     mathoptformat_model = MathOptInterface.FileFormats.CBF.Model()
     MOI.copy_to(MOI.Bridges.full_bridge_optimizer(mathoptformat_model,Float64), backend(maxmin_model))
-    #MOI.copy_to(mathoptformat_model, backend(maxmin_model))
-    MOI.write_to_file(mathoptformat_model, fn_base)
-#=
-    fn_base=string(minmax_model_pm.data["name"],".")
-println(fn_base)
-    mathoptformat_model = MathOptInterface.FileFormats.CBF.Model()
-    MOI.copy_to(MOI.Bridges.full_bridge_optimizer(mathoptformat_model,Float64), backend(maxmin_model))
-    #MOI.copy_to(mathoptformat_model, backend(maxmin_model))
-    MOI.write_to_file(mathoptformat_model, fn_base)
-=#
-
     return maxmin_model
 end
 
@@ -53,7 +48,7 @@ function MinimaxOPFModel(pm_data, powerform)
         println("Prototyping Algo with WRConic Forms")
         pm = build_model(pm_data, powerform, WRConicPost_PF_Minmax)
     else
-	println("Do nothing")
+	   println("Do nothing")
     end
 
     return pm
@@ -65,7 +60,7 @@ function PF_FeasModel(pm_data, powerform)
         pm = build_model(pm_data, powerform, WRConicPost_PF)
         objective_feasibility_problem(pm)
     else
-	println("Do nothing")
+	   println("Do nothing")
     end
     return pm
 end
