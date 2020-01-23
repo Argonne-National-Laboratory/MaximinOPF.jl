@@ -2,6 +2,7 @@ module MaximinOPF
 using PowerModels
 using Dualization
 using MathOptInterface
+using SCS
 include("Variables.jl")
 include("Objectives.jl")
 include("Constraints.jl")
@@ -15,21 +16,23 @@ function MaximinOPFModel(pm_data, powerform)
 end
 
 function DualizeModel(minmax_model_pm::AbstractPowerModel)
-#=
+    dualizable_minmax_model = MOI.Utilities.Model{Float64}()
+    bridged_model = MOI.Bridges.Constraint.Square{Float64}(dualizable_minmax_model)
+    MOI.copy_to(bridged_model,backend(minmax_model_pm.model))
     io = open("minmax.txt","w")
-    println(io,minmax_model_pm.model)
+    println(io,"Printing inner bridged model")
+    println(io,MOI.get(dualizable_minmax_model,MOI.ListOfConstraints()))
+    println(io,"Printing bridged model")
+    println(io,MOI.get(bridged_model,MOI.ListOfConstraints()))
     close(io)
-    #minmax_bridge = MOI.Bridges.Variable.(backend(minmax_model_pm.model), Float64)
-    #minmax_dualizable = DualizableModel()
-    minmax_dualizable = Model()
-    io=open("temp", "w")
-
-    MOI.copy_to(MOI.Bridges.Variable.SOCtoRSOCBridge{Float64}(backend(minmax_dualizable),Float64), backend(minmax_model_pm.model))
-    println(io,minmax_dualizable)
+    
+    maxmin_problem = dualize(dualizable_minmax_model)
+    maxmin_model = JuMP.Model() 
+    MOI.copy_to(maxmin_model,maxmin_problem.dual_model)
+    
+    io = open("maxmin.txt","w")
+    println(io,maxmin_model)
     close(io)
-    maxmin_model = dualize(minmax_bridge)
-=#
-    maxmin_model = dualize(minmax_model_pm.model)
     for l in ids(minmax_model_pm, :branch)
         if !(l in minmax_model_pm.data["protected_branches"] || l in minmax_model_pm.data["inactive_branches"])
      	  if has_lower_bound(variable_by_name(maxmin_model,"x[$l]_1"))
@@ -41,12 +44,15 @@ function DualizeModel(minmax_model_pm::AbstractPowerModel)
 	  JuMP.set_integer(variable_by_name(maxmin_model,"x[$l]_1"))
 	end
     end
-    fn_base=string(minmax_model_pm.data["name"],".cbf")
-    #JuMP.write_to_file( maxmin_model, fn_base, format = MOI.FileFormats.FORMAT_CBF)
+    fn_base=minmax_model_pm.data["name"]
 
     return maxmin_model
 end
 
+function write_to_cbf(pm_model::AbstractPowerModel)
+    fn_base=minmax_model_pm.data["name"]
+    write_to_cbf(pm_model.model,fn_base::String)
+end
 function write_to_cbf(model,fn_base::String)
     JuMP.write_to_file( maxmin_model, string(fn_base,".cbf"), format = MOI.FileFormats.FORMAT_CBF)
 end

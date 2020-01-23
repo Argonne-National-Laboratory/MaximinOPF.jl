@@ -77,11 +77,9 @@ uuid = "8ba89e20-285c-5b6f-9357-94700520ee1b"
 
 [[Dualization]]
 deps = ["JuMP", "MathOptInterface"]
-git-tree-sha1 = "150f6559822d17836f566234e7bf5eed619aa1ff"
-repo-rev = "master"
-repo-url = "https://github.com/JuliaOpt/Dualization.jl.git"
+git-tree-sha1 = "4b67b9b815c93843b12266e9a2be3c5ebede99aa"
 uuid = "191a621a-6537-11e9-281d-650236a99e60"
-version = "0.2.1"
+version = "0.2.2"
 
 [[EzXML]]
 deps = ["Printf", "XML2_jll"]
@@ -245,9 +243,9 @@ uuid = "44cfe95a-1eb2-52ea-b672-e2afdf69b78f"
 
 [[PowerModels]]
 deps = ["InfrastructureModels", "JSON", "JuMP", "LinearAlgebra", "MathOptInterface", "Memento", "SparseArrays"]
-git-tree-sha1 = "7ce77d290d0f3c9bbc891e175ffc7da67ffa0b03"
-repo-rev = "master"
-repo-url = "https://github.com/bcdandurand/PowerModels.jl"
+git-tree-sha1 = "14ba7fcc72d0d30dc21c905567a22d11d512fa02"
+repo-rev = "cholesky-fix"
+repo-url = "https://github.com/lanl-ansi/PowerModels.jl.git"
 uuid = "c36e90e8-916a-50a6-bd94-075b64ef4655"
 version = "0.14.0"
 
@@ -262,6 +260,12 @@ uuid = "3fa0cd96-eef1-5676-8a61-b3b8758bbffb"
 [[Random]]
 deps = ["Serialization"]
 uuid = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
+
+[[SCS]]
+deps = ["BinaryProvider", "Libdl", "LinearAlgebra", "MathOptInterface", "MathProgBase", "SparseArrays"]
+git-tree-sha1 = "2a867a07456a6d5fdb823d429215dbe7806df162"
+uuid = "c946c3f1-0d1f-5ce8-9dea-7daa1f7e2d13"
+version = "0.6.4"
 
 [[SHA]]
 uuid = "ea8e919c-243c-51af-8825-aaa63cd721ce"
@@ -308,9 +312,9 @@ uuid = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 
 [[TimeZones]]
 deps = ["Dates", "EzXML", "Mocking", "Printf", "Serialization", "Unicode"]
-git-tree-sha1 = "0271dc890dd1447da1568510937bd5b3a6b51b58"
+git-tree-sha1 = "24a7474411886cede89529f9b848989b783d954e"
 uuid = "f269a46b-ccf7-5d73-abea-4c690281aa53"
-version = "0.9.2"
+version = "0.10.5"
 
 [[TranscodingStreams]]
 deps = ["Random", "Test"]
