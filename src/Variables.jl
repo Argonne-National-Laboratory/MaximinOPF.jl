@@ -14,28 +14,29 @@ function variable_bus_slacks(pm::AbstractPowerModel; nw::Int=pm.cnw, cnd::Int=pm
 end
 
 function variable_branch_flow_slacks(pm::AbstractPowerModel; nw::Int=pm.cnw, cnd::Int=pm.ccnd)
-    up_br = var(pm, nw, cnd)[:up_br] = JuMP.@variable(pm.model,
-            [(l,i,j) in ref(pm, nw, :arcs),k=0:1], base_name="$(nw)_$(cnd)_up_br",
+    u1_arcs = filter(a->!(a[1] in pm.data["inactive_branches"]),ref(pm,nw,:arcs)) #Exclude inactive arcs
+    up_br1 = var(pm, nw, cnd)[:up_br1] = JuMP.@variable(pm.model,
+            [(l,i,j) in u1_arcs,k=0:1], base_name="$(nw)_$(cnd)_up_br",
             lower_bound = 0,
             start = 0
     )
-    uq_br = var(pm, nw, cnd)[:uq_br] = JuMP.@variable(pm.model,
-            [(l,i,j) in ref(pm, nw, :arcs),k=0:1], base_name="$(nw)_$(cnd)_uq_br",
+    uq_br1 = var(pm, nw, cnd)[:uq_br1] = JuMP.@variable(pm.model,
+            [(l,i,j) in u1_arcs,k=0:1], base_name="$(nw)_$(cnd)_uq_br",
             lower_bound = 0,
             start = 0
     )
 
-    ### Delete nonproductive variables
-    inactive_arcs = filter(a->(a[1] in pm.data["inactive_branches"]),ref(pm,nw,:arcs))
-    protected_arcs = filter(a->(a[1] in pm.data["protected_branches"]),ref(pm,nw,:arcs))
-    for a in inactive_arcs
-      delete(pm.model,up_br[a,1])
-      delete(pm.model,uq_br[a,1])
-    end
-    for a in protected_arcs
-      delete(pm.model,up_br[a,0])
-      delete(pm.model,uq_br[a,0])
-    end
+    u0_arcs = filter(a->!(a[1] in pm.data["protected_branches"]),ref(pm,nw,:arcs)) #Exclude protected arcs
+    up_br0 = var(pm, nw, cnd)[:up_br0] = JuMP.@variable(pm.model,
+            [(l,i,j) in u0_arcs,k=0:1], base_name="$(nw)_$(cnd)_up_br",
+            lower_bound = 0,
+            start = 0
+    )
+    uq_br0 = var(pm, nw, cnd)[:uq_br0] = JuMP.@variable(pm.model,
+            [(l,i,j) in u0_arcs,k=0:1], base_name="$(nw)_$(cnd)_uq_br",
+            lower_bound = 0,
+            start = 0
+    )
 end
 
 function variable_ordering_auxiliary(pm::AbstractPowerModel; nw::Int=pm.cnw, cnd::Int=pm.ccnd)
