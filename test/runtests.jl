@@ -24,85 +24,23 @@ supportedPMOptions = Dict{String,Dict{String,Any}}(
 #	QCRMPowerModel # Not Mosek
 #	SOCBFPowerModel, # Error constraint_ohms_yt_from()	
 "
-function evaluateModelOptVals(expected_value, model, tol, io=Base.stdout)
-    discrep = abs(JuMP.objective_value(model)-expected_value)
-    passes=false
-    if discrep < tol
-	result_str=string("PASSES: Obj value is: ",JuMP.objective_value(model),", and the expected value was: ",expected_value,".")
+function evaluateModelOptVals(expected_value, ev_type, model, tol, io=Base.stdout)
 	passes=true
-    else
-	result_str=string("FAILED: Obj value is: ",JuMP.objective_value(model),", but the expected value was: ",expected_value,".")
-	passes=false
-    end
-    println(io,result_str)
-    return passes,result_str
-end
-
-function evaluateMinmaxModel(expected_value, pm, tol, io)
-    println(io,"Protected branches: ",pm.data["protected_branches"])
-    println(io,"Inactive branches: ",pm.data["inactive_branches"])
-    println(io,"All other branches: ",setdiff(ids(pm, :branch),pm.data["protected_branches"]))
-#=
-    println(io,"Printing dual values x:")
-    for l in pm.data["undecided_branches"]
-      x_val=abs(JuMP.dual(con(pm, pm.cnw, pm.ccnd)[:x][l])) 
-      if x_val > tol
-        println(io,"(",l,",",x_val,")")
-      end
-    end
-
-    lkx = []
-    psival = pm.data["attacker_budget"]*JuMP.value(var(pm, pm.cnw, pm.ccnd)[:u_K])
-    psival += sum( JuMP.value(var(pm, pm.cnw, pm.ccnd)[:u_ord_aux][l]) for l in pm.data["undecided_branches"] ) 
-    println("uK: ",JuMP.value(var(pm, pm.cnw, pm.ccnd)[:u_K])," psival: ",psival)
-    for l in ids(pm, :branch)
-      branch = ref(pm, pm.cnw, :branch, l)
-      f_bus = branch["f_bus"]
-      t_bus = branch["t_bus"]
-      f_idx = (l, f_bus, t_bus)
-      t_idx = (l, t_bus, f_bus)
-      upf0 = JuMP.value(var(pm, pm.cnw, pm.ccnd,:up_br)[f_idx,0])
-      upt0 = JuMP.value(var(pm, pm.cnw, pm.ccnd,:up_br)[t_idx,0])
-      uqf0 = JuMP.value(var(pm, pm.cnw, pm.ccnd,:uq_br)[f_idx,0])
-      uqt0 = JuMP.value(var(pm, pm.cnw, pm.ccnd,:uq_br)[t_idx,0])
-      upf1 = JuMP.value(var(pm, pm.cnw, pm.ccnd,:up_br)[f_idx,1])
-      upt1 = JuMP.value(var(pm, pm.cnw, pm.ccnd,:up_br)[t_idx,1])
-      uqf1 = JuMP.value(var(pm, pm.cnw, pm.ccnd,:uq_br)[f_idx,1])
-      uqt1 = JuMP.value(var(pm, pm.cnw, pm.ccnd,:uq_br)[t_idx,1])
-
-      upf1x = min(abs(JuMP.value(con(pm, pm.cnw, pm.ccnd)[:abs_pflow_fr_disc_ub][l])), abs(JuMP.value(con(pm, pm.cnw, pm.ccnd)[:abs_pflow_fr_disc_lb][l]))) 
-      upt1x = min(abs(JuMP.value(con(pm, pm.cnw, pm.ccnd)[:abs_pflow_to_disc_ub][l])), abs(JuMP.value(con(pm, pm.cnw, pm.ccnd)[:abs_pflow_to_disc_lb][l]))) 
-      uqf1x = min(abs(JuMP.value(con(pm, pm.cnw, pm.ccnd)[:abs_qflow_fr_disc_ub][l])), abs(JuMP.value(con(pm, pm.cnw, pm.ccnd)[:abs_qflow_fr_disc_lb][l]))) 
-      uqt1x = min(abs(JuMP.value(con(pm, pm.cnw, pm.ccnd)[:abs_qflow_to_disc_ub][l])), abs(JuMP.value(con(pm, pm.cnw, pm.ccnd)[:abs_qflow_to_disc_lb][l]))) 
-
-      upf0x = min(abs(JuMP.value(con(pm, pm.cnw, pm.ccnd)[:abs_pflow_fr_ub][l])), abs(JuMP.value(con(pm, pm.cnw, pm.ccnd)[:abs_pflow_fr_lb][l]))) 
-      upt0x = min(abs(JuMP.value(con(pm, pm.cnw, pm.ccnd)[:abs_pflow_to_ub][l])), abs(JuMP.value(con(pm, pm.cnw, pm.ccnd)[:abs_pflow_to_lb][l]))) 
-      uqf0x = min(abs(JuMP.value(con(pm, pm.cnw, pm.ccnd)[:abs_qflow_fr_ub][l])), abs(JuMP.value(con(pm, pm.cnw, pm.ccnd)[:abs_qflow_fr_lb][l]))) 
-      uqt0x = min(abs(JuMP.value(con(pm, pm.cnw, pm.ccnd)[:abs_qflow_to_ub][l])), abs(JuMP.value(con(pm, pm.cnw, pm.ccnd)[:abs_qflow_to_lb][l]))) 
-
-      upf0 -= upf0x
-      upt0 -= upt0x
-      uqf0 -= uqf0x
-      uqt0 -= uqt0x
-      upf1 -= upf1x
-      upt1 -= upt1x
-      uqf1 -= uqf1x
-      uqt1 -= uqt1x
-
-      push!(lkx, (l,upf0+upt0+uqf0+uqt0,-upf1-upt1-uqf1-uqt1,upf0+upt0+uqf0+uqt0-upf1-upt1-uqf1-uqt1))	        
-      println(io,"x subgrad value: ",(l,upf0+upt0+uqf0+uqt0-upf1-upt1-uqf1-uqt1))	        
-      println(io,"Comparing u: ",(l,(upf0,upt0,uqf0,uqt0),(upf1,upt1,uqf1,uqt1,)))	        
-    end
-=#
-    
-    
-    discrep = abs(JuMP.objective_value(pm.model)-expected_value)
-    if discrep < tol
-	println(io,"The test for ",pm.data["name"]," PASSES: Obj value is: ",JuMP.objective_value(pm.model),", and the expected value was: ",expected_value,".")
-    else
-	println(io,"The test for ",pm.data["name"]," FAILED: Obj value is: ",JuMP.objective_value(pm.model),", but the expected value was: ",expected_value,".")
-    end
-    
+	if !haskey(expected_value,ev_type)
+		result_str=string("UNKNOWN expected value. Obj value otherwise is: ",JuMP.objective_value(model),".")
+		passes=true
+    	else
+		discrep = abs(JuMP.objective_value(model)-expected_value)
+    		if discrep < tol
+			result_str=string("PASSED: Obj value is: ",JuMP.objective_value(model),", and the expected value was: ",expected_value,".")
+			passes=true
+    		else
+			result_str=string("FAILED: Obj value is: ",JuMP.objective_value(model),", but the expected value was: ",expected_value,".")
+			passes=false
+    		end
+    	end
+	println(io,result_str)
+	return passes,result_str
 end
 
 for k in keys(test_cases)
@@ -151,7 +89,7 @@ for k in keys(test_cases)
     println("Solving the ",opt_expected," problem ",test_cases[k]["name"],"...")
     status=JuMP.termination_status(opt_model)
     println(io,"Time taken to solve is: ", result, " with status ",status,".")
-    test_cases[k]["results"]=evaluateModelOptVals(test_cases[k]["expected_values"][opt_expected], opt_model ,1e-3,io)
+    test_cases[k]["results"]=evaluateModelOptVals(test_cases[k]["expected_values"],opt_expected, opt_model ,1e-3,io)
     close(io)
 end
 		

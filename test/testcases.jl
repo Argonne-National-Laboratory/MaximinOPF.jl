@@ -8,10 +8,11 @@
 # "Case57 feas problem with lines 41,80 cut should have value 0.7597369902683009"
 # "Case57 feas problem with all lines cut should have value 6.2313456"
 
-"test_cases[(FORM,INSTANCE,BUDGET,DESCRIPTION)]"
+# "test_cases[(FORM,INSTANCE,BUDGET,DESCRIPTION)]"
 test_cases=Dict{Tuple{String,String,Int,Int},Dict{String,Any}}()
 
-"SOC case 9"
+# "CASE 9"
+# "SOC case 9"
 test_cases[("SOC","case9",3,0)]=Dict{String,Any}("name"=>"case9K3SOC0", "attacker_budget"=>3)
 test_cases[("SOC","case9",3,0)]["inactive_indices"]=[]
 test_cases[("SOC","case9",3,0)]["protected_indices"]=[]
@@ -27,7 +28,7 @@ test_cases[("SOC","case9",3,2)]["inactive_indices"]=[]
 test_cases[("SOC","case9",3,2)]["protected_indices"]=[2,3,5,6,8,9]
 test_cases[("SOC","case9",3,2)]["expected_values"] = Dict{String,Float64}("FP"=>0.0, "Minmax"=>3.4519, "Maxmin"=>3.4519)
 
-"SDP case 9"
+# "SDP case 9"
 test_cases[("SDP","case9",3,0)]=Dict{String,Any}("name"=>"case9K3SDP0", "attacker_budget"=>3)
 test_cases[("SDP","case9",3,0)]["inactive_indices"]=[]
 test_cases[("SDP","case9",3,0)]["protected_indices"]=[]
@@ -43,66 +44,72 @@ test_cases[("SDP","case9",3,2)]["inactive_indices"]=[]
 test_cases[("SDP","case9",3,2)]["protected_indices"]=[2,3,5,6,8,9]
 test_cases[("SDP","case9",3,2)]["expected_values"] = Dict{String,Float64}("FP"=>0.0, "Minmax"=>3.4519, "Maxmin"=>3.4519)
 
-"ACR case 9"
+# "ACR case 9"
 test_cases[("ACR","case9",3,0)]=Dict{String,Any}("name"=>"case9K3ACR0", "attacker_budget"=>3)
 test_cases[("ACR","case9",3,0)]["inactive_indices"]=[]
 test_cases[("ACR","case9",3,0)]["protected_indices"]=[]
-test_cases[("ACR","case9",3,0)]["expected_values"] = Dict{String,Float64}("FP"=>0.0, "Minmax"=>3.769156, "Maxmin"=>3.4519 )
+test_cases[("ACR","case9",3,0)]["expected_values"] = Dict{String,Float64}()
 
 test_cases[("ACR","case9",3,1)]=Dict{String,Any}("name"=>"case9K3ACR1", "attacker_budget"=>0)
 test_cases[("ACR","case9",3,1)]["inactive_indices"]=[1,4,7]
 test_cases[("ACR","case9",3,1)]["protected_indices"]=[]
-test_cases[("ACR","case9",3,1)]["expected_values"] = Dict{String,Float64}("FP"=>3.4519, "Minmax"=>3.4519, "Maxmin"=>3.4519 )
+test_cases[("ACR","case9",3,1)]["expected_values"] = Dict{String,Float64}()
 
 test_cases[("ACR","case9",3,2)]=Dict{String,Any}("name"=>"case9K3ACR2", "attacker_budget"=>3)
 test_cases[("ACR","case9",3,2)]["inactive_indices"]=[]
 test_cases[("ACR","case9",3,2)]["protected_indices"]=[2,3,5,6,8,9]
-test_cases[("ACR","case9",3,2)]["expected_values"] = Dict{String,Float64}("FP"=>0.0, "Minmax"=>3.4519, "Maxmin"=>3.4519)
+test_cases[("ACR","case9",3,2)]["expected_values"] = Dict{String,Float64}()
 
+# "CASE 30"
+# "SOC case 30"
+test_cases[("SOC","case30",4,0)]=Dict{String,Any}("name"=>"case30K4SOC0", "attacker_budget"=>4)
+test_cases[("SOC","case30",4,0)]["inactive_indices"]=[]
+test_cases[("SOC","case30",4,0)]["protected_indices"]=[]
+test_cases[("SOC","case30",4,0)]["expected_values"] = Dict{String,Float64}("FP"=>0.0, "Minmax"=>1.971, "Maxmin"=>0.937 )
+
+test_cases[("SOC","case30",4,1)]=Dict{String,Any}("name"=>"case30K4SOC1", "attacker_budget"=>0)
+test_cases[("SOC","case30",4,1)]["inactive_indices"]=[8,9,10,40]
+test_cases[("SOC","case30",4,1)]["protected_indices"]=[]
+test_cases[("SOC","case30",4,1)]["expected_values"] = Dict{String,Float64}("FP"=>0.937, "Minmax"=>0.937, "Maxmin"=>0.937)
+
+test_cases[("SOC","case30",4,2)]=Dict{String,Any}("name"=>"case30K4SOC2", "attacker_budget"=>4)
+test_cases[("SOC","case30",4,2)]["inactive_indices"]=[]
+test_cases[("SOC","case30",4,2)]["protected_indices"]=filter(l->!(l in [8,9,10,40]), 1:41)
+test_cases[("SOC","case30",4,2)]["expected_values"] = Dict{String,Float64}("FP"=>0.0, "Minmax"=>0.937, "Maxmin"=>0.937 )
+
+# "SDP case 30"
+test_cases[("SDP","case30",4,0)]=Dict{String,Any}("name"=>"case30K4SDP0", "attacker_budget"=>4)
+test_cases[("SDP","case30",4,0)]["inactive_indices"]=[]
+test_cases[("SDP","case30",4,0)]["protected_indices"]=[]
+test_cases[("SDP","case30",4,0)]["expected_values"] = Dict{String,Float64}("FP"=>0.0, "Minmax"=>2.00117, "Maxmin"=>0.937 )
+
+test_cases[("SDP","case30",4,1)]=Dict{String,Any}("name"=>"case30K4SDP1", "attacker_budget"=>0)
+test_cases[("SDP","case30",4,1)]["inactive_indices"]=[8,9,10,40]
+test_cases[("SDP","case30",4,1)]["protected_indices"]=[]
+test_cases[("SDP","case30",4,1)]["expected_values"] = Dict{String,Float64}("FP"=>0.937, "Minmax"=>0.937, "Maxmin"=>0.937 )
+
+test_cases[("SDP","case30",4,2)]=Dict{String,Any}("name"=>"case30K4SDP2", "attacker_budget"=>4)
+test_cases[("SDP","case30",4,2)]["inactive_indices"]=[]
+test_cases[("SDP","case30",4,2)]["protected_indices"]=filter(l->!(l in [8,9,10,40]), 1:41)
+test_cases[("SDP","case30",4,2)]["expected_values"] = Dict{String,Float64}("FP"=>0.0, "Minmax"=>0.937, "Maxmin"=>0.937 )
+
+# "ACR case 30"
+test_cases[("ACR","case30",4,0)]=Dict{String,Any}("name"=>"case30K4ACR0", "attacker_budget"=>4)
+test_cases[("ACR","case30",4,0)]["inactive_indices"]=[]
+test_cases[("ACR","case30",4,0)]["protected_indices"]=[]
+test_cases[("ACR","case30",4,0)]["expected_values"] = Dict{String,Float64}( )
+
+test_cases[("ACR","case30",4,1)]=Dict{String,Any}("name"=>"case30K4ACR1", "attacker_budget"=>0)
+test_cases[("ACR","case30",4,1)]["inactive_indices"]=[8,9,10,40]
+test_cases[("ACR","case30",4,1)]["protected_indices"]=[]
+test_cases[("ACR","case30",4,1)]["expected_values"] = Dict{String,Float64}( )
+
+test_cases[("ACR","case30",4,2)]=Dict{String,Any}("name"=>"case30K4ACR2", "attacker_budget"=>4)
+test_cases[("ACR","case30",4,2)]["inactive_indices"]=[]
+test_cases[("ACR","case30",4,2)]["protected_indices"]=filter(l->!(l in [8,9,10,40]), 1:41)
+test_cases[("ACR","case30",4,2)]["expected_values"] = Dict{String,Float64}( )
 
 casesConic = [
-	Dict("file" => "../data/case9.m", 
-		"name" => "case9K3", 
-		"attack_budget" => 3,
-		"inactive_indices" => [],
-		"protected_indices" => [],
-		"expected_values" => Dict{String,Float64}("SOC_FP"=>0.0, "SOC_Minmax"=>3.769156, "SOC_Maxmin"=>3.4519, "SDP_FP"=>0.0, "SDP_Minmax"=>3.769156, "SDP_Maxmin"=>3.4519 )
-	),
-	Dict("file" => "../data/case9.m", 
-		"name" => "case9K0Inactive", 
-		"attack_budget" => 0,
-		"inactive_indices" => [1,4,7],
-		"protected_indices" => [],
-		"expected_values" => Dict{String,Float64}("SOC_FP"=>3.4519, "SOC_Minmax"=>3.4519, "SOC_Maxmin"=>3.4519, "SDP_FP"=>3.4519, "SDP_Minmax"=>3.4519, "SDP_Maxmin"=>3.4519 )
-	),
-	Dict("file" => "../data/case9.m", 
-	 	"name" => "case9K3Protected", 
-	 	"attack_budget" => 3,
-	 	"inactive_indices" => [],
-	 	"protected_indices" => [2,3,5,6,8,9],
-		"expected_values" => Dict{String,Float64}("SOC_FP"=>0.0, "SOC_Minmax"=>3.4519, "SOC_Maxmin"=>3.4519, "SDP_FP"=>0.0, "SDP_Minmax"=>3.4519, "SDP_Maxmin"=>3.4519 )
-	 ),
-	 Dict("file" => "../data/case30.m", 
-	 	"name" => "case30K4", 
-	 	"attack_budget" => 4,
-	 	"inactive_indices" => [],
-	 	"protected_indices" => [],
-		"expected_values" => Dict{String,Float64}("SOC_FP"=>0.0, "SOC_Minmax"=>1.971, "SOC_Maxmin"=>0.937, "SDP_FP"=>0.0, "SDP_Minmax"=>2.00117, "SDP_Maxmin"=>0.937 )
-	),
-	Dict("file" => "../data/case30.m", 
-	 	"name" => "case30K0Inactive", 
-	 	"attack_budget" => 0,
-	 	"inactive_indices" => [8,9,10,40],
-	 	"protected_indices" => [],
-		"expected_values" => Dict{String,Float64}("SOC_FP"=>0.937, "SOC_Minmax"=>0.937, "SOC_Maxmin"=>0.937, "SDP_FP"=>0.937, "SDP_Minmax"=>0.937, "SDP_Maxmin"=>0.937 )
-	),
-	Dict("file" => "../data/case30.m", 
-	 	"name" => "case30K4", 
-	 	"attack_budget" => 4,
-	 	"inactive_indices" => [],
-	 	"protected_indices" => filter(l->!(l in [8,9,10,40]), 1:41), 
-		"expected_values" => Dict{String,Float64}("SOC_FP"=>0.0, "SOC_Minmax"=>0.937, "SOC_Maxmin"=>0.937, "SDP_FP"=>0.0, "SDP_Minmax"=>0.937, "SDP_Maxmin"=>0.937 )
-	),
 	Dict("file" => "../data/case57.m", 
 	 	"name" => "case57K2", 
 	 	"attack_budget" => 2,
