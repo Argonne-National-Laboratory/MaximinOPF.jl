@@ -3,7 +3,7 @@ using JuMP
 function variable_bus_slacks(pm::AbstractPowerModel; nw::Int=pm.cnw, cnd::Int=pm.ccnd)
     up_bus = var(pm, nw, cnd)[:up_bus] = JuMP.@variable(pm.model,
         [i in ids(pm, nw, :bus)], base_name="$(nw)_$(cnd)_up_bus",
-	lower_bound = 0,
+    lower_bound = 0,
         start = 0
     )
     uq_bus = var(pm, nw, cnd)[:uq_bus] = JuMP.@variable(pm.model,
@@ -54,25 +54,25 @@ function remove_infinity_bnds(pm::AbstractPowerModel; nw::Int=pm.cnw, cnd::Int=p
     p = var(pm, nw, cnd, :p)
     q = var(pm, nw, cnd, :q)
     for l in ref(pm,nw, :arcs)
-     if has_lower_bound(p[l])
-      if lower_bound(p[l])==-Inf 
-        delete_lower_bound(p[l])
-      end      
-     end
-     if has_lower_bound(q[l])
-      if lower_bound(q[l])==-Inf 
-        delete_lower_bound(q[l])
-      end      
-     end
-     if has_upper_bound(p[l])
-      if upper_bound(p[l])==Inf 
-        delete_upper_bound(p[l])
-      end      
-     end
-     if has_upper_bound(q[l])
-      if upper_bound(q[l])==Inf 
-        delete_upper_bound(q[l])
-      end      
-     end
+        if has_lower_bound(p[l])
+            if lower_bound(p[l])==-Inf 
+                delete_lower_bound(p[l])
+            end      
+        end
+        if has_lower_bound(q[l])
+            if lower_bound(q[l])==-Inf 
+                delete_lower_bound(q[l])
+            end      
+        end
+        if has_upper_bound(p[l])
+            if upper_bound(p[l])==Inf 
+                delete_upper_bound(p[l])
+            end      
+        end
+        if has_upper_bound(q[l])
+            if upper_bound(q[l])==Inf 
+                delete_upper_bound(q[l])
+            end      
+        end
     end
 end

@@ -120,10 +120,10 @@ function constraint_thermal_limit_from_psd(pm::AbstractConicModels, i::Int)
     f_idx = (i, f_bus, t_bus)
 
     if haskey(branch, "rate_a")
-      rate_a = branch["rate_a"]
-      p_fr = var(pm, pm.cnw, pm.ccnd, :p, f_idx)
-      q_fr = var(pm, pm.cnw, pm.ccnd, :q, f_idx)
-      JuMP.@constraint(pm.model, Symmetric([rate_a p_fr q_fr; p_fr rate_a 0; q_fr 0 rate_a]) in JuMP.PSDCone())
+        rate_a = branch["rate_a"]
+        p_fr = var(pm, pm.cnw, pm.ccnd, :p, f_idx)
+        q_fr = var(pm, pm.cnw, pm.ccnd, :q, f_idx)
+        JuMP.@constraint(pm.model, Symmetric([rate_a p_fr q_fr; p_fr rate_a 0; q_fr 0 rate_a]) in JuMP.PSDCone())
     end
 end
 
@@ -138,10 +138,10 @@ function constraint_thermal_limit_to_psd(pm::AbstractConicModels, i::Int)
     t_bus = branch["t_bus"]
     t_idx = (i, t_bus, f_bus)
     if haskey(branch, "rate_a")
-      rate_a = branch["rate_a"]
-      p_to = var(pm, pm.cnw, pm.ccnd, :p, t_idx)
-      q_to = var(pm, pm.cnw, pm.ccnd, :q, t_idx)
-      JuMP.@constraint(pm.model, Symmetric([rate_a p_to q_to; p_to rate_a 0; q_to 0 rate_a]) in JuMP.PSDCone())
+        rate_a = branch["rate_a"]
+        p_to = var(pm, pm.cnw, pm.ccnd, :p, t_idx)
+        q_to = var(pm, pm.cnw, pm.ccnd, :q, t_idx)
+        JuMP.@constraint(pm.model, Symmetric([rate_a p_to q_to; p_to rate_a 0; q_to 0 rate_a]) in JuMP.PSDCone())
     end
 end
 
