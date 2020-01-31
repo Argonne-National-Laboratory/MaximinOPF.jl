@@ -7,6 +7,7 @@ using JuMP
 include("testcases.jl")
 PowerModels.silence()
 
+
 for j in 1:length(testcases)
     pm_data = PowerModels.parse_file( testcases[j]["file"] )
     powerform = testcases[j]["PMOption"]
@@ -31,8 +32,5 @@ for j in 1:length(testcases)
         println(string("Solver is not selected for ", testcases[j]["name"]))
 
     end
-
-     
 end
-
 
