@@ -1,175 +1,52 @@
 using JuMP
-
-function constraint_power_balance_slacks(pm::AbstractWModels, n::Int, c::Int, i, bus_arcs, bus_arcs_dc, bus_arcs_sw, bus_gens, bus_storage, bus_pd, bus_qd, bus_gs, bus_bs)
-    w    = var(pm, n, c, :w, i)
-    p    = get(var(pm, n, c),    :p, Dict()); _check_var_keys(p, bus_arcs, "active power", "branch")
-    q    = get(var(pm, n, c),    :q, Dict()); _check_var_keys(q, bus_arcs, "reactive power", "branch")
-    pg   = get(var(pm, n, c),   :pg, Dict()); _check_var_keys(pg, bus_gens, "active power", "generator")
-    qg   = get(var(pm, n, c),   :qg, Dict()); _check_var_keys(qg, bus_gens, "reactive power", "generator")
-    ps   = get(var(pm, n, c),   :ps, Dict()); _check_var_keys(ps, bus_storage, "active power", "storage")
-    qs   = get(var(pm, n, c),   :qs, Dict()); _check_var_keys(qs, bus_storage, "reactive power", "storage")
-    psw  = get(var(pm, n, c),  :psw, Dict()); _check_var_keys(psw, bus_arcs_sw, "active power", "switch")
-    qsw  = get(var(pm, n, c),  :qsw, Dict()); _check_var_keys(qsw, bus_arcs_sw, "reactive power", "switch")
-    p_dc = get(var(pm, n, c), :p_dc, Dict()); _check_var_keys(p_dc, bus_arcs_dc, "active power", "dcline")
-    q_dc = get(var(pm, n, c), :q_dc, Dict()); _check_var_keys(q_dc, bus_arcs_dc, "reactive power", "dcline")
-    upbus = var(pm, n, c, :up_bus, i)
-    uqbus = var(pm, n, c, :uq_bus, i)
-
-
-    ### Active power balance -up <= ... <= up
-    con(pm, n, c, :kcl_p)[i] = JuMP.@constraint(pm.model,
-        sum(p[a] for a in bus_arcs)
-        + sum(p_dc[a_dc] for a_dc in bus_arcs_dc)
-        + sum(psw[a_sw] for a_sw in bus_arcs_sw)
-        - sum(pg[g] for g in bus_gens)
-        + sum(ps[s] for s in bus_storage)
-        + sum(pd for pd in values(bus_pd))
-        + sum(gs for gs in values(bus_gs))*w
-	- upbus <= 0
-    )
-    con(pm, n, c, :kcl_p)[i] = JuMP.@constraint(pm.model,
-        -sum(p[a] for a in bus_arcs)
-        - sum(p_dc[a_dc] for a_dc in bus_arcs_dc)
-        - sum(psw[a_sw] for a_sw in bus_arcs_sw)
-        + sum(pg[g] for g in bus_gens)
-        - sum(ps[s] for s in bus_storage)
-        - sum(pd for pd in values(bus_pd))
-        - sum(gs for gs in values(bus_gs))*w
-	- upbus <= 0 
-    )
-
-    ### Reactive power balance -uq <= ... <= uq
-    con(pm, n, c, :kcl_q)[i] = JuMP.@constraint(pm.model,
-        sum(q[a] for a in bus_arcs)
-        + sum(q_dc[a_dc] for a_dc in bus_arcs_dc)
-        + sum(qsw[a_sw] for a_sw in bus_arcs_sw)
-        - sum(qg[g] for g in bus_gens)
-        + sum(qs[s] for s in bus_storage)
-        + sum(qd for qd in values(bus_qd))
-        - sum(bs for bs in values(bus_bs))*w
-	- uqbus <= 0
-    )
-    con(pm, n, c, :kcl_q)[i] = JuMP.@constraint(pm.model,
-        -sum(q[a] for a in bus_arcs)
-        - sum(q_dc[a_dc] for a_dc in bus_arcs_dc)
-        - sum(qsw[a_sw] for a_sw in bus_arcs_sw)
-        + sum(qg[g] for g in bus_gens)
-        - sum(qs[s] for s in bus_storage)
-        - sum(qd for qd in values(bus_qd))
-        + sum(bs for bs in values(bus_bs))*w
-	- uqbus <= 0
-    )
-end
-
-###NOTE: This is modeled on what is in PowerModels.jl/blob/master/src/core/constraint_template.jl
-function constraint_power_balance_slacks(pm::AbstractPowerModel, i::Int; nw::Int=pm.cnw, cnd::Int=pm.ccnd)
-    if !haskey(con(pm, nw, cnd), :kcl_p)
-        con(pm, nw, cnd)[:kcl_p] = Dict{Int,JuMP.ConstraintRef}()
-    end
-    if !haskey(con(pm, nw, cnd), :kcl_q)
-        con(pm, nw, cnd)[:kcl_q] = Dict{Int,JuMP.ConstraintRef}()
-    end
-
-    bus = ref(pm, nw, :bus, i)
-    bus_arcs = ref(pm, nw, :bus_arcs, i)
-    bus_arcs_dc = ref(pm, nw, :bus_arcs_dc, i)
-    bus_arcs_sw = ref(pm, nw, :bus_arcs_sw, i)
-    bus_gens = ref(pm, nw, :bus_gens, i)
-    bus_loads = ref(pm, nw, :bus_loads, i)
-    bus_shunts = ref(pm, nw, :bus_shunts, i)
-    bus_storage = ref(pm, nw, :bus_storage, i)
-
-    bus_pd = Dict(k => ref(pm, nw, :load, k, "pd", cnd) for k in bus_loads)
-    bus_qd = Dict(k => ref(pm, nw, :load, k, "qd", cnd) for k in bus_loads)
-
-    bus_gs = Dict(k => ref(pm, nw, :shunt, k, "gs", cnd) for k in bus_shunts)
-    bus_bs = Dict(k => ref(pm, nw, :shunt, k, "bs", cnd) for k in bus_shunts)
-
-    constraint_power_balance_slacks(pm, nw, cnd, i, bus_arcs, bus_arcs_dc, bus_arcs_sw, bus_gens, bus_storage, bus_pd, bus_qd, bus_gs, bus_bs)
-end
-
-
-"""
-Creates Ohms constraints (yt post fix indicates that Y and T values are in rectangular form)
-"""
-function constraint_ohms_yt_from_slacks(pm::AbstractWRModels, n::Int, c::Int, f_bus, t_bus, f_idx, t_idx, g, b, g_fr, b_fr, tr, ti, tm)
-    l=f_idx[1]
-    p_fr = var(pm, n, c, :p, f_idx)
-    q_fr = var(pm, n, c, :q, f_idx)
-    w_fr = var(pm, n, c, :w, f_bus)
-    wr   = var(pm, n, c, :wr, (f_bus, t_bus))
-    wi   = var(pm, n, c, :wi, (f_bus, t_bus))
-    upf1 = var(pm,n,c, :up_br)[f_idx,1]
-    uqf1 = var(pm,n,c, :uq_br)[f_idx,1]
-
-    cref1=JuMP.@constraint(pm.model,  (g+g_fr)/tm^2*w_fr + (-g*tr+b*ti)/tm^2*wr + (-b*tr-g*ti)/tm^2*wi - p_fr - upf1 <= 0)
-    cref2=JuMP.@constraint(pm.model, -(g+g_fr)/tm^2*w_fr - (-g*tr+b*ti)/tm^2*wr - (-b*tr-g*ti)/tm^2*wi + p_fr - upf1 <= 0)
-    cref3=JuMP.@constraint(pm.model, -(b+b_fr)/tm^2*w_fr - (-b*tr-g*ti)/tm^2*wr + (-g*tr+b*ti)/tm^2*wi - q_fr - uqf1 <= 0)
-    cref4=JuMP.@constraint(pm.model, (b+b_fr)/tm^2*w_fr + (-b*tr-g*ti)/tm^2*wr - (-g*tr+b*ti)/tm^2*wi + q_fr - uqf1 <= 0)
-    return cref1,cref2,cref3,cref4
-end
-
-
-"""
-Creates Ohms constraints (yt post fix indicates that Y and T values are in rectangular form)
-"""
-function constraint_ohms_yt_to_slacks(pm::AbstractWRModels, n::Int, c::Int, f_bus, t_bus, f_idx, t_idx, g, b, g_to, b_to, tr, ti, tm)
-    l=t_idx[1]
-    q_to = var(pm, n, c, :q, t_idx)
-    p_to = var(pm, n, c, :p, t_idx)
-    w_to = var(pm, n, c, :w, t_bus)
-    wr   = var(pm, n, c, :wr, (f_bus, t_bus))
-    wi   = var(pm, n, c, :wi, (f_bus, t_bus))
-    upt1 = var(pm,n,c, :up_br)[t_idx,1]
-    uqt1 = var(pm,n,c, :uq_br)[t_idx,1]
-
-
-    cref1=JuMP.@constraint(pm.model,  (g+g_to)*w_to + (-g*tr-b*ti)/tm^2*wr + (-b*tr+g*ti)/tm^2*-wi - p_to - upt1 <= 0)
-    cref2=JuMP.@constraint(pm.model,  -(g+g_to)*w_to - (-g*tr-b*ti)/tm^2*wr - (-b*tr+g*ti)/tm^2*-wi + p_to - upt1 <= 0)
-    cref3=JuMP.@constraint(pm.model, -(b+b_to)*w_to - (-b*tr+g*ti)/tm^2*wr + (-g*tr-b*ti)/tm^2*-wi - q_to - uqt1 <= 0)
-    cref4=JuMP.@constraint(pm.model, (b+b_to)*w_to + (-b*tr+g*ti)/tm^2*wr - (-g*tr-b*ti)/tm^2*-wi + q_to - uqt1 <= 0)
-    return cref1,cref2,cref3,cref4
-end
+using LinearAlgebra
 
 ### Branch - Ohm's Law Constraints ###
 
 ""
 function constraint_ohms_yt_from_slacks(pm::AbstractPowerModel, i::Int; nw::Int=pm.cnw, cnd::Int=pm.ccnd)
+    cref_p,cref_q=constraint_ohms_yt_from(pm, i)
+
     branch = ref(pm, nw, :branch, i)
     f_bus = branch["f_bus"]
     t_bus = branch["t_bus"]
     f_idx = (i, f_bus, t_bus)
-    t_idx = (i, t_bus, f_bus)
 
-    g, b = calc_branch_y(branch)
-    tr, ti = calc_branch_t(branch)
-    g_fr = branch["g_fr"][cnd]
-    b_fr = branch["b_fr"][cnd]
-    tm = branch["tap"][cnd]
+    upf1m = var(pm,nw,cnd, :up_br1)[f_idx,0]
+    upf1p = var(pm,nw,cnd, :up_br1)[f_idx,1]
+    uqf1m = var(pm,nw,cnd, :uq_br1)[f_idx,0]
+    uqf1p = var(pm,nw,cnd, :uq_br1)[f_idx,1]
 
-    cref1,cref2,cref3,cref4 =
-    constraint_ohms_yt_from_slacks(pm, nw, cnd, f_bus, t_bus, f_idx, t_idx, g[cnd,cnd], b[cnd,cnd], g_fr, b_fr, tr[cnd], ti[cnd], tm)
-    return cref1,cref2,cref3,cref4
+    JuMP.set_normalized_coefficient(cref_p,upf1m,-1)
+    JuMP.set_normalized_coefficient(cref_q,uqf1m,-1)
+    JuMP.set_normalized_coefficient(cref_p,upf1p,1)
+    JuMP.set_normalized_coefficient(cref_q,uqf1p,1)
+
+    return cref_p,cref_q
 end
 
 
 ""
 function constraint_ohms_yt_to_slacks(pm::AbstractPowerModel, i::Int; nw::Int=pm.cnw, cnd::Int=pm.ccnd)
+    cref_p,cref_q=constraint_ohms_yt_to(pm, i)
+
     branch = ref(pm, nw, :branch, i)
     f_bus = branch["f_bus"]
     t_bus = branch["t_bus"]
-    f_idx = (i, f_bus, t_bus)
     t_idx = (i, t_bus, f_bus)
 
-    g, b = calc_branch_y(branch)
-    tr, ti = calc_branch_t(branch)
-    g_to = branch["g_to"][cnd]
-    b_to = branch["b_to"][cnd]
-    tm = branch["tap"][cnd]
 
-    cref1,cref2,cref3,cref4 =
-    constraint_ohms_yt_to_slacks(pm, nw, cnd, f_bus, t_bus, f_idx, t_idx, g[cnd,cnd], b[cnd,cnd], g_to, b_to, tr[cnd], ti[cnd], tm)
-    return cref1,cref2,cref3,cref4
+    upt1m = var(pm,nw,cnd, :up_br1)[t_idx,0]
+    upt1p = var(pm,nw,cnd, :up_br1)[t_idx,1]
+    uqt1m = var(pm,nw,cnd, :uq_br1)[t_idx,0]
+    uqt1p = var(pm,nw,cnd, :uq_br1)[t_idx,1]
+
+    JuMP.set_normalized_coefficient(cref_p,upt1m,-1)
+    JuMP.set_normalized_coefficient(cref_q,uqt1m,-1)
+    JuMP.set_normalized_coefficient(cref_p,upt1p,1)
+    JuMP.set_normalized_coefficient(cref_q,uqt1p,1)
+    
+    return cref_p,cref_q
 end
 
 function constraint_def_abs_flow_values(pm::AbstractPowerModel, l::Int; nw::Int=pm.cnw, cnd::Int=pm.ccnd)
@@ -183,21 +60,22 @@ function constraint_def_abs_flow_values(pm::AbstractPowerModel, l::Int; nw::Int=
     p_to = var(pm, nw, cnd, :p, t_idx)
     q_fr = var(pm, nw, cnd, :q, f_idx)
     q_to = var(pm, nw, cnd, :q, t_idx)
-    upf0 = var(pm,nw,cnd, :up_br)[f_idx,0]
-    upt0 = var(pm,nw,cnd, :up_br)[t_idx,0]
-    uqf0 = var(pm,nw,cnd, :uq_br)[f_idx,0]
-    uqt0 = var(pm,nw,cnd, :uq_br)[t_idx,0]
 
-    cref_p1=JuMP.@constraint(pm.model, p_fr - upf0 <= 0)
-    cref_p2=JuMP.@constraint(pm.model, -p_fr - upf0 <= 0)
-    cref_p3=JuMP.@constraint(pm.model, p_to - upt0 <= 0)
-    cref_p4=JuMP.@constraint(pm.model, -p_to - upt0 <= 0)
+    upf0m = var(pm,nw,cnd, :up_br0)[f_idx,0]
+    upf0p = var(pm,nw,cnd, :up_br0)[f_idx,1]
+    upt0m = var(pm,nw,cnd, :up_br0)[t_idx,0]
+    upt0p = var(pm,nw,cnd, :up_br0)[t_idx,1]
+    uqf0m = var(pm,nw,cnd, :uq_br0)[f_idx,0]
+    uqf0p = var(pm,nw,cnd, :uq_br0)[f_idx,1]
+    uqt0m = var(pm,nw,cnd, :uq_br0)[t_idx,0]
+    uqt0p = var(pm,nw,cnd, :uq_br0)[t_idx,1]
 
-    cref_q1=JuMP.@constraint(pm.model, q_fr - uqf0 <= 0)
-    cref_q2=JuMP.@constraint(pm.model, -q_fr - uqf0 <= 0)
-    cref_q3=JuMP.@constraint(pm.model, q_to - uqt0 <= 0)
-    cref_q4=JuMP.@constraint(pm.model, -q_to - uqt0 <= 0)
-    return cref_p1,cref_p2,cref_p3,cref_p4,cref_q1,cref_q2,cref_q3,cref_q4
+    cref_pf=JuMP.@constraint(pm.model, p_fr - upf0m + upf0p == 0)
+    cref_pt=JuMP.@constraint(pm.model, p_to - upt0m + upt0p == 0)
+
+    cref_qf=JuMP.@constraint(pm.model, q_fr - uqf0m + uqf0p == 0)
+    cref_qt=JuMP.@constraint(pm.model, q_to - uqt0m + uqt0p == 0)
+    return cref_pf,cref_pt,cref_qf,cref_qt
 end
 
 function constraint_abs_branch_flow_ordering(pm::AbstractPowerModel, l::Int; nw::Int=pm.cnw, cnd::Int=pm.ccnd)
@@ -207,18 +85,64 @@ function constraint_abs_branch_flow_ordering(pm::AbstractPowerModel, l::Int; nw:
     f_idx = (l, f_bus, t_bus)
     t_idx = (l, t_bus, f_bus)
 
-    upf0 = var(pm,nw,cnd, :up_br)[f_idx,0]
-    upt0 = var(pm,nw,cnd, :up_br)[t_idx,0]
-    uqf0 = var(pm,nw,cnd, :uq_br)[f_idx,0]
-    uqt0 = var(pm,nw,cnd, :uq_br)[t_idx,0]
-    upf1 = var(pm,nw,cnd, :up_br)[f_idx,1]
-    upt1 = var(pm,nw,cnd, :up_br)[t_idx,1]
-    uqf1 = var(pm,nw,cnd, :uq_br)[f_idx,1]
-    uqt1 = var(pm,nw,cnd, :uq_br)[t_idx,1]
+    upf0m = var(pm,nw,cnd, :up_br0)[f_idx,0]
+    upt0m = var(pm,nw,cnd, :up_br0)[t_idx,0]
+    uqf0m = var(pm,nw,cnd, :uq_br0)[f_idx,0]
+    uqt0m = var(pm,nw,cnd, :uq_br0)[t_idx,0]
+    upf0p = var(pm,nw,cnd, :up_br0)[f_idx,1]
+    upt0p = var(pm,nw,cnd, :up_br0)[t_idx,1]
+    uqf0p = var(pm,nw,cnd, :uq_br0)[f_idx,1]
+    uqt0p = var(pm,nw,cnd, :uq_br0)[t_idx,1]
+    upf1m = var(pm,nw,cnd, :up_br1)[f_idx,0]
+    upt1m = var(pm,nw,cnd, :up_br1)[t_idx,0]
+    uqf1m = var(pm,nw,cnd, :uq_br1)[f_idx,0]
+    uqt1m = var(pm,nw,cnd, :uq_br1)[t_idx,0]
+    upf1p = var(pm,nw,cnd, :up_br1)[f_idx,1]
+    upt1p = var(pm,nw,cnd, :up_br1)[t_idx,1]
+    uqf1p = var(pm,nw,cnd, :uq_br1)[f_idx,1]
+    uqt1p = var(pm,nw,cnd, :uq_br1)[t_idx,1]
     u_ord_aux = var(pm,nw,cnd,:u_ord_aux,l)
     u_K = var(pm,nw,cnd,:u_K)
 
-    cref=JuMP.@constraint(pm.model, -(upf0 + upt0 + uqf0 + uqt0) + (upf1 + upt1 + uqf1 + uqt1) + u_ord_aux + u_K >= 0)
+    cref=JuMP.@constraint(pm.model, -(upf0m + upf0p + upt0m + upt0p + uqf0m + uqf0p + uqt0m + uqt0p) 
+					+ (upf1m + upf1p + upt1m + upt1p + uqf1m + uqf1p + uqt1m + uqt1p) + u_ord_aux + u_K >= 0)
+end
+
+"`[rate_a, p[f_idx], q[f_idx]] in SecondOrderCone`"
+function constraint_thermal_limit_from_psd(pm::AbstractConicModels, i::Int)
+    if !haskey(con(pm, pm.cnw, pm.ccnd), :sm_fr)
+        con(pm, pm.cnw, pm.ccnd)[:sm_fr] = Dict{Int,Any}() # note this can be a constraint or a variable bound
+    end
+
+    branch = ref(pm, pm.cnw, :branch, i)
+    f_bus = branch["f_bus"]
+    t_bus = branch["t_bus"]
+    f_idx = (i, f_bus, t_bus)
+
+    if haskey(branch, "rate_a")
+        rate_a = branch["rate_a"]
+        p_fr = var(pm, pm.cnw, pm.ccnd, :p, f_idx)
+        q_fr = var(pm, pm.cnw, pm.ccnd, :q, f_idx)
+        JuMP.@constraint(pm.model, Symmetric([rate_a p_fr q_fr; p_fr rate_a 0; q_fr 0 rate_a]) in JuMP.PSDCone())
+    end
+end
+
+"`[rate_a, p[t_idx], q[t_idx]] in SecondOrderCone`"
+function constraint_thermal_limit_to_psd(pm::AbstractConicModels, i::Int)
+    if !haskey(con(pm, pm.cnw, pm.ccnd), :sm_to)
+        con(pm, pm.cnw, pm.ccnd)[:sm_to] = Dict{Int,Any}() # note this can be a constraint or a variable bound
+    end
+
+    branch = ref(pm, pm.cnw, :branch, i)
+    f_bus = branch["f_bus"]
+    t_bus = branch["t_bus"]
+    t_idx = (i, t_bus, f_bus)
+    if haskey(branch, "rate_a")
+        rate_a = branch["rate_a"]
+        p_to = var(pm, pm.cnw, pm.ccnd, :p, t_idx)
+        q_to = var(pm, pm.cnw, pm.ccnd, :q, t_idx)
+        JuMP.@constraint(pm.model, Symmetric([rate_a p_to q_to; p_to rate_a 0; q_to 0 rate_a]) in JuMP.PSDCone())
+    end
 end
 
 "checks if a sufficient number of variables exist for the given keys collection"

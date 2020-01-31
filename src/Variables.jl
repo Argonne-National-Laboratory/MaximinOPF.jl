@@ -3,7 +3,7 @@ using JuMP
 function variable_bus_slacks(pm::AbstractPowerModel; nw::Int=pm.cnw, cnd::Int=pm.ccnd)
     up_bus = var(pm, nw, cnd)[:up_bus] = JuMP.@variable(pm.model,
         [i in ids(pm, nw, :bus)], base_name="$(nw)_$(cnd)_up_bus",
-	lower_bound = 0,
+    lower_bound = 0,
         start = 0
     )
     uq_bus = var(pm, nw, cnd)[:uq_bus] = JuMP.@variable(pm.model,
@@ -14,13 +14,26 @@ function variable_bus_slacks(pm::AbstractPowerModel; nw::Int=pm.cnw, cnd::Int=pm
 end
 
 function variable_branch_flow_slacks(pm::AbstractPowerModel; nw::Int=pm.cnw, cnd::Int=pm.ccnd)
-    up_br = var(pm, nw, cnd)[:up_br] = JuMP.@variable(pm.model,
-            [(l,i,j) in ref(pm, nw, :arcs),k=0:1], base_name="$(nw)_$(cnd)_up_br",
+    u1_arcs = filter(a->!(a[1] in pm.data["inactive_branches"]),ref(pm,nw,:arcs)) #Exclude inactive arcs
+    up_br1 = var(pm, nw, cnd)[:up_br1] = JuMP.@variable(pm.model,
+            [(l,i,j) in u1_arcs,k=0:1], base_name="$(nw)_$(cnd)_up_br",
             lower_bound = 0,
             start = 0
     )
-    uq_br = var(pm, nw, cnd)[:uq_br] = JuMP.@variable(pm.model,
-            [(l,i,j) in ref(pm, nw, :arcs),k=0:1], base_name="$(nw)_$(cnd)_uq_br",
+    uq_br1 = var(pm, nw, cnd)[:uq_br1] = JuMP.@variable(pm.model,
+            [(l,i,j) in u1_arcs,k=0:1], base_name="$(nw)_$(cnd)_uq_br",
+            lower_bound = 0,
+            start = 0
+    )
+
+    u0_arcs = filter(a->!(a[1] in pm.data["protected_branches"]),ref(pm,nw,:arcs)) #Exclude protected arcs
+    up_br0 = var(pm, nw, cnd)[:up_br0] = JuMP.@variable(pm.model,
+            [(l,i,j) in u0_arcs,k=0:1], base_name="$(nw)_$(cnd)_up_br",
+            lower_bound = 0,
+            start = 0
+    )
+    uq_br0 = var(pm, nw, cnd)[:uq_br0] = JuMP.@variable(pm.model,
+            [(l,i,j) in u0_arcs,k=0:1], base_name="$(nw)_$(cnd)_uq_br",
             lower_bound = 0,
             start = 0
     )
@@ -41,25 +54,25 @@ function remove_infinity_bnds(pm::AbstractPowerModel; nw::Int=pm.cnw, cnd::Int=p
     p = var(pm, nw, cnd, :p)
     q = var(pm, nw, cnd, :q)
     for l in ref(pm,nw, :arcs)
-     if has_lower_bound(p[l])
-      if lower_bound(p[l])==-Inf 
-        delete_lower_bound(p[l])
-      end      
-     end
-     if has_lower_bound(q[l])
-      if lower_bound(q[l])==-Inf 
-        delete_lower_bound(q[l])
-      end      
-     end
-     if has_upper_bound(p[l])
-      if upper_bound(p[l])==Inf 
-        delete_upper_bound(p[l])
-      end      
-     end
-     if has_upper_bound(q[l])
-      if upper_bound(q[l])==Inf 
-        delete_upper_bound(q[l])
-      end      
-     end
+        if has_lower_bound(p[l])
+            if lower_bound(p[l])==-Inf 
+                delete_lower_bound(p[l])
+            end      
+        end
+        if has_lower_bound(q[l])
+            if lower_bound(q[l])==-Inf 
+                delete_lower_bound(q[l])
+            end      
+        end
+        if has_upper_bound(p[l])
+            if upper_bound(p[l])==Inf 
+                delete_upper_bound(p[l])
+            end      
+        end
+        if has_upper_bound(q[l])
+            if upper_bound(q[l])==Inf 
+                delete_upper_bound(q[l])
+            end      
+        end
     end
 end
