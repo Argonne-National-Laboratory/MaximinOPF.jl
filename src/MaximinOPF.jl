@@ -81,62 +81,16 @@ function WRConicPost_PF_Minmax(pm::AbstractPowerModel)
     objective_minmax_problem(pm)
 end
 
-"After the minmax model is solved, we can query various measures of sensitivity"
-#=
-function computeSensitivityData(pm::AbstractPowerModel)
-    pm.data["x_vals"]=Dict{Int64,Float64}()
-    pm.data["sg"]=Dict{Int64,Float64}()
-    pm.data["uoa_vals"]=Dict{Int64,Float64}()
-    if haskey( var(pm,pm.cnw,pm.ccnd), :u_K )
-      pm.data["uK_val"] = JuMP.value(var(pm,pm.cnw,pm.ccnd)[:u_K])
-    end
-    for l in ids(pm, :branch)
-      branch = ref(pm, pm.cnw, :branch, l)
-      f_bus = branch["f_bus"]
-      t_bus = branch["t_bus"]
-      f_idx = (l, f_bus, t_bus)
-      t_idx = (l, t_bus, f_bus)
-      upf0 = abs(JuMP.value(var(pm, pm.cnw, pm.ccnd,:p)[f_idx]))
-      upt0 = abs(JuMP.value(var(pm, pm.cnw, pm.ccnd,:p)[t_idx]))
-      uqf0 = abs(JuMP.value(var(pm, pm.cnw, pm.ccnd,:q)[f_idx]))
-      uqt0 = abs(JuMP.value(var(pm, pm.cnw, pm.ccnd,:q)[t_idx]))
-      upf1 = abs(JuMP.value(var(pm, pm.cnw, pm.ccnd,:p_expr)[f_idx]) - JuMP.value(var(pm, pm.cnw, pm.ccnd,:p)[f_idx]))
-      upt1 = abs(JuMP.value(var(pm, pm.cnw, pm.ccnd,:p_expr)[t_idx]) - JuMP.value(var(pm, pm.cnw, pm.ccnd,:p)[t_idx]))
-      uqf1 = abs(JuMP.value(var(pm, pm.cnw, pm.ccnd,:q_expr)[f_idx]) - JuMP.value(var(pm, pm.cnw, pm.ccnd,:q)[f_idx]))
-      uqt1 = abs(JuMP.value(var(pm, pm.cnw, pm.ccnd,:q_expr)[t_idx]) - JuMP.value(var(pm, pm.cnw, pm.ccnd,:q)[t_idx]))
-      pm.data["sg"][l] = upf0+upt0+uqf0+uqt0-upf1-upt1-uqf1-uqt1	        
-
-      if !(l in pm.data["undecided_branches"])
-        if l in pm.data["protected_branches"]
-          pm.data["x_vals"][l] = 0
-        end
-        if l in pm.data["inactive_branches"]
-          pm.data["x_vals"][l] = 1
-        end
-      else
-        if haskey(con(pm,pm.cnw,pm.ccnd), :x )
-          pm.data["x_vals"][l]=abs(JuMP.dual(con(pm, pm.cnw, pm.ccnd)[:x][l])) 
-	end
-        pm.data["x_vals"][l] = max(0,pm.data["x_vals"][l])
-        pm.data["x_vals"][l] = min(pm.data["x_vals"][l],1)
-	if haskey(var(pm,pm.cnw,pm.ccnd), :u_ord_aux)
-          pm.data["uoa_vals"][l] = JuMP.value(var(pm,pm.cnw,pm.ccnd)[:u_ord_aux][l])
-	end
-      end
-    end
-    println("sg: ",pm.data["sg"])
-    println("x_vals: ",pm.data["x_vals"])
-    println("uoa_vals: ",pm.data["uoa_vals"])
-    println("uK_val: ",pm.data["uK_val"])
-end
-=#
-
 function PF_FeasModel(pm_data, powerform, x_vals=Dict{Int64,Float64}() )
-    if powerform == SOCWRConicPowerModel || powerform == SDPWRMPowerModel || powerform == SparseSDPWRMPowerModel 
+    if powerform == SOCWRConicPowerModel || powerform == SDPWRMPowerModel || powerform == SparseSDPWRMPowerModel || powerform == ACRPowerModel
         pm = instantiate_model(pm_data, powerform, WRConicPost_PF)
         for l in ids(pm,pm.cnw,:branch)
           if !haskey(x_vals,l)
-	    x_vals[l]=0
+	    if l in pm_data["inactive_branches"]
+		x_vals[l]=1
+	    else
+		x_vals[l]=0
+	    end
           end
         end
         objective_feasibility_problem(pm,x_vals)

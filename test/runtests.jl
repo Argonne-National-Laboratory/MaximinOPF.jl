@@ -30,7 +30,7 @@ function evaluateModelOptVals(expected_value, ev_type, model, tol, io=Base.stdou
 		result_str=string("UNKNOWN expected value. Obj value otherwise is: ",JuMP.objective_value(model),".")
 		passes=true
     	else
-		discrep = abs(JuMP.objective_value(model)-expected_value)
+		discrep = abs(JuMP.objective_value(model)- expected_value[ev_type])
     		if discrep < tol
 			result_str=string("PASSED: Obj value is: ",JuMP.objective_value(model),", and the expected value was: ",expected_value,".")
 			passes=true
