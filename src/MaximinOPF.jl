@@ -2,7 +2,7 @@ module MaximinOPF
 using PowerModels
 using Dualization
 using MathOptInterface
-using SCS
+
 include("Variables.jl")
 include("Objectives.jl")
 include("Constraints.jl")
@@ -11,61 +11,33 @@ greet() = print("Hello World!")
 function MaximinOPFModel(pm_data, powerform)
     println("Hello MaximinOPFModel")
     m = MinimaxOPFModel(pm_data, powerform)
-    m = Minmax_to_Maxmin(m)
+
+    #Test Out
+    io = open(string(pm_data["name"],".out"), "w")
+    println(io,"name: ", pm_data["name"])
+    println(io,"attacker_budget: ", pm_data["attacker_budget"])
+    println(io,"inactive_branches: ", pm_data["inactive_branches"])
+    println(io,"protected_branches: ", pm_data["protected_branches"])
+    println(io, "Model:")
+    println(io, m.model)
+    close(io)
+
+    if powerform == ACRPowerModel
+        println("ACRPowerModel is returned only MinMaxModel")
+    else
+        m = DualizeModel(m)  
+    end
+
+    
     return m
 end
 
-function Minmax_to_Maxmin(minmax_model_pm::AbstractPowerModel)
-    maxmin_model=DualizeMinmaxModel(minmax_model_pm::AbstractPowerModel)
-    for l in ids(minmax_model_pm, :branch)
-        if !(l in minmax_model_pm.data["protected_branches"] || l in minmax_model_pm.data["inactive_branches"])
-     	  if has_lower_bound(variable_by_name(maxmin_model,"x[$l]_1"))
-     	      delete_lower_bound(variable_by_name(maxmin_model,"x[$l]_1"))
-     	  end
-     	  if has_upper_bound(variable_by_name(maxmin_model,"x[$l]_1"))
-     	      delete_upper_bound(variable_by_name(maxmin_model,"x[$l]_1"))
-     	  end
-	  JuMP.set_integer(variable_by_name(maxmin_model,"x[$l]_1"))
-	end
-    end
-    return maxmin_model
-end
-function DualizeMinmaxModel(minmax_model_pm::AbstractPowerModel)
-    dualizable_minmax_model = MOI.Utilities.Model{Float64}()
-    bridged_model = MOI.Bridges.Constraint.Square{Float64}(dualizable_minmax_model)
-    MOI.copy_to(bridged_model,backend(minmax_model_pm.model))
-    
-    dualized_minmax_problem = dualize(dualizable_minmax_model)
-    dualized_minmax_model = JuMP.Model() 
-    MOI.copy_to(dualized_minmax_model,dualized_minmax_problem.dual_model)
-    
-    io = open("dualized_minmax.txt","w")
-    println(io,dualized_minmax_model)
-    close(io)
-    return dualized_minmax_model
-end
-
-function write_to_cbf(model,fn_base::String)
-    JuMP.write_to_file( model, string(fn_base,".cbf"), format = MOI.FileFormats.FORMAT_CBF)
-end
-function write_to_cbf_scip(model,fn_base::String)
-    #BRIDGE SOC CONSTRAINTS
-    model_psd_moi = MOI.Utilities.Model{Float64}()
-    bridged_model = MOI.Bridges.Constraint.SOCtoPSD{Float64}(model_psd_moi)
-    MOI.copy_to(bridged_model,backend(model))
-    model_psd = JuMP.Model()
-    MOI.copy_to(model_psd,model_psd_moi)
-    JuMP.write_to_file( model_psd, string(fn_base,"_scip",".cbf"), format = MOI.FileFormats.FORMAT_CBF)
-    io = open("temp","w")
-    println(io,model_psd)
-    close(io)
-end
 
 function MinimaxOPFModel(pm_data, powerform)
     if powerform == SOCWRConicPowerModel || powerform == SDPWRMPowerModel || powerform == SparseSDPWRMPowerModel || powerform == ACRPowerModel
-        pm = instantiate_model(pm_data, powerform, WRConicPost_PF_Minmax)
+      pm = instantiate_model(pm_data, powerform, WRConicPost_PF_Minmax)
     else
-	println("Do nothing")
+        println("Not Supported Power Model Option")
     end
     return pm
 end
@@ -100,14 +72,12 @@ function PF_FeasModel(pm_data, powerform, x_vals=Dict{Int64,Float64}() )
     return pm
 end
 
-
-
 function WRConicPost_PF(pm::AbstractPowerModel)
     if !haskey(pm.data,"inactive_branches")
-      pm.data["inactive_branches"] = []
+        pm.data["inactive_branches"] = []
     end
     if !haskey(pm.data,"protected_branches")
-      pm.data["protected_branches"] = []
+        pm.data["protected_branches"] = []
     end
     pm.data["undecided_branches"] = filter(l->!(l in pm.data["protected_branches"] || l in pm.data["inactive_branches"]), ids(pm,pm.cnw,:branch))
     variable_voltage(pm)
@@ -167,17 +137,8 @@ function WRConicPost_PF(pm::AbstractPowerModel)
 
     for l in ids(pm, :branch)
         constraint_voltage_angle_difference(pm, l)
-	if pm isa AbstractSDPWRMModel
-	  ## leave only the bounds on the branch flows set during initialization when there is need to avoid SOC or quadratic constraints
-	   #println("Using psd form of thermal line limits")
-           #constraint_thermal_limit_from_psd(pm, l)
-           #constraint_thermal_limit_to_psd(pm, l)
-           constraint_thermal_limit_from(pm, l)
-           constraint_thermal_limit_to(pm, l)
-	else
-          constraint_thermal_limit_from(pm, l)
-          constraint_thermal_limit_to(pm, l)
-	end
+        constraint_thermal_limit_from(pm, l)
+        constraint_thermal_limit_to(pm, l)
     end
 
     for l in ids(pm, :dcline)
@@ -185,6 +146,43 @@ function WRConicPost_PF(pm::AbstractPowerModel)
     end
 end
 
+function DualizeModel(minmax_model_pm::AbstractPowerModel)
+    maxmin_model=DualizeMinmaxModel(minmax_model_pm::AbstractPowerModel)
+    for l in ids(minmax_model_pm, :branch)
+        if !(l in minmax_model_pm.data["protected_branches"] || l in minmax_model_pm.data["inactive_branches"])
+            if has_lower_bound(variable_by_name(maxmin_model,"x[$l]_1"))
+                delete_lower_bound(variable_by_name(maxmin_model,"x[$l]_1"))
+            end
+            if has_upper_bound(variable_by_name(maxmin_model,"x[$l]_1"))
+                delete_upper_bound(variable_by_name(maxmin_model,"x[$l]_1"))
+            end
+            JuMP.set_integer(variable_by_name(maxmin_model,"x[$l]_1"))
+        end
+    end
+    return maxmin_model
+end
+function DualizeMinmaxModel(minmax_model_pm::AbstractPowerModel)
+    dualizable_minmax_model = MOI.Utilities.Model{Float64}()
+    bridged_model = MOI.Bridges.Constraint.Square{Float64}(dualizable_minmax_model)
+    MOI.copy_to(bridged_model,backend(minmax_model_pm.model))    
+    dualized_minmax_problem = dualize(dualizable_minmax_model)
+    dualized_minmax_model = JuMP.Model() 
+    MOI.copy_to(dualized_minmax_model,dualized_minmax_problem.dual_model)
+    return dualized_minmax_model
+end
 
+
+function write_to_cbf(model,fn_base::String)
+    JuMP.write_to_file( model, string(fn_base,".cbf"), format = MOI.FileFormats.FORMAT_CBF)
+end
+function write_to_cbf_scip(model,fn_base::String)
+    #BRIDGE SOC CONSTRAINTS
+    model_psd_moi = MOI.Utilities.Model{Float64}()
+    bridged_model = MOI.Bridges.Constraint.SOCtoPSD{Float64}(model_psd_moi)
+    MOI.copy_to(bridged_model,backend(model))
+    model_psd = JuMP.Model()
+    MOI.copy_to(model_psd,model_psd_moi)
+    JuMP.write_to_file( model_psd, string(fn_base,"_scip",".cbf"), format = MOI.FileFormats.FORMAT_CBF)
+end
 
 end # module

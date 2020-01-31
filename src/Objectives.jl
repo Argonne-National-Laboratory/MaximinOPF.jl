@@ -10,9 +10,9 @@ function objective_feasibility_problem(pm::AbstractPowerModel, x_vals::Dict{Int6
     undecided_arcs = filter(a->!(a in protected_arcs || a in inactive_arcs),ref(pm,nw,:arcs))
     return JuMP.@objective(pm.model, Min, 
 	sum( (1-x_vals[a[1]])*(up_br1[a,0] + uq_br1[a,0] + up_br1[a,1] + uq_br1[a,1]) 
-	       + x_vals[a[1]]*(up_br0[a,0] + uq_br0[a,0] + up_br0[a,1] + uq_br0[a,1]) for a in undecided_arcs)
-	+ sum( (up_br1[a,0] + uq_br1[a,0] + up_br1[a,1] + uq_br1[a,1])  for a in protected_arcs)
-	+ sum( (up_br0[a,0] + uq_br0[a,0] + up_br0[a,1] + uq_br0[a,1])  for a in inactive_arcs)
+            + x_vals[a[1]]*(up_br0[a,0] + uq_br0[a,0] + up_br0[a,1] + uq_br0[a,1]) for a in undecided_arcs)
+            + sum( (up_br1[a,0] + uq_br1[a,0] + up_br1[a,1] + uq_br1[a,1])  for a in protected_arcs)
+            + sum( (up_br0[a,0] + uq_br0[a,0] + up_br0[a,1] + uq_br0[a,1])  for a in inactive_arcs)
     )
 end
 
@@ -29,8 +29,8 @@ function objective_minmax_problem(pm::AbstractPowerModel; nw::Int=pm.cnw, cnd::I
     protected_arcs = filter(a->(a[1] in pm.data["protected_branches"]),ref(pm,nw,:arcs))
     attacked_arcs = filter(a->(a[1] in pm.data["inactive_branches"]),ref(pm,nw,:arcs))
     return JuMP.@objective(pm.model, Min, K*u_K + sum( u_ord_aux[l] for l in undecided_branches ) 
-	+ sum( up_br1[a,0] + uq_br1[a,0] + up_br1[a,1] + uq_br1[a,1] for a in undecided_arcs)
-	+ sum( up_br1[a,0] + uq_br1[a,0] + up_br1[a,1] + uq_br1[a,1] for a in protected_arcs)
-	+ sum( up_br0[a,0] + uq_br0[a,0] + up_br0[a,1] + uq_br0[a,1] for a in attacked_arcs)
+            + sum( up_br1[a,0] + uq_br1[a,0] + up_br1[a,1] + uq_br1[a,1] for a in undecided_arcs)
+            + sum( up_br1[a,0] + uq_br1[a,0] + up_br1[a,1] + uq_br1[a,1] for a in protected_arcs)
+            + sum( up_br0[a,0] + uq_br0[a,0] + up_br0[a,1] + uq_br0[a,1] for a in attacked_arcs)
     )
 end
