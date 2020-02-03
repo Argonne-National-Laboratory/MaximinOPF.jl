@@ -90,13 +90,6 @@ function WRConicPost_PF(pm::AbstractPowerModel)
     # Add new variables
     variable_branch_flow_slacks(pm)
 
-    for i in ids(pm, :ref_buses)
-        constraint_theta_ref(pm, i)
-    end
-
-    for i in ids(pm, :bus)
-        constraint_power_balance(pm, i)
-    end
 
     con(pm, pm.cnw, pm.ccnd)[:abs_pflow_fr_disc] = Dict{Int,JuMP.ConstraintRef}()
     con(pm, pm.cnw, pm.ccnd)[:abs_qflow_fr_disc] = Dict{Int,JuMP.ConstraintRef}()
@@ -121,6 +114,8 @@ function WRConicPost_PF(pm::AbstractPowerModel)
         con(pm, pm.cnw, pm.ccnd)[:abs_qflow_to_disc][l] = cref2
         JuMP.set_name(cref2,"mu_t[$l]")  
     end
+#equal_to_constraints = all_constraints(pm.model, GenericAffExpr{Float64,VariableRef}, MOI.EqualTo{Float64})  ###USE FOR VALIDATION?
+#println(equal_to_constraints)
 
     for l in setdiff(ids(pm, :branch),pm.data["protected_branches"])
         ref_p1,ref_p3,ref_q1,ref_q3 = constraint_def_abs_flow_values(pm, l)
@@ -132,6 +127,14 @@ function WRConicPost_PF(pm::AbstractPowerModel)
         JuMP.set_name(ref_q1,"phi_f[$l]")  
         con(pm, pm.cnw, pm.ccnd)[:abs_qflow_to][l] = ref_q3
         JuMP.set_name(ref_q3,"phi_t[$l]")  
+    end
+
+    for i in ids(pm, :ref_buses)
+        constraint_theta_ref(pm, i)
+    end
+
+    for i in ids(pm, :bus)
+        constraint_power_balance(pm, i)
     end
 
 

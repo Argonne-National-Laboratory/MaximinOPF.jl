@@ -5,7 +5,10 @@ using LinearAlgebra
 
 ""
 function constraint_ohms_yt_from_slacks(pm::AbstractPowerModel, i::Int; nw::Int=pm.cnw, cnd::Int=pm.ccnd)
-    cref_p,cref_q=constraint_ohms_yt_from(pm, i)
+    constraint_ohms_yt_from(pm, i)
+    equal_to_constraints = all_constraints(pm.model, GenericAffExpr{Float64,VariableRef}, MOI.EqualTo{Float64})
+    last_con=length(equal_to_constraints)
+    cref_p,cref_q = equal_to_constraints[last_con-1],equal_to_constraints[last_con]
 
     branch = ref(pm, nw, :branch, i)
     f_bus = branch["f_bus"]
@@ -28,7 +31,10 @@ end
 
 ""
 function constraint_ohms_yt_to_slacks(pm::AbstractPowerModel, i::Int; nw::Int=pm.cnw, cnd::Int=pm.ccnd)
-    cref_p,cref_q=constraint_ohms_yt_to(pm, i)
+    constraint_ohms_yt_to(pm, i)
+    equal_to_constraints = all_constraints(pm.model, GenericAffExpr{Float64,VariableRef}, MOI.EqualTo{Float64})
+    last_con=length(equal_to_constraints)
+    cref_p,cref_q = equal_to_constraints[last_con-1],equal_to_constraints[last_con]
 
     branch = ref(pm, nw, :branch, i)
     f_bus = branch["f_bus"]

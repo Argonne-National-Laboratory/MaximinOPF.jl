@@ -222,16 +222,14 @@ uuid = "69de0a69-1ddd-5017-9359-2bf0b02dc9f0"
 version = "0.3.11"
 
 [[Pkg]]
-deps = ["Dates", "LibGit2", "Libdl", "Logging", "Markdown", "Printf", "REPL", "Random", "SHA", "Test", "UUIDs"]
+deps = ["Dates", "LibGit2", "Libdl", "Logging", "Markdown", "Printf", "REPL", "Random", "SHA", "UUIDs"]
 uuid = "44cfe95a-1eb2-52ea-b672-e2afdf69b78f"
 
 [[PowerModels]]
 deps = ["InfrastructureModels", "JSON", "JuMP", "LinearAlgebra", "MathOptInterface", "Memento", "SparseArrays"]
-git-tree-sha1 = "200158ca2d16724ad57f95b396ff37cef0b3d578"
-repo-rev = "master"
-repo-url = "https://github.com/bcdandurand/PowerModels.jl"
+git-tree-sha1 = "304bfadf33a02035e147ac8c1bc2a29d3849c67e"
 uuid = "c36e90e8-916a-50a6-bd94-075b64ef4655"
-version = "0.14.0"
+version = "0.14.1"
 
 [[Printf]]
 deps = ["Unicode"]
