@@ -6,7 +6,14 @@ using LinearAlgebra
 ""
 function constraint_ohms_yt_from_slacks(pm::AbstractPowerModel, i::Int; nw::Int=pm.cnw, cnd::Int=pm.ccnd)
     constraint_ohms_yt_from(pm, i)
-    equal_to_constraints = all_constraints(pm.model, GenericAffExpr{Float64,VariableRef}, MOI.EqualTo{Float64})
+    equal_to_constraints = nothing
+    if typeof(pm)==ACRPowerModel
+        equal_to_constraints = all_constraints(pm.model, GenericQuadExpr{Float64,VariableRef}, MOI.EqualTo{Float64})
+    elseif typeof(pm)==SOCWRConicPowerModel || typeof(pm) == SDPWRMPowerModel || typeof(pm)==SparseSDPWRMPowerModel 
+        equal_to_constraints = all_constraints(pm.model, GenericAffExpr{Float64,VariableRef}, MOI.EqualTo{Float64})
+    else
+	println("constraint_ohms_yt_to_slacks(): pm type not supported")
+    end
     last_con=length(equal_to_constraints)
     cref_p,cref_q = equal_to_constraints[last_con-1],equal_to_constraints[last_con]
 
@@ -32,7 +39,14 @@ end
 ""
 function constraint_ohms_yt_to_slacks(pm::AbstractPowerModel, i::Int; nw::Int=pm.cnw, cnd::Int=pm.ccnd)
     constraint_ohms_yt_to(pm, i)
-    equal_to_constraints = all_constraints(pm.model, GenericAffExpr{Float64,VariableRef}, MOI.EqualTo{Float64})
+    equal_to_constraints = nothing
+    if typeof(pm)==ACRPowerModel
+        equal_to_constraints = all_constraints(pm.model, GenericQuadExpr{Float64,VariableRef}, MOI.EqualTo{Float64})
+    elseif typeof(pm)==SOCWRConicPowerModel || typeof(pm) == SDPWRMPowerModel || typeof(pm)==SparseSDPWRMPowerModel 
+        equal_to_constraints = all_constraints(pm.model, GenericAffExpr{Float64,VariableRef}, MOI.EqualTo{Float64})
+    else
+	println("constraint_ohms_yt_to_slacks(): pm type not supported")
+    end
     last_con=length(equal_to_constraints)
     cref_p,cref_q = equal_to_constraints[last_con-1],equal_to_constraints[last_con]
 
