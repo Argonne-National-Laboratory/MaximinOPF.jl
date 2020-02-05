@@ -8,8 +8,14 @@ include("Objectives.jl")
 include("Constraints.jl")
 greet() = print("Hello World!")
 
+supported_pm=[ ACRPowerModel, ACTPowerModel, SOCWRPowerModel, SOCWRConicPowerModel, SOCBFPowerModel, SOCBFConicPowerModel, 
+		QCRMPowerModel, QCLSPowerModel, SDPWRMPowerModel, SparseSDPWRMPowerModel,
+                DCPPowerModel, DCMPPowerModel, NFAPowerModel,
+		DCPLLPowerModel, LPACCPowerModel ]
+nonconvex_pm=[ACRPowerModel, ACTPowerModel]
+
 function MaximinOPFModel(pm_data, powerform)
-    println("Hello MaximinOPFModel")
+    println("Calling MaximinOPFModel() with powerform: ",powerform)
     m = MinimaxOPFModel(pm_data, powerform)
 
     #Test Out
@@ -22,10 +28,12 @@ function MaximinOPFModel(pm_data, powerform)
     println(io, m.model)
     close(io)
 
-    if powerform == ACRPowerModel
-        println("ACRPowerModel returns only MinMaxModel")
-    else
+    if powerform in supported_pm && !(powerform in nonconvex_pm)
         m = DualizeModel(m)  
+    elseif powerform in nonconvex_pm
+        println("AC PowerModels returns only MinMaxModel")
+    else
+        println("Model type: ",powerform," not currently supported.")
     end
 
     
@@ -34,7 +42,8 @@ end
 
 
 function MinimaxOPFModel(pm_data, powerform)
-    if powerform == SOCWRConicPowerModel || powerform == SDPWRMPowerModel || powerform == SparseSDPWRMPowerModel || powerform == ACRPowerModel
+    #if powerform == SOCWRConicPowerModel || powerform == SDPWRMPowerModel || powerform == SparseSDPWRMPowerModel || powerform == ACRPowerModel
+    if powerform in supported_pm
       pm = instantiate_model(pm_data, powerform, WRConicPost_PF_Minmax)
     else
         println("Not Supported Power Model Option")
@@ -54,7 +63,8 @@ function WRConicPost_PF_Minmax(pm::AbstractPowerModel)
 end
 
 function PF_FeasModel(pm_data, powerform, x_vals=Dict{Int64,Float64}() )
-    if powerform == SOCWRConicPowerModel || powerform == SDPWRMPowerModel || powerform == SparseSDPWRMPowerModel || powerform == ACRPowerModel || powerform == QCRMPowerModel
+    #if powerform == SOCWRConicPowerModel || powerform == SDPWRMPowerModel || powerform == SparseSDPWRMPowerModel || powerform == ACRPowerModel || powerform == QCRMPowerModel
+    if powerform in supported_pm
         pm = instantiate_model(pm_data, powerform, WRConicPost_PF)
         for l in ids(pm,pm.cnw,:branch)
           if !haskey(x_vals,l)
