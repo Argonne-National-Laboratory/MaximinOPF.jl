@@ -95,34 +95,40 @@ function WRConicPost_PF(pm::AbstractPowerModel)
     variable_branch_flow(pm)
     variable_dcline_flow(pm)
     constraint_model_voltage(pm)
-    remove_infinity_bnds(pm)
+    #remove_infinity_bnds(pm)
 
     # Add new variables
     variable_branch_flow_slacks(pm)
 
 
     con(pm, pm.cnw, pm.ccnd)[:abs_pflow_fr_disc] = Dict{Int,JuMP.ConstraintRef}()
-    con(pm, pm.cnw, pm.ccnd)[:abs_qflow_fr_disc] = Dict{Int,JuMP.ConstraintRef}()
     con(pm, pm.cnw, pm.ccnd)[:abs_pflow_to_disc] = Dict{Int,JuMP.ConstraintRef}()
-    con(pm, pm.cnw, pm.ccnd)[:abs_qflow_to_disc] = Dict{Int,JuMP.ConstraintRef}()
-
     con(pm, pm.cnw, pm.ccnd)[:abs_pflow_fr] = Dict{Int,JuMP.ConstraintRef}()
     con(pm, pm.cnw, pm.ccnd)[:abs_pflow_to] = Dict{Int,JuMP.ConstraintRef}()
-    con(pm, pm.cnw, pm.ccnd)[:abs_qflow_fr] = Dict{Int,JuMP.ConstraintRef}()
-    con(pm, pm.cnw, pm.ccnd)[:abs_qflow_to] = Dict{Int,JuMP.ConstraintRef}()
+
+    if haskey( var(pm,pm.cnw,pm.ccnd),:q)
+      con(pm, pm.cnw, pm.ccnd)[:abs_qflow_fr_disc] = Dict{Int,JuMP.ConstraintRef}()
+      con(pm, pm.cnw, pm.ccnd)[:abs_qflow_to_disc] = Dict{Int,JuMP.ConstraintRef}()
+      con(pm, pm.cnw, pm.ccnd)[:abs_qflow_fr] = Dict{Int,JuMP.ConstraintRef}()
+      con(pm, pm.cnw, pm.ccnd)[:abs_qflow_to] = Dict{Int,JuMP.ConstraintRef}()
+    end
 
     for l in setdiff(ids(pm, :branch),pm.data["inactive_branches"])
         cref1,cref2 = constraint_ohms_yt_from_slacks(pm, l)
         con(pm, pm.cnw, pm.ccnd)[:abs_pflow_fr_disc][l] = cref1
         JuMP.set_name(cref1,"lambda_f[$l]")  
-        con(pm, pm.cnw, pm.ccnd)[:abs_qflow_fr_disc][l] = cref2
-        JuMP.set_name(cref2,"mu_f[$l]")  
+        if haskey( var(pm,pm.cnw,pm.ccnd),:q)
+          con(pm, pm.cnw, pm.ccnd)[:abs_qflow_fr_disc][l] = cref2
+          JuMP.set_name(cref2,"mu_f[$l]")  
+	end
 
         cref1,cref2 = constraint_ohms_yt_to_slacks(pm, l)
         con(pm, pm.cnw, pm.ccnd)[:abs_pflow_to_disc][l] = cref1
         JuMP.set_name(cref1,"lambda_t[$l]")  
-        con(pm, pm.cnw, pm.ccnd)[:abs_qflow_to_disc][l] = cref2
-        JuMP.set_name(cref2,"mu_t[$l]")  
+        if haskey( var(pm,pm.cnw,pm.ccnd),:q)
+          con(pm, pm.cnw, pm.ccnd)[:abs_qflow_to_disc][l] = cref2
+          JuMP.set_name(cref2,"mu_t[$l]")  
+	end
     end
 #equal_to_constraints = all_constraints(pm.model, GenericAffExpr{Float64,VariableRef}, MOI.EqualTo{Float64})  ###USE FOR VALIDATION?
 #println(equal_to_constraints)
@@ -133,10 +139,12 @@ function WRConicPost_PF(pm::AbstractPowerModel)
         JuMP.set_name(ref_p1,"pi_f[$l]")  
         con(pm, pm.cnw, pm.ccnd)[:abs_pflow_to][l] = ref_p3
         JuMP.set_name(ref_p3,"pi_t[$l]")  
-        con(pm, pm.cnw, pm.ccnd)[:abs_qflow_fr][l] = ref_q1
-        JuMP.set_name(ref_q1,"phi_f[$l]")  
-        con(pm, pm.cnw, pm.ccnd)[:abs_qflow_to][l] = ref_q3
-        JuMP.set_name(ref_q3,"phi_t[$l]")  
+        if haskey( var(pm,pm.cnw,pm.ccnd),:q)
+          con(pm, pm.cnw, pm.ccnd)[:abs_qflow_fr][l] = ref_q1
+          JuMP.set_name(ref_q1,"phi_f[$l]")  
+          con(pm, pm.cnw, pm.ccnd)[:abs_qflow_to][l] = ref_q3
+          JuMP.set_name(ref_q3,"phi_t[$l]")  
+	end
     end
 
     for i in ids(pm, :ref_buses)
