@@ -7,9 +7,9 @@ using LinearAlgebra
 function constraint_ohms_yt_from_slacks(pm::AbstractPowerModel, i::Int; nw::Int=pm.cnw, cnd::Int=pm.ccnd)
     constraint_ohms_yt_from(pm, i)
     equal_to_constraints = nothing
-    if typeof(pm)==ACRPowerModel
+    if typeof(pm)==ACRPowerModel 
         equal_to_constraints = all_constraints(pm.model, GenericQuadExpr{Float64,VariableRef}, MOI.EqualTo{Float64})
-    elseif typeof(pm)==SOCWRConicPowerModel || typeof(pm) == SDPWRMPowerModel || typeof(pm)==SparseSDPWRMPowerModel 
+    elseif typeof(pm)==SOCWRConicPowerModel || typeof(pm) == SDPWRMPowerModel || typeof(pm)==SparseSDPWRMPowerModel || typeof(pm)==QCRMPowerModel
         equal_to_constraints = all_constraints(pm.model, GenericAffExpr{Float64,VariableRef}, MOI.EqualTo{Float64})
     else
 	println("constraint_ohms_yt_to_slacks(): pm type not supported")
@@ -42,7 +42,7 @@ function constraint_ohms_yt_to_slacks(pm::AbstractPowerModel, i::Int; nw::Int=pm
     equal_to_constraints = nothing
     if typeof(pm)==ACRPowerModel
         equal_to_constraints = all_constraints(pm.model, GenericQuadExpr{Float64,VariableRef}, MOI.EqualTo{Float64})
-    elseif typeof(pm)==SOCWRConicPowerModel || typeof(pm) == SDPWRMPowerModel || typeof(pm)==SparseSDPWRMPowerModel 
+    elseif typeof(pm)==SOCWRConicPowerModel || typeof(pm) == SDPWRMPowerModel || typeof(pm)==SparseSDPWRMPowerModel || typeof(pm)==QCRMPowerModel
         equal_to_constraints = all_constraints(pm.model, GenericAffExpr{Float64,VariableRef}, MOI.EqualTo{Float64})
     else
 	println("constraint_ohms_yt_to_slacks(): pm type not supported")
@@ -128,6 +128,7 @@ function constraint_abs_branch_flow_ordering(pm::AbstractPowerModel, l::Int; nw:
 					+ (upf1m + upf1p + upt1m + upt1p + uqf1m + uqf1p + uqt1m + uqt1p) + u_ord_aux + u_K >= 0)
 end
 
+#=
 "`[rate_a, p[f_idx], q[f_idx]] in SecondOrderCone`"
 function constraint_thermal_limit_from_psd(pm::AbstractConicModels, i::Int)
     if !haskey(con(pm, pm.cnw, pm.ccnd), :sm_fr)
@@ -172,3 +173,4 @@ function _check_var_keys(vars, keys, var_name, comp_name)
     end
 end
 
+=#

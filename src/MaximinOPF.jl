@@ -23,7 +23,7 @@ function MaximinOPFModel(pm_data, powerform)
     close(io)
 
     if powerform == ACRPowerModel
-        println("ACRPowerModel is returned only MinMaxModel")
+        println("ACRPowerModel returns only MinMaxModel")
     else
         m = DualizeModel(m)  
     end
@@ -54,7 +54,7 @@ function WRConicPost_PF_Minmax(pm::AbstractPowerModel)
 end
 
 function PF_FeasModel(pm_data, powerform, x_vals=Dict{Int64,Float64}() )
-    if powerform == SOCWRConicPowerModel || powerform == SDPWRMPowerModel || powerform == SparseSDPWRMPowerModel || powerform == ACRPowerModel
+    if powerform == SOCWRConicPowerModel || powerform == SDPWRMPowerModel || powerform == SparseSDPWRMPowerModel || powerform == ACRPowerModel || powerform == QCRMPowerModel
         pm = instantiate_model(pm_data, powerform, WRConicPost_PF)
         for l in ids(pm,pm.cnw,:branch)
           if !haskey(x_vals,l)
