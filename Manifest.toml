@@ -123,12 +123,10 @@ uuid = "7d188eb4-7ad8-530c-ae41-71a32a6d4692"
 version = "0.2.0"
 
 [[JuMP]]
-deps = ["Calculus", "DataStructures", "ForwardDiff", "LinearAlgebra", "MathOptInterface", "MutableArithmetics", "NaNMath", "Random", "SparseArrays", "Statistics"]
-git-tree-sha1 = "c89be56767aea5697784f9d834ff36e555b08161"
-repo-rev = "master"
-repo-url = "https://github.com/JuliaOpt/JuMP.jl.git"
+deps = ["Calculus", "DataStructures", "ForwardDiff", "LinearAlgebra", "MathOptInterface", "NaNMath", "Random", "SparseArrays", "Statistics"]
+git-tree-sha1 = "ba7f96010ed290d77d5c941c32e5df107ca688a4"
 uuid = "4076af6c-e467-56ae-b986-b466b2749572"
-version = "0.20.0"
+version = "0.20.1"
 
 [[LibGit2]]
 uuid = "76f85450-5226-5b5a-8eaa-529ad045b433"
@@ -155,9 +153,9 @@ uuid = "d6f4376e-aef5-505a-96c1-9c027394607a"
 
 [[MathOptInterface]]
 deps = ["BenchmarkTools", "CodecBzip2", "CodecZlib", "JSON", "JSONSchema", "LinearAlgebra", "MutableArithmetics", "OrderedCollections", "SparseArrays", "Test", "Unicode"]
-git-tree-sha1 = "d52d0671560f209b8a4604e7267d1f76ceae1f23"
+git-tree-sha1 = "793416d916e8fb1d16cdd016dabe8df87c636198"
 uuid = "b8f27783-ece8-5eb3-8dc8-9495eed66fee"
-version = "0.9.9"
+version = "0.9.10"
 
 [[MbedTLS]]
 deps = ["BinaryProvider", "Dates", "Libdl", "Random", "Sockets"]
@@ -188,9 +186,9 @@ version = "1.1.1"
 
 [[MosekTools]]
 deps = ["MathOptInterface", "Mosek", "Printf"]
-git-tree-sha1 = "4d595a5687bd4af2e968c59d6575fd3c4cf21349"
+git-tree-sha1 = "32dfda03b6bfce5fa1d484091026c5faa7457ce2"
 uuid = "1ec41992-ff65-5c91-ac43-2df89e9693a4"
-version = "0.9.2"
+version = "0.9.3"
 
 [[MutableArithmetics]]
 deps = ["LinearAlgebra", "SparseArrays", "Test"]
@@ -227,9 +225,9 @@ uuid = "44cfe95a-1eb2-52ea-b672-e2afdf69b78f"
 
 [[PowerModels]]
 deps = ["InfrastructureModels", "JSON", "JuMP", "LinearAlgebra", "MathOptInterface", "Memento", "SparseArrays"]
-git-tree-sha1 = "304bfadf33a02035e147ac8c1bc2a29d3849c67e"
+git-tree-sha1 = "30f51ebf2e42a61507fc493ade8e4d290dbbb7ab"
 uuid = "c36e90e8-916a-50a6-bd94-075b64ef4655"
-version = "0.14.1"
+version = "0.14.3"
 
 [[Printf]]
 deps = ["Unicode"]

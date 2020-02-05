@@ -23,7 +23,7 @@ for j in 1:length(testcases)
 
     if occursin("SOC", testcases[j]["name"])
         
-        set_optimizer(maxmin_model,Mosek.Optimizer)  
+        set_optimizer(maxmin_model,with_optimizer(Mosek.Optimizer))  
         result = @elapsed JuMP.optimize!(maxmin_model)
         #Print Result   
         status=JuMP.termination_status(maxmin_model)

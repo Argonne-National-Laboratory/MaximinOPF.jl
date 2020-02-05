@@ -170,7 +170,7 @@ function DualizeMinmaxModel(minmax_model_pm::AbstractPowerModel)
     MOI.copy_to(bridged_model,backend(minmax_model_pm.model))    
     dualized_minmax_problem = dualize(dualizable_minmax_model)
     dualized_minmax_model = JuMP.Model() 
-    MOI.copy_to(dualized_minmax_model,dualized_minmax_problem.dual_model)
+    MOI.copy_to(backend(dualized_minmax_model),dualized_minmax_problem.dual_model)
     return dualized_minmax_model
 end
 
