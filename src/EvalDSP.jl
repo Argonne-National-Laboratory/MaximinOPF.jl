@@ -21,9 +21,10 @@ testcase = Dict(
 
 function solveNodeFP(pm_data,form,optimizer)
   pm = MaximinOPF.PF_FeasModel(pm_data, form)
-  JuMP.set_optimizer(pm.model,optimizer)
   if optimizer==Mosek.Optimizer
-    set_parameters(pm.model,"MSK_IPAR_LOG"=>0)
+    JuMP.set_optimizer(pm.model,with_optimizer(optimizer,MSK_IPAR_LOG=0))
+  else
+    JuMP.set_optimizer(pm.model,with_optimizer(optimizer))
   end
   JuMP.optimize!(pm.model)
   status=JuMP.termination_status(pm.model)

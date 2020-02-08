@@ -6,7 +6,9 @@ Kibaek Kim
 Brian Dandurand
 =#
 
-include("utils.jl")
+using JuMP
+using Ipopt, SCS
+using Mosek,MosekTools
 using CPLEX 
 using GLPK 
 TOL=1e-4

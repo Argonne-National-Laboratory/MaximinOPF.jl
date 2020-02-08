@@ -6,8 +6,9 @@ Kibaek Kim
 Brian Dandurand
 =#
 
-include("utils.jl")
 include("../../MaximinOPF/src/MaximinOPF.jl")
+using Mosek, MosekTools
+using JuMP
 
 
 function solveNodeMinmaxSP(pm_data,pm_form,ndata; use_dual=true)
@@ -87,8 +88,6 @@ end
 
 function solveMaxminViaBnB(pm_data,pm_form)
   global MAX_TIME
-  nlines,L = opfdata.nlines, 1:opfdata.nlines
-  nlines,L=length(pm_data["branch"]), 1:length(pm_data["branch"])
   K=pm_data["attacker_budget"]
 
 

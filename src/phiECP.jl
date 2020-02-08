@@ -6,7 +6,6 @@ Kibaek Kim
 Brian Dandurand
 =#
 
-#include("utils.jl")
 include("../../MaximinOPF/src/MaximinOPF.jl")
 using JuMP
 using CPLEX 
