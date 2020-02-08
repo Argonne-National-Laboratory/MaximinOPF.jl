@@ -89,8 +89,10 @@ node_data=create_node(opfdata)
 
 
 if FORM == ECP 
-  include("../src/lECP.jl")
-  solveLECP(opfdata,K,HEUR)
+  #include("../src/lECP.jl")
+  #solveECP(pm_data)
+  include("../src/phiECP.jl")
+  solvePhiECP(pm_data)
 elseif FORM == ProxPtSDP
   #testLevelBM(opfdata,K,HEUR,node_data)
   #include("../src/PBM-SagastizabalSolodov.jl")
@@ -241,31 +243,8 @@ if write_data
 end
 
 elseif FORM == AC
-  #include("../src/DualAC.jl")
-  include("../src/SDPBnB.jl")
-
-  #testSCSonRoot(opfdata)
-
-  #finalXSoln=create_node(opfdata)
-#=
-  init_node=Dict()
-  init_node["inactive_branches"] = []
-  init_node["protected_branches"] = [] 
-  init_node["bound_value"]=1e20
-  init_node["attacker_budget"]=pm_data["attacker_budget"]
-  solveNodeMinmaxSDP(pm_data,init_node)
-=#
-  solveBnBSDP(pm_data)
-#=
-  bestUBVal,nNodes,runtime = solveBnBSDP(opfdata,finalXSoln)
-  println("No. Nodes: ", nNodes)
-  println("Best bound:  ", bestUBVal)
-  @printf("Objective value: %.3f\n", finalXSoln.nodeBd)
-  @show runtime
-  printX(opfdata,finalXSoln.x_soln)
-  print("\n")
-  @show finalXSoln.nodeBd
-=#
+  include("../src/SolveMaxminViaBnB.jl")
+  solveMaxminViaBnB(pm_data,SparseSDPWRMPowerModel)
 elseif FORM == SOCP
   include("../src/DualSOCP.jl")
 elseif FORM == DC

@@ -10,38 +10,55 @@ include("utils.jl")
 include("../../MaximinOPF/src/MaximinOPF.jl")
 
 
-function solveNodeMinmaxSDP(pm_data,ndata)
+function solveNodeMinmaxSP(pm_data,pm_form,ndata; use_dual=true)
   pm_data["inactive_branches"] = ndata["inactive_branches"] ###Adding another key and entry
   pm_data["protected_branches"] = ndata["protected_branches"] ###Adding another key and entry
   pm_data["attacker_budget"]=ndata["attacker_budget"]
+  pm_data["x_vals"]=Dict{Int64,Float64}()
   
+  model=nothing
   if pm_data["attacker_budget"] > 0
-    pf_model_pm = MaximinOPF.MinimaxOPFModel(pm_data, SparseSDPWRMPowerModel)
-    pm_data["undecided_branches"]= filter(l->!(l in pm_data["protected_branches"] || l in pm_data["inactive_branches"]), ids(pf_model_pm,pf_model_pm.cnw,:branch)) 
+    if use_dual
+      pm = MaximinOPF.MinimaxOPFModel(pm_data, pm_form)
+      pm_data["undecided_branches"]= filter(l->!(l in pm_data["protected_branches"] || l in pm_data["inactive_branches"]), ids(pm,pm.cnw,:branch)) 
+      model = MaximinOPF.DualizeMinmaxModel(pm)  
+    else
+      pm = MaximinOPF.MinimaxOPFModel(pm_data, pm_form)
+      pm_data["undecided_branches"]= filter(l->!(l in pm_data["protected_branches"] || l in pm_data["inactive_branches"]), ids(pm,pm.cnw,:branch)) 
+      model=pm.model
+    end
   else
-    #pf_model_pm = MaximinOPF.MinimaxOPFModel(pm_data, SparseSDPWRMPowerModel)
-    pf_model_pm = MaximinOPF.PF_FeasModel(pm_data, SparseSDPWRMPowerModel)
+    pm = MaximinOPF.PF_FeasModel(pm_data, pm_form)
     pm_data["undecided_branches"]= []
+    model=pm.model
   end
 
-  pf_optmodel = pf_model_pm.model
-  set_optimizer(pf_optmodel,Mosek.Optimizer)
-  set_parameters(pf_optmodel,"MSK_IPAR_LOG"=>0)
-  JuMP.optimize!(pf_optmodel)
-  status=JuMP.termination_status(pf_optmodel)
-  ndata["bound_value"]=JuMP.objective_value(pf_optmodel)
-  MaximinOPF.computeSensitivityData(pf_model_pm)
+  set_optimizer(model,with_optimizer(Mosek.Optimizer,MSK_IPAR_LOG=0))
+  JuMP.optimize!(model)
+  status=JuMP.termination_status(model)
+  for l in pm.data["undecided_branches"]
+    if use_dual
+        x=variable_by_name(model,"x[$l]_1")
+        pm.data["x_vals"][l]=JuMP.value(x)
+        pm.data["x_vals"][l] = min(1,pm.data["x_vals"][l])
+        pm.data["x_vals"][l] = max(0,pm.data["x_vals"][l])
+    else
+        pm.data["x_vals"][l]=JuMP.dual(con(pm, pm.cnw)[:x][l])
+        pm.data["x_vals"][l] = min(1,pm.data["x_vals"][l])
+        pm.data["x_vals"][l] = max(0,pm.data["x_vals"][l])
+    end 
+  end
+  ndata["bound_value"]=JuMP.objective_value(model)
   if status != OPTIMAL
     println("FLAGGING: Solve status=",status)
   end
-  return pf_model_pm
+  return pm
 end #end of function
 
-function applyPrimalHeuristic(pm_data)
-    fp_pm = MaximinOPF.PF_FeasModel(pm_data, SparseSDPWRMPowerModel)
+function applyPrimalHeuristic(pm_data,pm_form)
+    fp_pm = MaximinOPF.PF_FeasModel(pm_data, pm_form)
     pf_optmodel = fp_pm.model
-    set_optimizer(pf_optmodel,Mosek.Optimizer)
-    set_parameters(pf_optmodel,"MSK_IPAR_LOG"=>0)
+    set_optimizer(pf_optmodel,with_optimizer(Mosek.Optimizer,MSK_IPAR_LOG=0))
     JuMP.optimize!(pf_optmodel)
     status=JuMP.termination_status(pf_optmodel)
     if status != OPTIMAL
@@ -68,7 +85,7 @@ function findNextIndex(undecided_branches,x_vals)
   return reduce((k1, k2) -> abs(x_vals[k1]-0.5) <= abs(x_vals[k2]-0.5) ? k1 : k2, undecided_branches)
 end
 
-function solveBnBSDP(pm_data)
+function solveMaxminViaBnB(pm_data,pm_form)
   global MAX_TIME
   nlines,L = opfdata.nlines, 1:opfdata.nlines
   nlines,L=length(pm_data["branch"]), 1:length(pm_data["branch"])
@@ -99,7 +116,7 @@ function solveBnBSDP(pm_data)
     if currNode["bound_value"] <= IncX["bound_value"]
         println("\tFathoming due to initial testing of bound ",currNode["bound_value"]," <= ",IncX["bound_value"])
     else
-      pm=solveNodeMinmaxSDP(pm_data,currNode)
+      pm=solveNodeMinmaxSP(pm_data,pm_form,currNode; use_dual=true)
       undecided_branches=copy(pm.data["undecided_branches"])
       x_vals=copy(pm.data["x_vals"])
       println("Node bound value has been updated to: ",currNode["bound_value"])
@@ -108,7 +125,7 @@ function solveBnBSDP(pm_data)
         println("\t\tFathoming due to bound ",currNode["bound_value"]," <= ",IncX["bound_value"])
       elseif currNode["attacker_budget"]>0 && length(undecided_branches) > 0
 	  # APPLY A PRIMAL HEURISTIC
-          primal_val=applyPrimalHeuristic(pm_data)
+          primal_val=applyPrimalHeuristic(pm_data,pm_form)
 	  if IncX["bound_value"] < primal_val
 	    nXs += 1
 	    feasXs[nXs] = copy(currNode)
