@@ -15,49 +15,58 @@ supported_pm=[  ACPPowerModel, ACRPowerModel, ACTPowerModel,
 		SDPWRMPowerModel, SparseSDPWRMPowerModel,
                 DCPPowerModel, DCMPPowerModel, NFAPowerModel,
 		DCPLLPowerModel, LPACCPowerModel ]
+conic_supported_pm=[ SOCWRConicPowerModel, SOCBFConicPowerModel, 
+		SDPWRMPowerModel, SparseSDPWRMPowerModel,
+                DCPPowerModel, DCMPPowerModel, NFAPowerModel]
+sdp_pm=[ SDPWRMPowerModel, SparseSDPWRMPowerModel ]
 nonconvex_pm=[ACPPowerModel, ACRPowerModel, ACTPowerModel]
 not_supported_pm=[IVRPowerModel]
 
-# exact non-convex models
-    # linear approximations
-    # quadratic approximations
-    # quadratic relaxations
-    # sdp relaxations
 
 function MaximinOPFModel(pm_data, powerform)
     println("Calling MaximinOPFModel() with powerform: ",powerform)
-    m = MinimaxOPFModel(pm_data, powerform)
+    if powerform in conic_supported_pm 
+        minmax_pm = MinimaxOPFModel(pm_data, powerform)
 
-    #Test Out
-    io = open(string(pm_data["name"],".out"), "w")
-    println(io,"name: ", pm_data["name"])
-    println(io,"attacker_budget: ", pm_data["attacker_budget"])
-    println(io,"inactive_branches: ", pm_data["inactive_branches"])
-    println(io,"protected_branches: ", pm_data["protected_branches"])
-    println(io, "Model:")
-    println(io, m.model)
-    close(io)
+        #Test Out
+        io = open(string(pm_data["name"],".out"), "w")
+        println(io,"name: ", pm_data["name"])
+        println(io,"attacker_budget: ", pm_data["attacker_budget"])
+        println(io,"inactive_branches: ", pm_data["inactive_branches"])
+        println(io,"protected_branches: ", pm_data["protected_branches"])
+        println(io, "Model:")
+        println(io, minmax_pm.model)
+        close(io)
 
-    if powerform in supported_pm && !(powerform in nonconvex_pm)
-        m = DualizeModel(m)  
-    elseif powerform in nonconvex_pm
-        println("AC PowerModels returns only MinMaxModel")
+        maxmin_model = DualizeMinmaxModel(minmax_pm)
+        for l in ids(minmax_pm, :branch)
+          if !(l in minmax_pm.data["protected_branches"] || l in minmax_pm.data["inactive_branches"])
+            if has_lower_bound(variable_by_name(maxmin_model,"x[$l]_1"))
+                delete_lower_bound(variable_by_name(maxmin_model,"x[$l]_1"))
+            end
+            if has_upper_bound(variable_by_name(maxmin_model,"x[$l]_1"))
+                delete_upper_bound(variable_by_name(maxmin_model,"x[$l]_1"))
+            end
+            JuMP.set_integer(variable_by_name(maxmin_model,"x[$l]_1"))
+          end
+        end
+	return maxmin_model
     else
-        println("Model type: ",powerform," not currently supported.")
+        println("Model type: ",powerform," is either nonconic and/or nonconvex and thus is not currently supported by function MaximinOPFModel().")
+	println("WARNING: function MaximinOPFModel() is returning 'nothing'")
+	return nothing
     end
-
-    
-    return m
 end
 
 
 function MinimaxOPFModel(pm_data, powerform)
     if powerform in supported_pm
       pm = instantiate_model(pm_data, powerform, WRConicPost_PF_Minmax)
+      return pm
     else
-        println("Not Supported Power Model Option")
+        println("Not Supported Power Model Option. WARNING: returning 'nothing'")
+	return nothing
     end
-    return pm
 end
 
 function WRConicPost_PF_Minmax(pm::AbstractPowerModel)
@@ -112,6 +121,12 @@ function WRConicPost_PF(pm::AbstractPowerModel)
     con(pm, pm.cnw)[:abs_pflow_to_disc] = Dict{Int,JuMP.ConstraintRef}()
     con(pm, pm.cnw)[:abs_pflow_fr] = Dict{Int,JuMP.ConstraintRef}()
     con(pm, pm.cnw)[:abs_pflow_to] = Dict{Int,JuMP.ConstraintRef}()
+    if haskey( var(pm,pm.cnw),:q)
+      con(pm, pm.cnw)[:abs_qflow_fr_disc] = Dict{Int,JuMP.ConstraintRef}()
+      con(pm, pm.cnw)[:abs_qflow_to_disc] = Dict{Int,JuMP.ConstraintRef}()
+      con(pm, pm.cnw)[:abs_qflow_fr] = Dict{Int,JuMP.ConstraintRef}()
+      con(pm, pm.cnw)[:abs_qflow_to] = Dict{Int,JuMP.ConstraintRef}()
+    end
 =#
     for i in ids(pm,:bus)
 	if haskey(sol(pm, pm.cnw, :bus, i),:lam_kcl_r) && !(typeof(pm) in [NFAPowerModel])
@@ -136,52 +151,6 @@ function WRConicPost_PF(pm::AbstractPowerModel)
     end
     for l in setdiff(ids(pm, :branch),pm.data["protected_branches"])
         ref_p1,ref_p3,ref_q1,ref_q3 = constraint_def_abs_flow_values(pm, l)
-    end
-
-#=
-    variable_voltage(pm)
-    variable_generation(pm)
-    variable_branch_flow(pm)
-    variable_dcline_flow(pm)
-    constraint_model_voltage(pm)
-    #remove_infinity_bnds(pm)
-
-    # Add new variables
-    variable_branch_flow_slacks(pm)
-
-
-
-    if haskey( var(pm,pm.cnw),:q)
-      con(pm, pm.cnw)[:abs_qflow_fr_disc] = Dict{Int,JuMP.ConstraintRef}()
-      con(pm, pm.cnw)[:abs_qflow_to_disc] = Dict{Int,JuMP.ConstraintRef}()
-      con(pm, pm.cnw)[:abs_qflow_fr] = Dict{Int,JuMP.ConstraintRef}()
-      con(pm, pm.cnw)[:abs_qflow_to] = Dict{Int,JuMP.ConstraintRef}()
-    end
-
-    for l in setdiff(ids(pm, :branch),pm.data["inactive_branches"])
-        cref1,cref2 = constraint_ohms_yt_from_slacks(pm, l)
-	if cref1 != nothing
-          con(pm, pm.cnw)[:abs_pflow_fr_disc][l] = cref1
-          JuMP.set_name(cref1,"lambda_f[$l]")  
-	end
-        if cref2 != nothing 
-          con(pm, pm.cnw)[:abs_qflow_fr_disc][l] = cref2
-          JuMP.set_name(cref2,"mu_f[$l]")  
-	end
-
-        cref1,cref2 = constraint_ohms_yt_to_slacks(pm, l)
-	if cref1 != nothing
-          con(pm, pm.cnw)[:abs_pflow_to_disc][l] = cref1
-          JuMP.set_name(cref1,"lambda_t[$l]")  
-	end
-	if cref2 != nothing
-          con(pm, pm.cnw)[:abs_qflow_to_disc][l] = cref2
-          JuMP.set_name(cref2,"mu_t[$l]")  
-	end
-    end
-
-    for l in setdiff(ids(pm, :branch),pm.data["protected_branches"])
-        ref_p1,ref_p3,ref_q1,ref_q3 = constraint_def_abs_flow_values(pm, l)
 	if ref_p1 != nothing
           con(pm, pm.cnw)[:abs_pflow_fr][l] = ref_p1
           JuMP.set_name(ref_p1,"pi_f[$l]")  
@@ -200,50 +169,25 @@ function WRConicPost_PF(pm::AbstractPowerModel)
 	end
     end
 
-    for i in ids(pm, :ref_buses)
-        constraint_theta_ref(pm, i)
-    end
-
-    for i in ids(pm, :bus)
-        constraint_power_balance(pm, i)
-    end
-
-
-    for l in ids(pm, :branch)
-        constraint_voltage_angle_difference(pm, l)
-        constraint_thermal_limit_from(pm, l)
-        constraint_thermal_limit_to(pm, l)
-    end
-
-    for l in ids(pm, :dcline)
-        constraint_dcline(pm, l)  # DO WE NEED TO TREAT THESE CONSTRAINTS DIFFERENTLY
-    end
-=#
 end
 
-function DualizeModel(minmax_model_pm::AbstractPowerModel)
-    maxmin_model=DualizeMinmaxModel(minmax_model_pm::AbstractPowerModel)
-    for l in ids(minmax_model_pm, :branch)
-        if !(l in minmax_model_pm.data["protected_branches"] || l in minmax_model_pm.data["inactive_branches"])
-            if has_lower_bound(variable_by_name(maxmin_model,"x[$l]_1"))
-                delete_lower_bound(variable_by_name(maxmin_model,"x[$l]_1"))
-            end
-            if has_upper_bound(variable_by_name(maxmin_model,"x[$l]_1"))
-                delete_upper_bound(variable_by_name(maxmin_model,"x[$l]_1"))
-            end
-            JuMP.set_integer(variable_by_name(maxmin_model,"x[$l]_1"))
-        end
-    end
-    return maxmin_model
-end
 function DualizeMinmaxModel(minmax_model_pm::AbstractPowerModel)
-    dualizable_minmax_model = MOI.Utilities.Model{Float64}()
-    bridged_model = MOI.Bridges.Constraint.Square{Float64}(dualizable_minmax_model)
-    MOI.copy_to(bridged_model,backend(minmax_model_pm.model))    
-    dualized_minmax_problem = dualize(dualizable_minmax_model)
-    dualized_minmax_model = JuMP.Model() 
-    MOI.copy_to(backend(dualized_minmax_model),dualized_minmax_problem.dual_model)
-    return dualized_minmax_model
+    if typeof(minmax_model_pm) in conic_supported_pm 
+        soc_model = MOI.Utilities.Model{Float64}()
+        soc_bridged_model = MOI.Bridges.Constraint.QuadtoSOC{Float64}(soc_model)
+        MOI.copy_to(soc_bridged_model,backend(minmax_model_pm.model))    
+
+        dualizable_minmax_model = MOI.Utilities.Model{Float64}()
+        bridged_model = MOI.Bridges.Constraint.Square{Float64}(dualizable_minmax_model)
+        MOI.copy_to(bridged_model,soc_model)    
+        dualized_minmax_problem = dualize(dualizable_minmax_model)
+        dualized_minmax_model = JuMP.Model() 
+        MOI.copy_to(backend(dualized_minmax_model),dualized_minmax_problem.dual_model)
+        return dualized_minmax_model
+    else 
+        println("DualizeMinmaxModel not supported for convex conic PowerModels, returning nothing.")
+	return nothing
+    end
 end
 
 
@@ -252,13 +196,40 @@ function write_to_cbf(model,fn_base::String)
 end
 function write_to_cbf_scip(model,fn_base::String)
     #BRIDGE SOC CONSTRAINTS
+    model_rsoc_moi = MOI.Utilities.Model{Float64}()
+    rsoc_bridged_model = MOI.Bridges.Constraint.SOCtoPSD{Float64}(model_rsoc_moi)
+    MOI.copy_to(rsoc_bridged_model,backend(model))
+    #model_rsoc = JuMP.Model()
+    #MOI.copy_to(backend(model_rsoc),model_rsoc_moi)
+
     model_psd_moi = MOI.Utilities.Model{Float64}()
-    bridged_model = MOI.Bridges.Constraint.SOCtoPSD{Float64}(model_psd_moi)
-    MOI.copy_to(bridged_model,backend(model))
+    psd_bridged_model = MOI.Bridges.Constraint.RSOCtoPSD{Float64}(model_psd_moi)
+    MOI.copy_to(psd_bridged_model,model_rsoc_moi)
     model_psd = JuMP.Model()
-    MOI.copy_to(model_psd,model_psd_moi)
-    JuMP.write_to_file( model_psd, string(fn_base,"_scip",".cbf"), format = MOI.FileFormats.FORMAT_CBF)
-    ### 5 Feb 2020 NOTE: IN THE GENERATED FILE, CHANGE VER 3 to VER 2 
+    MOI.copy_to(backend(model_psd),model_psd_moi)
+
+    fname=string(fn_base,"_scip",".cbf")
+    JuMP_write_to_file( model_psd, fname, format = MOI.FileFormats.FORMAT_CBF)
+    ### CHANGING VER 3 to VER 2 
+    fix_version=`sed -i -z 's/VER\n3/VER\n2/g' $fname`
+    run(fix_version)
+end
+
+###Copied from current master version of JuMP, as of 7 Feb 2020. At some point, we can use the JuMP stable version.
+function JuMP_write_to_file(
+    model::Model,
+    filename::String;
+    format::MOI.FileFormats.FileFormat = MOI.FileFormats.FORMAT_AUTOMATIC
+)
+    dest = MOI.FileFormats.Model(format = format, filename = filename)
+    # We add a `full_bridge_optimizer` here because MOI.FileFormats models may not
+    # support all constraint types in a JuMP model.
+    bridged_dest = MOI.Bridges.full_bridge_optimizer(dest, Float64)
+    MOI.copy_to(bridged_dest, backend(model))
+    # `dest` will contain the underlying model, with constraints bridged if
+    # necessary.
+    MOI.write_to_file(dest, filename)
+    return
 end
 
 end # module

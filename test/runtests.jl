@@ -18,6 +18,9 @@ for j in 1:length(testcases)
 
     #Create JUMP Model
     maxmin_model = MaximinOPF.MaximinOPFModel(pm_data, powerform) 
+    if occursin("SparseSDP", testcases[j]["name"])
+      MaximinOPF.write_to_cbf_scip(maxmin_model,pm_data["name"])
+    end
 
     println(string("Start Solving: ", testcases[j]["name"]))
 

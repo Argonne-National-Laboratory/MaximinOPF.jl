@@ -117,7 +117,7 @@ testcases = [
 	Dict(
 	"file" => "../data/case9.m", 
 	"PMOption" => SparseSDPWRMPowerModel,
- 	"name" => "case9SpareseSDPWR1",  	
+ 	"name" => "case9SparseSDPWR1",  	
  	"attack_budget" => 3,
  	"inactive_indices" => [],
  	"protected_indices" => []
@@ -125,7 +125,7 @@ testcases = [
 	Dict(
 	"file" => "../data/case9.m", 
 	"PMOption" => SparseSDPWRMPowerModel,
- 	"name" => "case9SpareseSDPWR2",  	
+ 	"name" => "case9SparseSDPWR2",  	
  	"attack_budget" => 3,
  	"inactive_indices" => [1,2,3,4,5,6,7,8,9],
  	"protected_indices" => []
@@ -133,7 +133,7 @@ testcases = [
 	Dict(
 	"file" => "../data/case9.m", 
 	"PMOption" => SparseSDPWRMPowerModel,
- 	"name" => "case9SpareseSDPWR3",  	
+ 	"name" => "case9SparseSDPWR3",  	
  	"attack_budget" => 3,
  	"inactive_indices" => [],
  	"protected_indices" => [1,2,3,4,5,6,7,8,9]
@@ -141,7 +141,7 @@ testcases = [
 	Dict(
 	"file" => "../data/case9.m", 
 	"PMOption" => SparseSDPWRMPowerModel,
- 	"name" => "case9SpareseSDPWR4",  	
+ 	"name" => "case9SparseSDPWR4",  	
  	"attack_budget" => 3,
  	"inactive_indices" => [1,4],
  	"protected_indices" => []
@@ -149,7 +149,7 @@ testcases = [
 	Dict(
 	"file" => "../data/case9.m", 
 	"PMOption" => SparseSDPWRMPowerModel,
- 	"name" => "case9SpareseSDPWR5",  	
+ 	"name" => "case9SparseSDPWR5",  	
  	"attack_budget" => 3,
  	"inactive_indices" => [],
  	"protected_indices" => [2,3]
@@ -157,7 +157,7 @@ testcases = [
 	Dict(
 	"file" => "../data/case9.m", 
 	"PMOption" => SparseSDPWRMPowerModel,
- 	"name" => "case9SpareseSDPWR6",  	
+ 	"name" => "case9SparseSDPWR6",  	
  	"attack_budget" => 3,
  	"inactive_indices" => [1,4,7],
  	"protected_indices" => [2,3,5,6,8,9]
@@ -165,9 +165,17 @@ testcases = [
 	Dict(
 	"file" => "../data/case9.m", 
 	"PMOption" => SparseSDPWRMPowerModel,
- 	"name" => "case9SpareseSDPWR7",  	
+ 	"name" => "case9SparseSDPWR7",  	
  	"attack_budget" => 3,
  	"inactive_indices" => [1],
  	"protected_indices" => [2]
+	),
+	Dict(
+	"file" => "../data/case30.m", 
+	"PMOption" => SparseSDPWRMPowerModel,
+ 	"name" => "case30K4SparseSDPWR0",  	
+ 	"attack_budget" => 4,
+ 	"inactive_indices" => [],
+ 	"protected_indices" => []
 	)
 ]
