@@ -61,7 +61,14 @@ end
 
 function MinimaxOPFModel(pm_data, powerform)
     if powerform in supported_pm
-      pm = instantiate_model(pm_data, powerform, WRConicPost_PF_Minmax)
+      pm = instantiate_model(pm_data, powerform, Post_PF)
+      variable_ordering_auxiliary(pm)
+      con(pm, pm.cnw)[:x] = Dict{Int,JuMP.ConstraintRef}()
+      for l in pm.data["undecided_branches"]
+        con(pm, pm.cnw)[:x][l] = constraint_abs_branch_flow_ordering(pm, l)
+        JuMP.set_name(con(pm, pm.cnw)[:x][l],"x[$l]")  
+      end
+      objective_minmax_problem(pm)
       return pm
     else
         println("Not Supported Power Model Option. WARNING: returning 'nothing'")
@@ -69,20 +76,43 @@ function MinimaxOPFModel(pm_data, powerform)
     end
 end
 
-function WRConicPost_PF_Minmax(pm::AbstractPowerModel)
-    WRConicPost_PF(pm)
-    variable_ordering_auxiliary(pm)
-    con(pm, pm.cnw)[:x] = Dict{Int,JuMP.ConstraintRef}()
-    for l in pm.data["undecided_branches"]
-        con(pm, pm.cnw)[:x][l] = constraint_abs_branch_flow_ordering(pm, l)
-        JuMP.set_name(con(pm, pm.cnw)[:x][l],"x[$l]")  
-    end
-    objective_minmax_problem(pm)
-end
+function SolveMinmax(pm_data,pm_form,optimizer)
+  pm = MaximinOPF.MinimaxOPFModel(pm_data, pm_form)
+  pm.data["undecided_branches"]= filter(l->!(l in pm_data["protected_branches"] || l in pm_data["inactive_branches"]), ids(pm,pm.cnw,:branch)) 
+  JuMP.set_optimizer(pm.model,optimizer)
+  JuMP.optimize!(pm.model)
+  status=JuMP.termination_status(pm.model)
+  if status != OPTIMAL
+    println("FLAGGING: Solve status=",status)
+  end
+  pm.data["x_vals"]=Dict{Int64,Float64}()
+  for l in pm.data["undecided_branches"]
+        pm.data["x_vals"][l]=JuMP.dual(con(pm, pm.cnw)[:x][l])
+        pm.data["x_vals"][l] = min(1,pm.data["x_vals"][l])
+        pm.data["x_vals"][l] = max(0,pm.data["x_vals"][l])
+  end
+  for l in pm.data["protected_branches"]
+        pm.data["x_vals"][l] = 0
+  end
+  for l in pm.data["inactive_branches"]
+        pm.data["x_vals"][l] = 1
+  end
+  return pm.model, pm
+end #end of function
 
+function SolveFP(pm_data,powerform,optimizer, x_vals=Dict{Int64,Float64}() )
+  pm = MaximinOPF.PF_FeasModel(pm_data, powerform, x_vals)
+  JuMP.set_optimizer(pm.model,optimizer)
+  JuMP.optimize!(pm.model)
+  status=JuMP.termination_status(pm.model)
+  if status != OPTIMAL
+    println("FLAGGING: Solve status=",status)
+  end
+  return pm
+end 
 function PF_FeasModel(pm_data, powerform, x_vals=Dict{Int64,Float64}() )
     if powerform in supported_pm
-        pm = instantiate_model(pm_data, powerform, WRConicPost_PF)
+        pm = instantiate_model(pm_data, powerform, Post_PF)
         for l in ids(pm,pm.cnw,:branch)
           if !haskey(x_vals,l)
 	    if l in pm_data["inactive_branches"]
@@ -99,95 +129,53 @@ function PF_FeasModel(pm_data, powerform, x_vals=Dict{Int64,Float64}() )
     return pm
 end
 
-function WRConicPost_PF(pm::AbstractPowerModel)
-    pm.setting["output"]=Dict{String,Any}("duals"=>true)
-    if !haskey(pm.data,"inactive_branches")
-        pm.data["inactive_branches"] = []
-    end
-    if !haskey(pm.data,"protected_branches")
-        pm.data["protected_branches"] = []
-    end
-    pm.data["undecided_branches"] = filter(l->!(l in pm.data["protected_branches"] || l in pm.data["inactive_branches"]), ids(pm,pm.cnw,:branch))
-    if typeof(pm) in [SOCBFPowerModel, SOCBFConicPowerModel] 
-      build_opf_bf(pm)
-    else
-      build_opf(pm)
-    end
 
-    # Add new variables
-    variable_branch_flow_slacks(pm)
-#=
-    con(pm, pm.cnw)[:abs_pflow_fr_disc] = Dict{Int,JuMP.ConstraintRef}()
-    con(pm, pm.cnw)[:abs_pflow_to_disc] = Dict{Int,JuMP.ConstraintRef}()
-    con(pm, pm.cnw)[:abs_pflow_fr] = Dict{Int,JuMP.ConstraintRef}()
-    con(pm, pm.cnw)[:abs_pflow_to] = Dict{Int,JuMP.ConstraintRef}()
-    if haskey( var(pm,pm.cnw),:q)
-      con(pm, pm.cnw)[:abs_qflow_fr_disc] = Dict{Int,JuMP.ConstraintRef}()
-      con(pm, pm.cnw)[:abs_qflow_to_disc] = Dict{Int,JuMP.ConstraintRef}()
-      con(pm, pm.cnw)[:abs_qflow_fr] = Dict{Int,JuMP.ConstraintRef}()
-      con(pm, pm.cnw)[:abs_qflow_to] = Dict{Int,JuMP.ConstraintRef}()
-    end
-=#
-    for i in ids(pm,:bus)
-	if haskey(sol(pm, pm.cnw, :bus, i),:lam_kcl_r) && !(typeof(pm) in [NFAPowerModel])
-	  pbusref=sol(pm, pm.cnw, :bus, i)[:lam_kcl_r]
-	  for a in ref(pm,pm.cnw, :bus_arcs, i)
-	    up1m = var(pm,pm.cnw, :up_br1)[a,0]
-	    up1p = var(pm,pm.cnw, :up_br1)[a,1]
-	    JuMP.set_normalized_coefficient(pbusref,up1m,-1)
-	    JuMP.set_normalized_coefficient(pbusref,up1p,1)
-	  end
-	end
-	if haskey(sol(pm, pm.cnw, :bus, i),:lam_kcl_i) && !(typeof(pm) in [DCPPowerModel,DCMPPowerModel,DCPLLPowerModel,NFAPowerModel])
-	  qbusref=sol(pm, pm.cnw, :bus, i)[:lam_kcl_i]
-	  for a in ref(pm,pm.cnw, :bus_arcs, i)
-	    uq1m = var(pm,pm.cnw, :uq_br1)[a,0]
-	    uq1p = var(pm,pm.cnw, :uq_br1)[a,1]
-	    JuMP.set_normalized_coefficient(qbusref,uq1m,-1)
-	    JuMP.set_normalized_coefficient(qbusref,uq1p,1)
-	  end
-	end
-	
-    end
-    for l in setdiff(ids(pm, :branch),pm.data["protected_branches"])
-        ref_p1,ref_p3,ref_q1,ref_q3 = constraint_def_abs_flow_values(pm, l)
-	if ref_p1 != nothing
-          con(pm, pm.cnw)[:abs_pflow_fr][l] = ref_p1
-          JuMP.set_name(ref_p1,"pi_f[$l]")  
-	end
-	if ref_p3 != nothing
-          con(pm, pm.cnw)[:abs_pflow_to][l] = ref_p3
-          JuMP.set_name(ref_p3,"pi_t[$l]")  
-	end
-	if ref_q1 != nothing
-          con(pm, pm.cnw)[:abs_qflow_fr][l] = ref_q1
-          JuMP.set_name(ref_q1,"phi_f[$l]")  
-	end
-	if ref_q3 != nothing
-          con(pm, pm.cnw)[:abs_qflow_to][l] = ref_q3
-          JuMP.set_name(ref_q3,"phi_t[$l]")  
-	end
-    end
-
-end
+function SolveMinmaxDual(pm_data,pm_form,optimizer)
+  pm = MaximinOPF.MinimaxOPFModel(pm_data, pm_form)
+  pm.data["undecided_branches"]= filter(l->!(l in pm_data["protected_branches"] || l in pm_data["inactive_branches"]), ids(pm,pm.cnw,:branch)) 
+  model = MaximinOPF.DualizeMinmaxModel(pm)  
+  JuMP.set_optimizer(model,optimizer)
+  JuMP.optimize!(model)
+  status=JuMP.termination_status(model)
+  if status != OPTIMAL
+    println("FLAGGING: Solve status=",status)
+  end
+  pm.data["x_vals"]=Dict{Int64,Float64}()
+  for l in pm.data["undecided_branches"]
+        x=variable_by_name(model,"x[$l]_1")
+        pm.data["x_vals"][l]=JuMP.value(x)
+        pm.data["x_vals"][l] = min(1,pm.data["x_vals"][l])
+        pm.data["x_vals"][l] = max(0,pm.data["x_vals"][l])
+  end
+  for l in pm.data["protected_branches"]
+        pm.data["x_vals"][l] = 0
+  end
+  for l in pm.data["inactive_branches"]
+        pm.data["x_vals"][l] = 1
+  end
+  return model, pm 
+end #end of function
 
 function DualizeMinmaxModel(minmax_model_pm::AbstractPowerModel)
     if typeof(minmax_model_pm) in conic_supported_pm 
-        soc_model = MOI.Utilities.Model{Float64}()
-        soc_bridged_model = MOI.Bridges.Constraint.QuadtoSOC{Float64}(soc_model)
-        MOI.copy_to(soc_bridged_model,backend(minmax_model_pm.model))    
-
-        dualizable_minmax_model = MOI.Utilities.Model{Float64}()
-        bridged_model = MOI.Bridges.Constraint.Square{Float64}(dualizable_minmax_model)
-        MOI.copy_to(bridged_model,soc_model)    
-        dualized_minmax_problem = dualize(dualizable_minmax_model)
-        dualized_minmax_model = JuMP.Model() 
-        MOI.copy_to(backend(dualized_minmax_model),dualized_minmax_problem.dual_model)
+	dualizable_minmax_model = ConvertModelToDualizableForm(minmax_model_pm.model)
+        dualized_minmax_model = dualize(dualizable_minmax_model)
         return dualized_minmax_model
     else 
         println("DualizeMinmaxModel not supported for convex conic PowerModels, returning nothing.")
 	return nothing
     end
+end
+
+function ConvertModelToDualizableForm(model::JuMP.Model)
+        soc_model = MOI.Utilities.Model{Float64}()
+        soc_bridged_model = MOI.Bridges.Constraint.QuadtoSOC{Float64}(soc_model)
+        MOI.copy_to(soc_bridged_model,backend(model))    
+
+        dualizable_model = JuMP.Model()
+        bridged_model = MOI.Bridges.Constraint.Square{Float64}(backend(dualizable_model))
+        MOI.copy_to(bridged_model,soc_model)    
+	return dualizable_model
 end
 
 
@@ -230,6 +218,73 @@ function JuMP_write_to_file(
     # necessary.
     MOI.write_to_file(dest, filename)
     return
+end
+
+function Post_PF(pm::AbstractPowerModel)
+    pm.setting["output"]=Dict{String,Any}("duals"=>true)
+    if !haskey(pm.data,"inactive_branches")
+        pm.data["inactive_branches"] = []
+    end
+    if !haskey(pm.data,"protected_branches")
+        pm.data["protected_branches"] = []
+    end
+    pm.data["undecided_branches"] = filter(l->!(l in pm.data["protected_branches"] || l in pm.data["inactive_branches"]), ids(pm,pm.cnw,:branch))
+    if typeof(pm) in [SOCBFPowerModel, SOCBFConicPowerModel] 
+      build_opf_bf(pm)
+    else
+      build_opf(pm)
+    end
+
+    # Add new variables, modify some existing constraints and add new ones also.
+    variable_branch_flow_slacks(pm)
+
+    con(pm, pm.cnw)[:abs_pflow_fr] = Dict{Int,JuMP.ConstraintRef}()
+    con(pm, pm.cnw)[:abs_pflow_to] = Dict{Int,JuMP.ConstraintRef}()
+    if haskey( var(pm,pm.cnw),:q)
+      con(pm, pm.cnw)[:abs_qflow_fr] = Dict{Int,JuMP.ConstraintRef}()
+      con(pm, pm.cnw)[:abs_qflow_to] = Dict{Int,JuMP.ConstraintRef}()
+    end
+
+    for i in ids(pm,:bus)
+	if haskey(sol(pm, pm.cnw, :bus, i),:lam_kcl_r) && !(typeof(pm) in [NFAPowerModel])
+	  pbusref=sol(pm, pm.cnw, :bus, i)[:lam_kcl_r]
+	  for a in ref(pm,pm.cnw, :bus_arcs, i)
+	    up1m = var(pm,pm.cnw, :up_br1)[a,0]
+	    up1p = var(pm,pm.cnw, :up_br1)[a,1]
+	    JuMP.set_normalized_coefficient(pbusref,up1m,-1)
+	    JuMP.set_normalized_coefficient(pbusref,up1p,1)
+	  end
+	end
+	if haskey(sol(pm, pm.cnw, :bus, i),:lam_kcl_i) && !(typeof(pm) in [DCPPowerModel,DCMPPowerModel,DCPLLPowerModel,NFAPowerModel])
+	  qbusref=sol(pm, pm.cnw, :bus, i)[:lam_kcl_i]
+	  for a in ref(pm,pm.cnw, :bus_arcs, i)
+	    uq1m = var(pm,pm.cnw, :uq_br1)[a,0]
+	    uq1p = var(pm,pm.cnw, :uq_br1)[a,1]
+	    JuMP.set_normalized_coefficient(qbusref,uq1m,-1)
+	    JuMP.set_normalized_coefficient(qbusref,uq1p,1)
+	  end
+	end
+	
+    end
+    for l in setdiff(ids(pm, :branch),pm.data["protected_branches"])
+        ref_p1,ref_p3,ref_q1,ref_q3 = constraint_def_abs_flow_values(pm, l)
+	if ref_p1 != nothing
+          con(pm, pm.cnw)[:abs_pflow_fr][l] = ref_p1
+          JuMP.set_name(ref_p1,"pi_f[$l]")  
+	end
+	if ref_p3 != nothing
+          con(pm, pm.cnw)[:abs_pflow_to][l] = ref_p3
+          JuMP.set_name(ref_p3,"pi_t[$l]")  
+	end
+	if ref_q1 != nothing
+          con(pm, pm.cnw)[:abs_qflow_fr][l] = ref_q1
+          JuMP.set_name(ref_q1,"phi_f[$l]")  
+	end
+	if ref_q3 != nothing
+          con(pm, pm.cnw)[:abs_qflow_to][l] = ref_q3
+          JuMP.set_name(ref_q3,"phi_t[$l]")  
+	end
+    end
 end
 
 end # module
