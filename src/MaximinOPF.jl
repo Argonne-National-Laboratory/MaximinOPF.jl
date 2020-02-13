@@ -39,8 +39,7 @@ function MaximinOPFModel(pm_data, powerform)
         close(io)
 
         maxmin_model = DualizeMinmaxModel(minmax_pm)
-        for l in ids(minmax_pm, :branch)
-          if !(l in minmax_pm.data["protected_branches"] || l in minmax_pm.data["inactive_branches"])
+        for l in pm.data["undecided_branches"]
             if has_lower_bound(variable_by_name(maxmin_model,"x[$l]_1"))
                 delete_lower_bound(variable_by_name(maxmin_model,"x[$l]_1"))
             end
@@ -48,7 +47,6 @@ function MaximinOPFModel(pm_data, powerform)
                 delete_upper_bound(variable_by_name(maxmin_model,"x[$l]_1"))
             end
             JuMP.set_integer(variable_by_name(maxmin_model,"x[$l]_1"))
-          end
         end
 	return maxmin_model
     else
@@ -56,6 +54,21 @@ function MaximinOPFModel(pm_data, powerform)
 	println("WARNING: function MaximinOPFModel() is returning 'nothing'")
 	return nothing
     end
+end
+
+"As precondition, assume that minmax_model is in dualizable form and is of a supported form"
+function MaximinOPFModel(minmax_model::JuMP.Model, line_idx=[])
+        maxmin_model = DualizeMinmaxModel(minmax_model)
+        for l in line_idx
+            if has_lower_bound(variable_by_name(maxmin_model,"x[$l]_1"))
+                delete_lower_bound(variable_by_name(maxmin_model,"x[$l]_1"))
+            end
+            if has_upper_bound(variable_by_name(maxmin_model,"x[$l]_1"))
+                delete_upper_bound(variable_by_name(maxmin_model,"x[$l]_1"))
+            end
+            JuMP.set_integer(variable_by_name(maxmin_model,"x[$l]_1"))
+        end
+	return maxmin_model
 end
 
 
@@ -79,12 +92,10 @@ end
 function SolveMinmax(pm_data,pm_form,optimizer)
   pm = MaximinOPF.MinimaxOPFModel(pm_data, pm_form)
   pm.data["undecided_branches"]= filter(l->!(l in pm_data["protected_branches"] || l in pm_data["inactive_branches"]), ids(pm,pm.cnw,:branch)) 
-  JuMP.set_optimizer(pm.model,optimizer)
-  JuMP.optimize!(pm.model)
-  status=JuMP.termination_status(pm.model)
-  if status != OPTIMAL
-    println("FLAGGING: Solve status=",status)
-  end
+  model=pm.model
+
+  SolveMinmax(model,optimizer)
+
   pm.data["x_vals"]=Dict{Int64,Float64}()
   for l in pm.data["undecided_branches"]
         pm.data["x_vals"][l]=JuMP.dual(con(pm, pm.cnw)[:x][l])
@@ -97,8 +108,17 @@ function SolveMinmax(pm_data,pm_form,optimizer)
   for l in pm.data["inactive_branches"]
         pm.data["x_vals"][l] = 1
   end
-  return pm.model, pm
+  return model, pm
 end #end of function
+
+function SolveMinmax(model::JuMP.Model,optimizer)
+  JuMP.set_optimizer(model,optimizer)
+  JuMP.optimize!(model)
+  status=JuMP.termination_status(model)
+  if status != OPTIMAL
+    println("FLAGGING: Solve status=",status)
+  end
+end
 
 function SolveFP(pm_data,powerform,optimizer, x_vals=Dict{Int64,Float64}() )
   pm = MaximinOPF.PF_FeasModel(pm_data, powerform, x_vals)
@@ -110,6 +130,7 @@ function SolveFP(pm_data,powerform,optimizer, x_vals=Dict{Int64,Float64}() )
   end
   return pm
 end 
+
 function PF_FeasModel(pm_data, powerform, x_vals=Dict{Int64,Float64}() )
     if powerform in supported_pm
         pm = instantiate_model(pm_data, powerform, Post_PF)
@@ -134,12 +155,9 @@ function SolveMinmaxDual(pm_data,pm_form,optimizer)
   pm = MaximinOPF.MinimaxOPFModel(pm_data, pm_form)
   pm.data["undecided_branches"]= filter(l->!(l in pm_data["protected_branches"] || l in pm_data["inactive_branches"]), ids(pm,pm.cnw,:branch)) 
   model = MaximinOPF.DualizeMinmaxModel(pm)  
-  JuMP.set_optimizer(model,optimizer)
-  JuMP.optimize!(model)
-  status=JuMP.termination_status(model)
-  if status != OPTIMAL
-    println("FLAGGING: Solve status=",status)
-  end
+
+  SolveMinmaxDual(model,optimizer)
+
   pm.data["x_vals"]=Dict{Int64,Float64}()
   for l in pm.data["undecided_branches"]
         x=variable_by_name(model,"x[$l]_1")
@@ -156,6 +174,15 @@ function SolveMinmaxDual(pm_data,pm_form,optimizer)
   return model, pm 
 end #end of function
 
+function SolveMinmaxDual(model::JuMP.Model,optimizer)
+  JuMP.set_optimizer(model,optimizer)
+  JuMP.optimize!(model)
+  status=JuMP.termination_status(model)
+  if status != OPTIMAL
+    println("FLAGGING: Solve status=",status)
+  end
+end
+
 function DualizeMinmaxModel(minmax_model_pm::AbstractPowerModel)
     if typeof(minmax_model_pm) in conic_supported_pm 
 	dualizable_minmax_model = ConvertModelToDualizableForm(minmax_model_pm.model)
@@ -167,6 +194,10 @@ function DualizeMinmaxModel(minmax_model_pm::AbstractPowerModel)
     end
 end
 
+function DualizeMinmaxModel(dualizable_minmax_model::JuMP.Model)
+    dualized_minmax_model = dualize(dualizable_minmax_model)
+end
+
 function ConvertModelToDualizableForm(model::JuMP.Model)
         soc_model = MOI.Utilities.Model{Float64}()
         soc_bridged_model = MOI.Bridges.Constraint.QuadtoSOC{Float64}(soc_model)
@@ -175,6 +206,91 @@ function ConvertModelToDualizableForm(model::JuMP.Model)
         dualizable_model = JuMP.Model()
         bridged_model = MOI.Bridges.Constraint.Square{Float64}(backend(dualizable_model))
         MOI.copy_to(bridged_model,soc_model)    
+#GenericAffExpr{Float64,VariableRef}, MathOptInterface.EqualTo{Float64} 
+#GenericAffExpr{Float64,VariableRef}, MathOptInterface.GreaterThan{Float64}
+#GenericAffExpr{Float64,VariableRef}, MathOptInterface.LessThan{Float64}
+#Array{GenericAffExpr{Float64,VariableRef},1}, MathOptInterface.SecondOrderCone
+#Array{GenericAffExpr{Float64,VariableRef},1}, MathOptInterface.RotatedSecondOrderCone
+#Array{GenericAffExpr{Float64,VariableRef},1}, MathOptInterface.PositiveSemidefiniteConeTriangle
+#VariableRef, MathOptInterface.GreaterThan{Float64}
+#VariableRef, MathOptInterface.LessThan{Float64}
+        con_types=list_of_constraint_types(dualizable_model)
+        n_con_types=length(con_types)
+	for kk=1:n_con_types
+	  if con_types[kk][2] == MathOptInterface.SecondOrderCone
+	    soc_con = all_constraints(dualizable_model, con_types[kk][1], con_types[kk][2]) 
+	    n_soc_con=length(soc_con)
+	    for jj=1:n_soc_con
+		if length(JuMP.name(soc_con[jj])) == 0
+  		  JuMP.set_name(soc_con[jj],string("SOC[",jj,"]"))
+		end
+	    end
+	  elseif con_types[kk][2]== MathOptInterface.RotatedSecondOrderCone
+	    rsoc_con = all_constraints(dualizable_model, con_types[kk][1], con_types[kk][2]) 
+	    n_rsoc_con=length(rsoc_con)
+	    for jj=1:n_rsoc_con
+		if length(JuMP.name(rsoc_con[jj])) == 0
+  		  JuMP.set_name(rsoc_con[jj],string("RSOC[",jj,"]"))
+		end
+	    end
+	  elseif con_types[kk][2]== MathOptInterface.PositiveSemidefiniteConeTriangle
+	    psd_con = all_constraints(dualizable_model, con_types[kk][1], con_types[kk][2]) 
+	    n_psd_con=length(psd_con)
+	    for jj=1:n_psd_con
+		if length(JuMP.name(psd_con[jj])) == 0
+  		  JuMP.set_name(psd_con[jj],string("PSD[",jj,"]"))
+		end
+	    end
+	  elseif con_types[kk][2]== MathOptInterface.PositiveSemidefiniteConeSquare
+	    psdsq_con = all_constraints(dualizable_model, con_types[kk][1], con_types[kk][2]) 
+	    n_psdsq_con=length(psd_con)
+	    for jj=1:n_psdsq_con
+		if length(JuMP.name(psdsq_con[jj])) == 0
+  		  JuMP.set_name(psdsq_con[jj],string("PSDSQ[",jj,"]"))
+		end
+	    end
+	  elseif con_types[kk][2] == MathOptInterface.GreaterThan{Float64} && con_types[kk][1] == VariableRef
+	    var_lb = all_constraints(dualizable_model, con_types[kk][1], con_types[kk][2]) 
+	    n_var_lb = length(var_lb)
+	    for jj=1:n_var_lb
+		if length(JuMP.name(var_lb[jj])) == 0
+  		  JuMP.set_name(var_lb[jj],string("VAR_LB[",jj,"]"))
+		end
+	    end
+	  elseif con_types[kk][2] == MathOptInterface.LessThan{Float64} && con_types[kk][1] ==VariableRef
+	    var_ub = all_constraints(dualizable_model, con_types[kk][1], con_types[kk][2]) 
+	    n_var_ub = length(var_ub)
+	    for jj=1:n_var_ub
+		if length(JuMP.name(var_ub[jj])) == 0
+  		  JuMP.set_name(var_ub[jj],string("VAR_UB[",jj,"]"))
+		end
+	    end
+	  elseif con_types[kk][2] == MathOptInterface.EqualTo{Float64} && con_types[kk][1] == GenericAffExpr{Float64,VariableRef} 
+	    eq_con = all_constraints(dualizable_model, con_types[kk][1], con_types[kk][2]) 
+	    n_eq_con = length(eq_con)
+	    for jj=1:n_eq_con
+		if length(JuMP.name(eq_con[jj])) == 0
+  		  JuMP.set_name(eq_con[jj],string("EQ[",jj,"]"))
+		end
+	    end
+	  elseif con_types[kk][2] == MathOptInterface.GreaterThan{Float64} && con_types[kk][1] == GenericAffExpr{Float64,VariableRef} 
+	    ge_con = all_constraints(dualizable_model, con_types[kk][1], con_types[kk][2]) 
+	    n_ge_con = length(ge_con)
+	    for jj=1:n_ge_con
+		if length(JuMP.name(ge_con[jj])) == 0
+  		  JuMP.set_name(ge_con[jj],string("GE[",jj,"]"))
+		end
+	    end
+	  elseif con_types[kk][2] == MathOptInterface.LessThan{Float64} && con_types[kk][1] == GenericAffExpr{Float64,VariableRef} 
+	    le_con = all_constraints(dualizable_model, con_types[kk][1], con_types[kk][2]) 
+	    n_le_con = length(le_con)
+	    for jj=1:n_le_con
+		if length(JuMP.name(le_con[jj])) == 0
+  		  JuMP.set_name(le_con[jj],string("LE[",jj,"]"))
+		end
+	    end
+	  end
+	end
 	return dualizable_model
 end
 
@@ -248,6 +364,7 @@ function Post_PF(pm::AbstractPowerModel)
     for i in ids(pm,:bus)
 	if haskey(sol(pm, pm.cnw, :bus, i),:lam_kcl_r) && !(typeof(pm) in [NFAPowerModel])
 	  pbusref=sol(pm, pm.cnw, :bus, i)[:lam_kcl_r]
+          JuMP.set_name(pbusref,string("p_bal[",i,"]"))
 	  for a in ref(pm,pm.cnw, :bus_arcs, i)
 	    up1m = var(pm,pm.cnw, :up_br1)[a,0]
 	    up1p = var(pm,pm.cnw, :up_br1)[a,1]
@@ -257,6 +374,7 @@ function Post_PF(pm::AbstractPowerModel)
 	end
 	if haskey(sol(pm, pm.cnw, :bus, i),:lam_kcl_i) && !(typeof(pm) in [DCPPowerModel,DCMPPowerModel,DCPLLPowerModel,NFAPowerModel])
 	  qbusref=sol(pm, pm.cnw, :bus, i)[:lam_kcl_i]
+          JuMP.set_name(qbusref,string("q_bal[",i,"]"))
 	  for a in ref(pm,pm.cnw, :bus_arcs, i)
 	    uq1m = var(pm,pm.cnw, :uq_br1)[a,0]
 	    uq1p = var(pm,pm.cnw, :uq_br1)[a,1]
@@ -285,6 +403,8 @@ function Post_PF(pm::AbstractPowerModel)
           JuMP.set_name(ref_q3,"phi_t[$l]")  
 	end
     end
+
+
 end
 
 end # module
