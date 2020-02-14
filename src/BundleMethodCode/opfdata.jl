@@ -2,7 +2,6 @@ using DelimitedFiles
 using Printf
 using PowerModels
 
-PowerModels.silence()
 
 mutable struct OPFData
   nbuses::Int

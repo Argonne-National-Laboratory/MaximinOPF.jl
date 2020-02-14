@@ -11,29 +11,13 @@ using Printf
 PowerModels.silence()
 
 testcase = Dict(
-	"file" => "data/case57.m", 
+	"file" => "data/case30.m", 
 	"PMOption" => SparseSDPWRMPowerModel,
- 	"name" => "case57K2",  	
+ 	"name" => "case30K4",  	
  	"attack_budget" => 4,
  	"inactive_indices" => [],
  	"protected_indices" => []
 	)
-
-function solveNodeMinmax(pm_data,form,optimizer)
-  pm = MaximinOPF.MinimaxOPFModel(pm_data, form)
-  if optimizer==Mosek.Optimizer
-    JuMP.set_optimizer(pm.model,with_optimizer(optimizer,MSK_IPAR_LOG=0))
-  else
-    JuMP.set_optimizer(pm.model,with_optimizer(optimizer))
-  end
-  JuMP.optimize!(pm.model)
-  status=JuMP.termination_status(pm.model)
-  if status != OPTIMAL
-    println("FLAGGING: Solve status=",status)
-  end
-  println("PM solution: ",pm.solution)
-  return pm
-end #end of function
 
 pm_data = PowerModels.parse_file(testcase["file"])
 pm_data["attacker_budget"] = testcase["attack_budget"] ###Adding another key and entry
@@ -45,7 +29,7 @@ io = open("output.txt", "w")
 nonconvex_ac=[ACPPowerModel, ACRPowerModel, ACTPowerModel]
 for pm_form in nonconvex_ac
   println("Formulating and solving the form ",pm_form)
-  pm=solveNodeMinmax(pm_data,pm_form, Ipopt.Optimizer)
+  model,pm=MaximinOPF.SolveMinmax(pm_data,pm_form, with_optimizer(Ipopt.Optimizer))
   println(io,"Optimal value using powerform ", pm_form, " is: ",JuMP.objective_value(pm.model), " with status ",JuMP.termination_status(pm.model))
 end
 
@@ -53,7 +37,7 @@ end
 linear_approx=[DCPPowerModel, DCMPPowerModel, NFAPowerModel]
 for pm_form in linear_approx
   println("Formulating and solving the form ",pm_form)
-  pm=solveNodeMinmax(pm_data,pm_form, Mosek.Optimizer)
+  model,pm=MaximinOPF.SolveMinmax(pm_data,pm_form, with_optimizer(Mosek.Optimizer,MSK_IPAR_LOG=0))
   println(io,"Optimal value using powerform ", pm_form, " is: ",JuMP.objective_value(pm.model), " with status ",JuMP.termination_status(pm.model))
 end
 
@@ -61,27 +45,27 @@ end
 quadratic_approx=[DCPLLPowerModel, LPACCPowerModel]
 for pm_form in quadratic_approx
   println("Formulating and solving the form ",pm_form)
-  pm=solveNodeMinmax(pm_data,pm_form, Ipopt.Optimizer)
+  model,pm=MaximinOPF.SolveMinmax(pm_data,pm_form, with_optimizer(Ipopt.Optimizer))
   println(io,"Optimal value using powerform ", pm_form, " is: ",JuMP.objective_value(pm.model), " with status ",JuMP.termination_status(pm.model))
 end
 # quadratic relaxations
 quadratic_relax=[SOCWRPowerModel, SOCBFPowerModel, QCRMPowerModel, QCLSPowerModel]
 for pm_form in quadratic_relax
   println("Formulating and solving the form ",pm_form)
-  pm=solveNodeMinmax(pm_data,pm_form, Ipopt.Optimizer)
+  model,pm=MaximinOPF.SolveMinmax(pm_data,pm_form, with_optimizer(Ipopt.Optimizer))
   println(io,"Optimal value using powerform ", pm_form, " is: ",JuMP.objective_value(pm.model), " with status ",JuMP.termination_status(pm.model))
 end
 quad_conic_relax=[SOCWRConicPowerModel, SOCBFConicPowerModel]
 for pm_form in quad_conic_relax
   println("Formulating and solving the form ",pm_form)
-  pm=solveNodeMinmax(pm_data,pm_form, Mosek.Optimizer)
+  model,pm=MaximinOPF.SolveMinmax(pm_data,pm_form, with_optimizer(Mosek.Optimizer,MSK_IPAR_LOG=0))
   println(io,"Optimal value using powerform ", pm_form, " is: ",JuMP.objective_value(pm.model), " with status ",JuMP.termination_status(pm.model))
 end
 # sdp relaxations
 sdp_relax=[SDPWRMPowerModel, SparseSDPWRMPowerModel]
 for pm_form in sdp_relax
   println("Formulating and solving the form ",pm_form)
-  pm=solveNodeMinmax(pm_data,pm_form, Mosek.Optimizer)
+  model,pm=MaximinOPF.SolveMinmax(pm_data,pm_form, with_optimizer(Mosek.Optimizer,MSK_IPAR_LOG=0))
   println(io,"Optimal value using powerform ", pm_form, " is: ",JuMP.objective_value(pm.model), " with status ",JuMP.termination_status(pm.model))
 end
 close(io)

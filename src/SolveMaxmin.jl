@@ -11,9 +11,9 @@ using Printf
 PowerModels.silence()
 
 testcase = Dict(
-	"file" => "data/case57.m", 
- 	"name" => "case57K2",  	
- 	"attack_budget" => 2,
+	"file" => "data/case30.m", 
+ 	"name" => "case30K4",  	
+ 	"attack_budget" => 4,
  	"inactive_indices" => [],
  	"protected_indices" => []
 	)

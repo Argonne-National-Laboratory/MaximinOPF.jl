@@ -20,52 +20,23 @@ function solveNodeMinmaxSP(pm_data,pm_form,ndata; use_dual=true)
   model=nothing
   if pm_data["attacker_budget"] > 0
     if use_dual
-      pm = MaximinOPF.MinimaxOPFModel(pm_data, pm_form)
-      pm_data["undecided_branches"]= filter(l->!(l in pm_data["protected_branches"] || l in pm_data["inactive_branches"]), ids(pm,pm.cnw,:branch)) 
-      model = MaximinOPF.DualizeMinmaxModel(pm)  
+      model,pm = MaximinOPF.SolveMinmaxDual(pm_data, pm_form,with_optimizer(Mosek.Optimizer,MSK_IPAR_LOG=0))
     else
-      pm = MaximinOPF.MinimaxOPFModel(pm_data, pm_form)
-      pm_data["undecided_branches"]= filter(l->!(l in pm_data["protected_branches"] || l in pm_data["inactive_branches"]), ids(pm,pm.cnw,:branch)) 
-      model=pm.model
+      model,pm = MaximinOPF.SolveMinmax(pm_data, pm_form,with_optimizer(Mosek.Optimizer,MSK_IPAR_LOG=0))
     end
   else
-    pm = MaximinOPF.PF_FeasModel(pm_data, pm_form)
+    pm = MaximinOPF.SolveFP(pm_data,pm_form,with_optimizer(Mosek.Optimizer,MSK_IPAR_LOG=0))
     pm_data["undecided_branches"]= []
     model=pm.model
   end
 
-  set_optimizer(model,with_optimizer(Mosek.Optimizer,MSK_IPAR_LOG=0))
-  JuMP.optimize!(model)
-  status=JuMP.termination_status(model)
-  for l in pm.data["undecided_branches"]
-    if use_dual
-        x=variable_by_name(model,"x[$l]_1")
-        pm.data["x_vals"][l]=JuMP.value(x)
-        pm.data["x_vals"][l] = min(1,pm.data["x_vals"][l])
-        pm.data["x_vals"][l] = max(0,pm.data["x_vals"][l])
-    else
-        pm.data["x_vals"][l]=JuMP.dual(con(pm, pm.cnw)[:x][l])
-        pm.data["x_vals"][l] = min(1,pm.data["x_vals"][l])
-        pm.data["x_vals"][l] = max(0,pm.data["x_vals"][l])
-    end 
-  end
   ndata["bound_value"]=JuMP.objective_value(model)
-  if status != OPTIMAL
-    println("FLAGGING: Solve status=",status)
-  end
   return pm
 end #end of function
 
 function applyPrimalHeuristic(pm_data,pm_form)
-    fp_pm = MaximinOPF.PF_FeasModel(pm_data, pm_form)
-    pf_optmodel = fp_pm.model
-    set_optimizer(pf_optmodel,with_optimizer(Mosek.Optimizer,MSK_IPAR_LOG=0))
-    JuMP.optimize!(pf_optmodel)
-    status=JuMP.termination_status(pf_optmodel)
-    if status != OPTIMAL
-      println("FLAGGING: Solve status=",status)
-    end
-    return JuMP.objective_value(pf_optmodel)
+    fp_pm = MaximinOPF.SolveFP(pm_data,pm_form,with_optimizer(Mosek.Optimizer,MSK_IPAR_LOG=0))
+    return JuMP.objective_value(fp_pm.model)
 end
 
 function findNextNode(E)
@@ -86,7 +57,7 @@ function findNextIndex(undecided_branches,x_vals)
   return reduce((k1, k2) -> abs(x_vals[k1]-0.5) <= abs(x_vals[k2]-0.5) ? k1 : k2, undecided_branches)
 end
 
-function solveMaxminViaBnB(pm_data,pm_form)
+function solveMaxminViaBnB(pm_data,pm_form; use_dual_minmax=true)
   global MAX_TIME
   K=pm_data["attacker_budget"]
 
@@ -115,7 +86,7 @@ function solveMaxminViaBnB(pm_data,pm_form)
     if currNode["bound_value"] <= IncX["bound_value"]
         println("\tFathoming due to initial testing of bound ",currNode["bound_value"]," <= ",IncX["bound_value"])
     else
-      pm=solveNodeMinmaxSP(pm_data,pm_form,currNode; use_dual=true)
+      pm=solveNodeMinmaxSP(pm_data,pm_form,currNode; use_dual=use_dual_minmax)
       undecided_branches=copy(pm.data["undecided_branches"])
       x_vals=copy(pm.data["x_vals"])
       println("Node bound value has been updated to: ",currNode["bound_value"])

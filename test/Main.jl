@@ -6,6 +6,7 @@ Kibaek Kim
 Brian Dandurand
 =#
 using PowerModels
+PowerModels.silence()
 
 #using Libdl
 #libomp=Libdl.dlopen("/sandbox/schanen/petsc/wgpu/lib/libpetsc.so.3.011.3",RTLD_GLOBAL)
@@ -68,7 +69,7 @@ if FORM == ECP
   solvePhiECP(pm_data)
 elseif FORM == AC
   include("../src/SolveMaxminViaBnB.jl")
-  solveMaxminViaBnB(pm_data,SparseSDPWRMPowerModel)
+  solveMaxminViaBnB(pm_data,SparseSDPWRMPowerModel,use_dual_minmax=false)
 elseif FORM == SOCP
   include("../src/DualSOCP.jl")
 elseif FORM == DC
