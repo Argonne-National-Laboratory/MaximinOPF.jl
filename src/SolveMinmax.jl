@@ -11,10 +11,10 @@ using Printf
 PowerModels.silence()
 
 testcase = Dict(
-	"file" => "data/case30.m", 
+	"file" => "data/case9.m", 
 	"PMOption" => SparseSDPWRMPowerModel,
- 	"name" => "case30K4",  	
- 	"attack_budget" => 4,
+ 	"name" => "case9K3",  	
+ 	"attack_budget" => 3,
  	"inactive_indices" => [],
  	"protected_indices" => []
 	)
