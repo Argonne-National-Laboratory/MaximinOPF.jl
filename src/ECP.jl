@@ -129,43 +129,62 @@ function solveMaxminECP(pm_data,pm_form,pm_optimizer,io=Base.stdout)
 
   JuMP.set_optimizer(maxmin["model"],pm_optimizer)
   resolveMP(maxmin; io=io)
+  #computeNewConstraintEig(maxmin;io=io)
 
 
   print("Iteration 0: UB: ",maxmin["UB_Val"]," with status: ",JuMP.termination_status(maxmin["model"])," with x solution: ")
     printX(maxmin["x_soln"])
 
-  for ii=1:100
+  for ii=1:40
     println(io,"Iteration $ii")
     updateFeasObj(feas,maxmin["x_soln"])
     JuMP.optimize!(feas["model"])
     FP_Val=JuMP.objective_value(feas["model"])
-    println("FP Objective value: ",FP_Val," with status: ",JuMP.termination_status(feas["model"]))
     if FP_Val > bestLB
       bestLB=FP_Val
       best_x_soln=copy(maxmin["x_soln"])
       println(io,"Updating incumbent solution: ")
       printX(best_x_soln,io)
       println(io,"The incumbent value is now: ",bestLB,".")
+      if io!=Base.stdout
+        println("Updating incumbent solution: ")
+        printX(best_x_soln)
+        println("The incumbent value is now: ",bestLB,".")
+      end
     end
     WVal[ii]=Dict{Int64,Any}()
     for kk=1:length(feas["psd_dict"])
       WVal[ii][kk]=trunc.( (JuMP.value.(feas["psd_con_expr"][kk]))[:];digits=10)
     end
-    #computeNewConstraintEig(maxmin;io=io)
 
     computeNewConstraintWVal(maxmin, WVal[ii];io=io)
     resolveMP(maxmin;io=io)
-    print("Iteration $ii: UB: ",maxmin["UB_Val"]," with status: ",JuMP.termination_status(maxmin["model"])," with x solution: ")
-    printX(maxmin["x_soln"])
-  
-    println("FP Objective value: ",FP_Val," with status: ",JuMP.termination_status(feas["model"]))
+    #computeNewConstraintEig(maxmin;io=io)
+    println(io,"FP Objective value: ",FP_Val," with status: ",JuMP.termination_status(feas["model"])," and bestLB is: ",bestLB)
+    if io!=Base.stdout
+      println("FP Objective value: ",FP_Val," with status: ",JuMP.termination_status(feas["model"])," and bestLB is: ",bestLB)
+    end
+    print(io,"Iteration $ii: UB: ",maxmin["UB_Val"]," status: ",JuMP.termination_status(maxmin["model"])," with x solution: ")
+    if io!=Base.stdout
+      print("Iteration $ii: UB: ",maxmin["UB_Val"]," status: ",JuMP.termination_status(maxmin["model"])," with x solution: ")
+    end
+    printX(maxmin["x_soln"],io)
+    if io!=Base.stdout
+      printX(maxmin["x_soln"])
+    end
 
     if maxmin["UB_Val"] - bestLB < 1e-3
 	println(io,"Terminating due to closure of gap. Terminal iteration: ",ii)
+        if io!=Base.stdout
+          printX(maxmin["x_soln"])
+        end
 	break
     end
   end
-
+  time_End = (time_ns()-time_Start)/1e9
+  println("Finishing after ", time_End," seconds.")
+  print("Best value: ", bestLB, " with solution: ")
+  printX(best_x_soln)
 end
 
 function updateFeasObj(feas,x_soln)
@@ -203,18 +222,15 @@ function computeNewConstraintWVal(maxmin, WVal;io=Base.stdout)
 	SG[nn] = 2*WVal[kk][nn]
       end
     end
-    if maxmin["model"]
-      cref=@constraint(maxmin["model"], sum(trunc(SG[nn];digits=6)*PSD_Vec[nn] for nn=1:n_psd_vars)  >= 0)
-      n_cuts += 1
-    else
-      PSD0 = JuMP.value.(PSD_Vec) 
-      if triFrobIP(SG,PSD0) < -1e-4
-        cref=@constraint(maxmin["model"], sum(trunc(SG[nn];digits=6)*PSD_Vec[nn] for nn=1:n_psd_vars)  >= 0)
-        n_cuts += 1
-      end
+    cref=@constraint(maxmin["model"], sum(trunc(SG[nn];digits=6)*PSD_Vec[nn] for nn=1:n_psd_vars)  >= -1e-6)
+    n_cuts += 1
+    if JuMP.termination_status(maxmin["model"]) != OPTIMIZE_NOT_CALLED
+      PSD0 = JuMP.value.(PSD_Vec)
+      IP_SG_PSD0 = triFrobIP(SG,PSD0)
+      println(io,"<SG,PSD0>: ",IP_SG_PSD0)
     end
   end
-  println("WVal: Adding $n_cuts cuts.")
+  println(io,"WVal: Adding $n_cuts cuts.")
 end
 
 ###Inputs are symmetric matrices in triangular form
@@ -224,7 +240,7 @@ function triFrobIP(tri_mat1::Array{Float64,1},tri_mat2::Array{Float64,1})
    result = 0.0
    jj=1
    
-   for nn=1:n_els
+   for nn=1:n_el
       if nn == (Int)(((jj+1)*jj)/2)
 	result += tri_mat1[nn]*tri_mat2[nn]
 	jj += 1
@@ -246,12 +262,12 @@ function computeEigenDecomp(tri_mat::Array{Float64,1})
       for ii=1:jj
 	 tri_sq_map[nn]=(ii,jj)
 	 sq_tri_map[(ii,jj)]=nn
-	 psd_mat[ii,jj] = PSD0[nn] 
+	 psd_mat[ii,jj] = tri_mat[nn] 
 	 psd_mat[jj,ii] = psd_mat[ii,jj]
 	 nn += 1
       end
    end
-   E = eigs(psd_mat, which=:SR, nev=2)
+   E = eigs(psd_mat, which=:SR, nev=(ncols-1))
    return E, sq_tri_map, tri_sq_map
 end
 
@@ -259,32 +275,27 @@ function computeNewConstraintEig(maxmin;io=Base.stdout)
   n_cuts = 0
   for kk in keys(maxmin["psd_mat_expr"])
       println(io,"$kk th PSD constraint")
+      n_el = length(maxmin["psd_mat_expr"][kk])
       PSD_Vec=[variable_by_name(maxmin["model"],maxmin["psd_mat_expr"][kk][nn]) for nn in 1:n_el]
       PSD0 = JuMP.value.(PSD_Vec) 
-println(io,"PSD0[$kk}: ",PSD0)
+#println(io,"PSD0[$kk}: ",PSD0)
       E, sq_tri_map, tri_sq_map = computeEigenDecomp(PSD0)
+      n_eigs = length(E[1])
 println(io,"eigenval_$kk: ", E[1])
 	
-      SG = Array{Float64,1}(undef,n_el)
-      for nn=1:n_el
-	(ii,jj)=tri_sq_map[nn]
-	if ii==jj
-	   SG[nn] = E[2][ii,1]*E[2][jj,1]  
-	else
-	   SG[nn] = E[2][ii,1]*E[2][jj,1] + E[2][jj,1]*E[2][ii,1]   
-	end
-      end
-println(io,"Frob IPx $kk: ", JuMP.value( sum(SG[nn]*PSD_Vec[nn] for nn=1:n_el)) )
-#println(io,"psd_mat: ",psd_mat)
-
-#println(io,"PSDVal: ",JuMP.value.(PSD_Vec))
-
-      #@constraint(model, sum(SG[nn]*(PSD_Vec[nn]-PSD0[nn]) for nn=1:n_el) + E[1][1]  >= 0)
-      if E[1][1] < -1e-4
-        cref=@constraint(maxmin["model"], sum(trunc(SG[nn];digits=6)*PSD_Vec[nn] for nn=1:n_el)  >= 0)
+     for mm in 1:n_eigs # filter(mmm->(E[1][mmm]<0), 1:n_eigs)
+        SG = Array{Float64,1}(undef,n_el)
+        for nn=1:n_el
+	  (ii,jj)=tri_sq_map[nn]
+	  if ii==jj
+	     SG[nn] = E[2][ii,mm]*E[2][jj,mm]  
+	  else
+	     SG[nn] = E[2][ii,mm]*E[2][jj,mm] + E[2][jj,mm]*E[2][ii,mm]   
+	  end
+        end
+        cref=@constraint(maxmin["model"], sum(trunc(SG[nn];digits=6)*PSD_Vec[nn] for nn=1:n_el)  >= -1e-2)
         n_cuts += 1
-#println(io,"cref: ",cref)
-      end
+     end
   end
   println("Eigs: Adding $n_cuts cuts.")
 end
