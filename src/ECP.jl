@@ -28,6 +28,7 @@ function solveMaxminECP(pm_data,pm_form,pm_optimizer,io=Base.stdout)
     minmax_psd_con_kk = constraint_by_name(minmax["model"],minmax["psd_dict"][kk])
     minmax["psd_con_expr"][kk]=constraint_object( minmax_psd_con_kk).func
   end
+  println(io,"Minmax: ",minmax["model"])
 
 
   maxmin=Dict{String,Any}()
@@ -66,24 +67,14 @@ function solveMaxminECP(pm_data,pm_form,pm_optimizer,io=Base.stdout)
   for kk=1:length(feas["psd_dict"])
     feas["psd_con_expr"][kk]=constraint_object(  constraint_by_name(feas["model"],feas["psd_dict"][kk])  ).func
     WVal[0][kk]=trunc.( (JuMP.value.(feas["psd_con_expr"][kk]))[:];digits=10)
-    jj=1
-    for nn=1:length(WVal[0][kk])
-	if nn==(Int)((jj+1)*jj/2)
-	  WVal[0][kk][nn]=1
-	  jj += 1
-	else
-	  WVal[0][kk][nn]=0
-	end
-    end
+    #println("WVal[0][kk]", WVal[0][kk])
   end
-  #println("WVal[0]", WVal[0])
   
 
 
 
   maxmin["model"] = MaximinOPF.DualizeMinmaxModel(minmax["model"])
   println(io,maxmin["model"])
-    ##Convert to add integrality constraints, remove explicit statement of PSD constraints to be replaced with cutting planes
   ###Collect PSD matrix expressions
   psd_con=all_constraints(maxmin["model"], Array{VariableRef,1}, MathOptInterface.PositiveSemidefiniteConeTriangle)
   n_psd_con=length(psd_con)
@@ -97,40 +88,58 @@ function solveMaxminECP(pm_data,pm_form,pm_optimizer,io=Base.stdout)
     end
   end
   
-  computeNewConstraintWVal(maxmin, WVal[0];io=io)
+#=
+  int_relaxed_model = copy_model(maxmin["model"])
+  JuMP.set_optimizer(int_relaxed_model,pm_optimizer)
+  JuMP.optimize!(int_relaxed_model)
+  int_relaxed_UB=JuMP.objective_value(int_relaxed_model)
 
+  JuMP.set_optimizer(maxmin["model"],pm_optimizer)
+  resolveMP(maxmin;io=io)
+  int_relaxed_UB = maxmin["UB_Val"]
+  println("Integer-relaxed UB: ",int_relaxed_UB," with status: ",JuMP.termination_status(maxmin["model"]))
 
+  @variable(maxmin["model"], obj_var <= int_relaxed_UB)
+  obj_func = JuMP.objective_function(maxmin["model"])
+  @constraint(maxmin["model"], obj_con, obj_func - obj_var >= 0)
+  @objective(maxmin["model"], Max, obj_var)
+=#
 
+  
+  ##Convert to add integrality constraints, remove explicit statement of PSD constraints to be replaced with cutting planes
   ##### Now remove the explicit PSD constraints
+  n_psd_con = length(psd_con)
   for kk=1:length(psd_con)
     delete(maxmin["model"],psd_con[kk])
   end
+  computeNewConstraintWVal(maxmin, WVal[0];io=io)
+
   ##### Fix the x's to be binary
   for l in maxmin["branch_ids"]
-      JuMP.fix(variable_by_name(maxmin["model"],"x[$l]_1"),0;force=true)
-      JuMP.unfix(variable_by_name(maxmin["model"],"x[$l]_1"))
+      #JuMP.fix(variable_by_name(maxmin["model"],"x[$l]_1"),0;force=true)
+      #JuMP.unfix(variable_by_name(maxmin["model"],"x[$l]_1"))
+      if has_lower_bound(variable_by_name(maxmin["model"],"x[$l]_1"))
+        JuMP.delete_lower_bound(variable_by_name(maxmin["model"],"x[$l]_1"))
+      end
+      if has_upper_bound(variable_by_name(maxmin["model"],"x[$l]_1"))
+        JuMP.delete_upper_bound(variable_by_name(maxmin["model"],"x[$l]_1"))
+      end
       JuMP.set_binary(variable_by_name(maxmin["model"],"x[$l]_1"))
   end
 
   JuMP.set_optimizer(maxmin["model"],pm_optimizer)
-  resolveMP(maxmin;io=io)
+  resolveMP(maxmin; io=io)
 
-  updateFeasObj(feas,maxmin["x_soln"])
-  JuMP.optimize!(feas["model"])
-  FP_Val=JuMP.objective_value(feas["model"])
-  println("FP Objective value: ",FP_Val," with status: ",JuMP.termination_status(feas["model"]))
 
-  println("Iteration 0: UB: ",maxmin["UB_Val"]," with status: ",JuMP.termination_status(maxmin["model"]))
+  print("Iteration 0: UB: ",maxmin["UB_Val"]," with status: ",JuMP.termination_status(maxmin["model"])," with x solution: ")
+    printX(maxmin["x_soln"])
 
-  for ii=1:20
-    computeNewConstraintEig(maxmin;io=Base.stdout)
-
-    resolveMP(maxmin;io=io)
-    println("Iteration $ii: UB: ",maxmin["UB_Val"]," with status: ",JuMP.termination_status(maxmin["model"]))
-  
+  for ii=1:100
+    println(io,"Iteration $ii")
     updateFeasObj(feas,maxmin["x_soln"])
     JuMP.optimize!(feas["model"])
     FP_Val=JuMP.objective_value(feas["model"])
+    println("FP Objective value: ",FP_Val," with status: ",JuMP.termination_status(feas["model"]))
     if FP_Val > bestLB
       bestLB=FP_Val
       best_x_soln=copy(maxmin["x_soln"])
@@ -138,6 +147,17 @@ function solveMaxminECP(pm_data,pm_form,pm_optimizer,io=Base.stdout)
       printX(best_x_soln,io)
       println(io,"The incumbent value is now: ",bestLB,".")
     end
+    WVal[ii]=Dict{Int64,Any}()
+    for kk=1:length(feas["psd_dict"])
+      WVal[ii][kk]=trunc.( (JuMP.value.(feas["psd_con_expr"][kk]))[:];digits=10)
+    end
+    #computeNewConstraintEig(maxmin;io=io)
+
+    computeNewConstraintWVal(maxmin, WVal[ii];io=io)
+    resolveMP(maxmin;io=io)
+    print("Iteration $ii: UB: ",maxmin["UB_Val"]," with status: ",JuMP.termination_status(maxmin["model"])," with x solution: ")
+    printX(maxmin["x_soln"])
+  
     println("FP Objective value: ",FP_Val," with status: ",JuMP.termination_status(feas["model"]))
 
     if maxmin["UB_Val"] - bestLB < 1e-3
@@ -146,47 +166,7 @@ function solveMaxminECP(pm_data,pm_form,pm_optimizer,io=Base.stdout)
     end
   end
 
-#=
-  for kk in 1:14
-
-    FP_Val=JuMP.objective_value(feas["model"])
-    println(io,"Optimal value for FP is: ",FP_Val, " with status ",JuMP.termination_status(feas["model"]))
-
-    computeNewConstraintWVal(maxmin,feas;io=io)
-    resolveMP(maxmin,io)
-    #computeNewConstraintEig(maxmin;io=io)
-    println(io,"Optimal value for MAXMIN is: ",maxmin["UB_Val"], " with status ",JuMP.termination_status(maxmin["model"]))
-    print(io,"With x solution: ")
-    printX(maxmin["x_soln"],io)
-
-    println(io,"Iteration $kk: UB: ",maxmin["UB_Val"], " and best LB: ",bestLB,".")
-
-
-  end
-=#
-
 end
-
-#=
-function tri_sqr_map(nn::Int)
-  nn_copy = nn
-  ii,jj=1,1
-  for jj=1:nn
-    if nn_copy-jj > 0
-	nn_copy -= jj
-	jj += 1
-    else
-	ii = nn_copy
-    end
-  end
-  return ii,jj
-end
-function sqr_tri_map(ii::Int,jj::Int)
-  nn=(Int)((jj)*(jj-1)/2)
-  nn += ii
-  return nn
-end
-=#
 
 function updateFeasObj(feas,x_soln)
   @objective(feas["model"],Min, 
@@ -204,75 +184,109 @@ function updateFeasObj(feas,x_soln)
 	      ) 
 	for a in feas["arcs"])
   )
-
+  #println("New feas objective: ", JuMP.objective_function(feas["model"]) )
 end
 
 function computeNewConstraintWVal(maxmin, WVal;io=Base.stdout)
+  n_cuts = 0
   for kk in keys(maxmin["psd_mat_expr"])
-      n_el=length(maxmin["psd_mat_expr"][kk])
-      PSD_Vec=[variable_by_name(maxmin["model"],maxmin["psd_mat_expr"][kk][nn]) for nn in 1:n_el]
-	
-      SG = Array{Float64,1}(undef,n_el)
-      jj=1
-      for nn = 1:n_el
-	 if nn==(Int)((jj+1)*(jj)/2)
-	     SG[nn] = WVal[kk][nn]
-	     jj += 1
-	 else
-	     SG[nn] = 2*WVal[kk][nn] 
-	 end
+    n_psd_vars=length(maxmin["psd_mat_expr"][kk])
+    PSD_Vec=[variable_by_name(maxmin["model"],maxmin["psd_mat_expr"][kk][nn]) for nn in 1:n_psd_vars]
+    jj=1
+    SG = Array{Float64,1}(undef,n_psd_vars)
+    for nn=1:n_psd_vars
+      if nn == (Int)(((jj+1)*jj)/2)
+        #JuMP.set_lower_bound(variable_by_name(maxmin["model"],maxmin["psd_mat_expr"][kk][nn]),0)
+	SG[nn] = WVal[kk][nn]
+	jj += 1
+      else
+	SG[nn] = 2*WVal[kk][nn]
       end
-      @constraint(maxmin["model"], sum(SG[nn]*PSD_Vec[nn] for nn=1:n_el)  >= 0)
+    end
+    if maxmin["model"]
+      cref=@constraint(maxmin["model"], sum(trunc(SG[nn];digits=6)*PSD_Vec[nn] for nn=1:n_psd_vars)  >= 0)
+      n_cuts += 1
+    else
+      PSD0 = JuMP.value.(PSD_Vec) 
+      if triFrobIP(SG,PSD0) < -1e-4
+        cref=@constraint(maxmin["model"], sum(trunc(SG[nn];digits=6)*PSD_Vec[nn] for nn=1:n_psd_vars)  >= 0)
+        n_cuts += 1
+      end
+    end
   end
-
+  println("WVal: Adding $n_cuts cuts.")
 end
 
-function computeNewConstraintEig(maxmin;io=Base.stdout)
-  for kk in keys(maxmin["psd_mat_expr"])
-      n_el=length(maxmin["psd_mat_expr"][kk])
-      ncols=(Int)((-1+sqrt(1+8*n_el))/2)
-      PSD_Vec=[variable_by_name(maxmin["model"],maxmin["psd_mat_expr"][kk][nn]) for nn in 1:n_el]
-      PSD0 = JuMP.value.(PSD_Vec) 
-      psd_mat = zeros(ncols,ncols)
-
-      nn=1
-      for jj=1:ncols
-        for ii=1:jj
+###Inputs are symmetric matrices in triangular form
+function triFrobIP(tri_mat1::Array{Float64,1},tri_mat2::Array{Float64,1})
+   n_el=length(tri_mat1)
+   @assert(n_el==length(tri_mat2))
+   result = 0.0
+   jj=1
+   
+   for nn=1:n_els
+      if nn == (Int)(((jj+1)*jj)/2)
+	result += tri_mat1[nn]*tri_mat2[nn]
+	jj += 1
+      else
+	result += 2*tri_mat1[nn]*tri_mat2[nn]
+      end
+    end
+    return result
+end
+###Input is symmetric matrix in triangular form
+function computeEigenDecomp(tri_mat::Array{Float64,1})
+   n_el=length(tri_mat)
+   ncols=(Int)((-1+sqrt(1+8*n_el))/2)
+   psd_mat = zeros(ncols,ncols)
+   nn=1
+   sq_tri_map=Dict{Tuple{Int,Int},Int}()
+   tri_sq_map=Dict{Int,Tuple{Int,Int}}()
+   for jj=1:ncols
+      for ii=1:jj
+	 tri_sq_map[nn]=(ii,jj)
+	 sq_tri_map[(ii,jj)]=nn
 	 psd_mat[ii,jj] = PSD0[nn] 
 	 psd_mat[jj,ii] = psd_mat[ii,jj]
 	 nn += 1
+      end
+   end
+   E = eigs(psd_mat, which=:SR, nev=2)
+   return E, sq_tri_map, tri_sq_map
+end
+
+function computeNewConstraintEig(maxmin;io=Base.stdout)
+  n_cuts = 0
+  for kk in keys(maxmin["psd_mat_expr"])
+      println(io,"$kk th PSD constraint")
+      PSD_Vec=[variable_by_name(maxmin["model"],maxmin["psd_mat_expr"][kk][nn]) for nn in 1:n_el]
+      PSD0 = JuMP.value.(PSD_Vec) 
+println(io,"PSD0[$kk}: ",PSD0)
+      E, sq_tri_map, tri_sq_map = computeEigenDecomp(PSD0)
+println(io,"eigenval_$kk: ", E[1])
+	
+      SG = Array{Float64,1}(undef,n_el)
+      for nn=1:n_el
+	(ii,jj)=tri_sq_map[nn]
+	if ii==jj
+	   SG[nn] = E[2][ii,1]*E[2][jj,1]  
+	else
+	   SG[nn] = E[2][ii,1]*E[2][jj,1] + E[2][jj,1]*E[2][ii,1]   
 	end
       end
-#println(io,"psd_mat_$kk: ",psd_mat)
-      E = eigs(psd_mat, which=:SR, nev=2)
-      E[2][:,1:2] = round.(E[2][:,1:2],digits=6)
-      #psd_mat = round.(psd_mat,digits=6)
-#println(io,"eigenval_$kk: ", E[1])
-      VVstar=[E[2][i,1]*E[2][j,1] for i=1:ncols,j=1:ncols]
-	
-#println(io,"VVstar_$kk: ",VVstar)
-#println(io,"Frob IP $kk: ", sum(VVstar[i,j]*psd_mat[i,j] for i=1:ncols,j=1:ncols))
-      SG = Array{Float64,1}(undef,n_el)
-      nn=1
-      for j=1:ncols
-          for i=1:j
-	      if i==j
-	        SG[nn] = VVstar[i,j] 
-	      else
-	        SG[nn] = VVstar[i,j]+VVstar[j,i] 
-	      end
-	      nn += 1
-          end
-      end
+println(io,"Frob IPx $kk: ", JuMP.value( sum(SG[nn]*PSD_Vec[nn] for nn=1:n_el)) )
 #println(io,"psd_mat: ",psd_mat)
-#println(io,"PSD0: ",PSD0)
+
 #println(io,"PSDVal: ",JuMP.value.(PSD_Vec))
 
       #@constraint(model, sum(SG[nn]*(PSD_Vec[nn]-PSD0[nn]) for nn=1:n_el) + E[1][1]  >= 0)
-#println(io,"Frob IPx $kk: ", JuMP.value( sum(SG[nn]*PSD_Vec[nn] for nn=1:n_el)) )
-      cref=@constraint(maxmin["model"], sum(SG[nn]*PSD_Vec[nn] for nn=1:n_el)  >= 0)
-#println("cref: ",cref)
+      if E[1][1] < -1e-4
+        cref=@constraint(maxmin["model"], sum(trunc(SG[nn];digits=6)*PSD_Vec[nn] for nn=1:n_el)  >= 0)
+        n_cuts += 1
+#println(io,"cref: ",cref)
+      end
   end
+  println("Eigs: Adding $n_cuts cuts.")
 end
 
 
