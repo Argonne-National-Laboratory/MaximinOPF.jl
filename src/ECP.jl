@@ -112,6 +112,8 @@ function solveMaxminECP(pm_data,pm_form,pm_optimizer,io=Base.stdout)
   for kk=1:length(psd_con)
     delete(maxmin["model"],psd_con[kk])
   end
+  maxmin["cut_str_ref"]=Dict{Int64,Any}()
+  maxmin["cut_str_ref"][0]=Dict{Int64,String}()
   computeNewConstraintWVal(maxmin, WVal[0];io=io)
 
   ##### Fix the x's to be binary
@@ -129,6 +131,7 @@ function solveMaxminECP(pm_data,pm_form,pm_optimizer,io=Base.stdout)
 
   JuMP.set_optimizer(maxmin["model"],pm_optimizer)
   resolveMP(maxmin; io=io)
+  eval_cut_con(maxmin; io=io)
   #computeNewConstraintEig(maxmin;io=io)
 
 
@@ -157,8 +160,10 @@ function solveMaxminECP(pm_data,pm_form,pm_optimizer,io=Base.stdout)
       WVal[ii][kk]=trunc.( (JuMP.value.(feas["psd_con_expr"][kk]))[:];digits=10)
     end
 
+    maxmin["cut_str_ref"][ii]=Dict{Int64,String}()
     computeNewConstraintWVal(maxmin, WVal[ii];io=io)
     resolveMP(maxmin;io=io)
+    eval_cut_con(maxmin; io=io)
     #computeNewConstraintEig(maxmin;io=io)
     println(io,"FP Objective value: ",FP_Val," with status: ",JuMP.termination_status(feas["model"])," and bestLB is: ",bestLB)
     if io!=Base.stdout
@@ -187,6 +192,21 @@ function solveMaxminECP(pm_data,pm_form,pm_optimizer,io=Base.stdout)
   printX(best_x_soln)
 end
 
+function eval_cut_con(maxmin; io=Base.stdout)
+  PSD_Vec0=Dict{Tuple{Int,Int},Float64}()
+  for ii in keys(maxmin["cut_str_ref"])
+    for kk in keys(maxmin["cut_str_ref"][ii])
+      PSD_Vec0[(ii,kk)] = JuMP.value( constraint_by_name(maxmin["model"],maxmin["cut_str_ref"][ii][kk]  ) )
+    end
+  end
+  println(io,"Evaluating cut values: ")
+  for ii in keys(maxmin["cut_str_ref"])
+    for kk in keys(maxmin["cut_str_ref"][ii])
+      println(io,"($ii,$kk) => ",trunc(PSD_Vec0[(ii,kk)];digits=5))
+    end
+  end
+end
+
 function updateFeasObj(feas,x_soln)
   @objective(feas["model"],Min, 
     sum( (1-x_soln[a[1]])*(
@@ -207,6 +227,7 @@ function updateFeasObj(feas,x_soln)
 end
 
 function computeNewConstraintWVal(maxmin, WVal;io=Base.stdout)
+  iter = maximum(keys(maxmin["cut_str_ref"]))
   n_cuts = 0
   for kk in keys(maxmin["psd_mat_expr"])
     n_psd_vars=length(maxmin["psd_mat_expr"][kk])
@@ -223,6 +244,8 @@ function computeNewConstraintWVal(maxmin, WVal;io=Base.stdout)
       end
     end
     cref=@constraint(maxmin["model"], sum(trunc(SG[nn];digits=6)*PSD_Vec[nn] for nn=1:n_psd_vars)  >= -1e-6)
+    maxmin["cut_str_ref"][iter][kk]=string("WVar[$iter,$kk]")
+    JuMP.set_name(cref,maxmin["cut_str_ref"][iter][kk])
     n_cuts += 1
     if JuMP.termination_status(maxmin["model"]) != OPTIMIZE_NOT_CALLED
       PSD0 = JuMP.value.(PSD_Vec)
@@ -335,7 +358,7 @@ pm_data["attacker_budget"] = testcase["attack_budget"] ###Adding another key and
 pm_data["inactive_branches"] = testcase["inactive_indices"] ###Adding another key and entry
 pm_data["protected_branches"] = testcase["protected_indices"] ###Adding another key and entry
 
-pm_optimizer=with_optimizer(Mosek.Optimizer,MSK_IPAR_LOG=0,MSK_IPAR_NUM_THREADS=4)
+pm_optimizer=with_optimizer(Mosek.Optimizer,MSK_IPAR_LOG=0,MSK_IPAR_NUM_THREADS=8)
 
 io = open("output.txt", "w")
 #io = Base.stdout
