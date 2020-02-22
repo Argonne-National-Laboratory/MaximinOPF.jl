@@ -21,12 +21,13 @@ function solveMaxminECP(pm_data,pm_form,pm_optimizer,io=Base.stdout)
   minmax_pm=MaximinOPF.MinimaxOPFModel(pm_data,pm_form)
   minmax=Dict{String,Any}()
   minmax["branch_ids"] = ids(minmax_pm, minmax_pm.cnw, :branch)
-  minmax["model"],minmax["con_dict"]=MaximinOPF.ConvertModelToDualizableForm(minmax_pm.model)
-  minmax["psd_con_expr"] = Dict{Int64,Any}()
+  minmax["model"]=MaximinOPF.ConvertModelToDualizableForm(minmax_pm.model)
+  minmax["con_dict"]=AssignModelDefaultConstraintNames(minmax["model"])
   minmax["psd_dict"] = minmax["con_dict"]["PSD"]
+  minmax["psd_con_expr"] = Dict{Int64,Any}()
   for kk=1:length(minmax["psd_dict"])
     minmax_psd_con_kk = constraint_by_name(minmax["model"],minmax["psd_dict"][kk])
-    minmax["psd_con_expr"][kk]=constraint_object( minmax_psd_con_kk).func
+    minmax["psd_con_expr"][kk]=constraint_object( minmax_psd_con_kk ).func
   end
   println(io,"Minmax: ",minmax["model"])
 
