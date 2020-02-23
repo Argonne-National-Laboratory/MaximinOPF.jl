@@ -67,9 +67,9 @@ function solveMaxminECP(pm_data,pm_form,pm_optimizer,io=Base.stdout)
 		maxmin["psd_con"][nn]["expr"] = @expression(maxmin["model"], constraint_object(psd_con[kk]).func)
 		maxmin["psd_con"][nn]["set"] = constraint_object(psd_con[kk]).set
 		n_els = length(maxmin["psd_con"][nn]["expr"])
-		maxmin["psd_con"][nn]["val"] = ones(n_els)
+		maxmin["psd_con"][nn]["expr_val"] = ones(n_els)
 		maxmin["psd_con"][nn]["sg"] = Array{Float64,1}(undef, n_els)
-		convertVecToSG(maxmin["psd_con"][nn]["val"],maxmin["psd_con"][nn]["sg"])
+		convertVecToSG(maxmin["psd_con"][nn]["expr_val"],maxmin["psd_con"][nn]["sg"])
 		@constraint(maxmin["model"], sum(maxmin["psd_con"][nn]["expr"][jj]*maxmin["psd_con"][nn]["sg"][jj] for jj in 1:n_els) >= 0)
 		id_SG(maxmin["psd_con"][nn]["sg"])
 		for jj in 1:n_els
@@ -99,8 +99,8 @@ function solveMaxminECP(pm_data,pm_form,pm_optimizer,io=Base.stdout)
 		feas["psd_con"][nn]["expr"] = @expression(feas["model"], constraint_object(psd_con[kk]).func)
 		feas["psd_con"][nn]["set"] = constraint_object(psd_con[kk]).set
 		n_els = length(feas["psd_con"][nn]["expr"])
-		feas["psd_con"][nn]["val"] = Array{Float64,1}(undef, n_els)
-		convertVecToSG(maxmin["psd_con"][nn]["val"],maxmin["psd_con"][nn]["sg"])
+		feas["psd_con"][nn]["dual_val"] = Array{Float64,1}(undef, n_els)
+		convertVecToSG(maxmin["psd_con"][nn]["expr_val"],maxmin["psd_con"][nn]["sg"])
 		@constraint(feas["model"], sum(feas["psd_con"][nn]["expr"][jj]*maxmin["psd_con"][nn]["sg"][jj] for jj in 1:n_els) >= 0)
 		id_SG(maxmin["psd_con"][nn]["sg"])
 		for jj in 1:n_els
@@ -124,10 +124,10 @@ function solveMaxminECP(pm_data,pm_form,pm_optimizer,io=Base.stdout)
   n_vars = length(all_vars)
   for vv=1:n_vars
     if !JuMP.has_lower_bound(all_vars[vv]) && !JuMP.is_binary(all_vars[vv])
-	JuMP.set_lower_bound(all_vars[vv],-1e2)
+	JuMP.set_lower_bound(all_vars[vv],-1e3)
     end
     if !JuMP.has_upper_bound(all_vars[vv]) && !JuMP.is_binary(all_vars[vv])
-	JuMP.set_upper_bound(all_vars[vv],1e2)
+	JuMP.set_upper_bound(all_vars[vv],1e3)
     end
   end
   
@@ -137,18 +137,21 @@ function solveMaxminECP(pm_data,pm_form,pm_optimizer,io=Base.stdout)
 
   cut_via_dual_feas(feas,maxmin; io=io)
   resolveMP(maxmin; io=io)
-  print("Iteration 0: UB: ",maxmin["UB_Val"]," with status: ",JuMP.termination_status(maxmin["model"])," with x solution: ")
+  println(io,"Iteration 0: ")
+  println("Iteration 0: ")
+  print("\tUB: ",maxmin["UB_Val"]," with status: ",JuMP.termination_status(maxmin["model"])," with x solution: ")
     printX(maxmin["x_soln"])
+  println("\tLB: ",feas["opt_val"], " with status: ",JuMP.termination_status(feas["model"]),", best value is: ",bestLB)
   #eval_cut_con(maxmin; io=io)
 
   maxmin["cut_str_ref"]=Dict{Int64,Dict{Int64,String}}()
   maxmin["cut_str_ref"][0]=Dict{Int64,String}()
   cut_refs=Dict{Int64,Any}()
-  #cut_refs[0]=computeNewConstraintEig(maxmin;io=io)
+  cut_refs[0]=computeNewConstraintEig(maxmin;io=io)
 
 
-  for ii=1:100
-    cut_via_dual_feas(feas,maxmin; io=io)
+  for ii=1:1000
+    cut_via_dual_feas(feas,maxmin; add_cut=false, io=io)
     if feas["opt_val"] > bestLB
       bestLB=feas["opt_val"]
       best_x_soln=copy(maxmin["x_soln"])
@@ -156,11 +159,13 @@ function solveMaxminECP(pm_data,pm_form,pm_optimizer,io=Base.stdout)
       printX(best_x_soln,io)
       println(io,"The incumbent value is now: ",bestLB,".")
     end
-    println("Optimal value of the dual feas problem is: ",feas["opt_val"], " with status: ",JuMP.termination_status(feas["model"]))
     resolveMP(maxmin; io=io)
-    print("Iteration $ii: UB: ",maxmin["UB_Val"]," with status: ",JuMP.termination_status(maxmin["model"])," with x solution: ")
+    println(io,"Iteration $ii: ")
+    println("Iteration $ii: ")
+    print("\tUB: ",maxmin["UB_Val"]," with status: ",JuMP.termination_status(maxmin["model"])," with x solution: ")
       printX(maxmin["x_soln"])
-    #cut_refs[ii]=computeNewConstraintEig(maxmin;io=io)
+    println("\tLB: ",feas["opt_val"], " with status: ",JuMP.termination_status(feas["model"]),", best value is: ",bestLB)
+    cut_refs[ii]=computeNewConstraintEig(maxmin;io=io)
     if maxmin["UB_Val"] - bestLB < 1e-3
 	println("Terminating at iteration $ii since the relaxed solution is feasible.")
 	print("Final attack solution: ")
@@ -212,35 +217,34 @@ function convertSGToVec(SG::Array{Float64,1},Vec::Array{Float64,1})
 	end
 end
 
-function cut_via_dual_feas(feas,maxmin; io=Base.stdout)
+function cut_via_dual_feas(feas,maxmin; add_cut=true,io=Base.stdout)
     n_con=length(feas["psd_con"])
     for l in feas["branch_ids"]
         JuMP.fix(variable_by_name(feas["model"],"x[$l]_1"),maxmin["x_soln"][l];force=true)
     end
     JuMP.optimize!(feas["model"])
     for nn=1:n_con
-	maxmin["psd_con"][nn]["val"][:] = JuMP.dual.(feas["psd_con"][nn]["ref"])[:]
-#println(io,maxmin["psd_con"][nn]["val"])
-E, sq_tri_map, tri_sq_map=computeEigenDecomp(maxmin["psd_con"][nn]["val"])
-println(io,"Eigval1: ",E[1])
-#vec2=copy(maxmin["psd_con"][nn]["val"])
-#convertSGToVec(maxmin["psd_con"][nn]["val"],vec2)
+	feas["psd_con"][nn]["dual_val"][:] = JuMP.dual.(feas["psd_con"][nn]["ref"])[:]
     end
     
     feas["opt_val"] = JuMP.objective_value(feas["model"])
     println(io,"Optimal value of the dual feas problem is: ",feas["opt_val"], " with status: ",JuMP.termination_status(feas["model"]))
 
-    for nn=1:n_con
-	n_el=length(maxmin["psd_con"][nn]["val"])
-        convertVecToSG(maxmin["psd_con"][nn]["val"],maxmin["psd_con"][nn]["sg"])
+    if add_cut
+      for nn=1:n_con
+	n_el=length(feas["psd_con"][nn]["dual_val"])
+        convertVecToSG(feas["psd_con"][nn]["dual_val"],maxmin["psd_con"][nn]["sg"])
         @constraint(maxmin["model"], sum(maxmin["psd_con"][nn]["sg"][ii]*maxmin["psd_con"][nn]["expr"][ii] for ii=1:n_el)  >= 0)
         @constraint(feas["model"],   sum(maxmin["psd_con"][nn]["sg"][ii]*feas["psd_con"][nn]["expr"][ii] for ii=1:n_el)  >= 0)
+      end
     end
+
     for l in feas["branch_ids"]
         JuMP.unfix(variable_by_name(feas["model"],"x[$l]_1"))
     end
 end
 
+#=
 function eval_cut_con(maxmin; io=Base.stdout)
   PSD_Vec0=Dict{Tuple{Int,Int},Float64}()
   for ii in keys(maxmin["cut_str_ref"])
@@ -269,6 +273,7 @@ function delete_inactive_cuts(maxmin; io=Base.stdout)
   end
   println(io,"Number of cuts deleted: ",n_del)
 end
+=#
 
 ###Inputs are symmetric matrices in triangular form
 function triFrobIP(tri_mat1::Array{Float64,1},tri_mat2::Array{Float64,1})
@@ -312,9 +317,9 @@ function computeNewConstraintEig(maxmin;io=Base.stdout)
   n_cuts = 0
   cut_refs = Dict{Int64,Any}()
   for kk in keys(maxmin["psd_con"])
-      println(io,"$kk th PSD constraint")
-      PSD_Vec=maxmin["psd_con"][kk]["expr"]
-      PSD0 = JuMP.value.(PSD_Vec) 
+println(io,"maxmin status $kk: ",JuMP.termination_status(maxmin["model"]))
+      PSD_Vec = maxmin["psd_con"][kk]["expr"]
+      PSD0 = maxmin["psd_con"][kk]["expr_val"]
 #println(io,"PSD0[$kk}: ",PSD0)
       E, sq_tri_map, tri_sq_map = computeEigenDecomp(PSD0)
       n_eigs = length(E[1])
@@ -322,13 +327,14 @@ println(io,"eigenval_$kk: ", E[1])
       n_el = length(maxmin["psd_con"][kk]["expr"])
       SG = zeros(n_el)
    if E[1][1] < -1e-6
-     for mm in filter(mmm->(E[1][mmm] < 0), 1:n_eigs)
+     eig_avg = sum(-E[1][mm] for mm in 1:1) #filter(mmm->(E[1][mmm]) < 0, 1:n_eigs))
+     for mm in 1:1 #filter(mmm->(E[1][mmm] < 0), 1:n_eigs)
         for nn=1:n_el
 	  (ii,jj)=tri_sq_map[nn]
 	  if ii==jj
-	     SG[nn] -= E[1][mm]*E[2][ii,mm]*E[2][jj,mm]  
+	     SG[nn] -= (E[1][mm]/eig_avg)*E[2][ii,mm]*E[2][jj,mm]  
 	  else
-	     SG[nn] -= E[1][mm]*(E[2][ii,mm]*E[2][jj,mm] + E[2][jj,mm]*E[2][ii,mm]) 
+	     SG[nn] -= (E[1][mm]/eig_avg)*(E[2][ii,mm]*E[2][jj,mm] + E[2][jj,mm]*E[2][ii,mm]) 
 	  end
         end
      end
@@ -344,10 +350,9 @@ end
 
 function resolveMP(maxmin;io=Base.stdout)
   JuMP.optimize!(maxmin["model"])
-for nn=1:length(maxmin["psd_con"])
-  E, sq_tri_map, tri_sq_map=computeEigenDecomp(JuMP.value.(maxmin["psd_con"][nn]["expr"]))
-  println(io,"Eigval2: ",E[1])
-end
+  for kk in keys(maxmin["psd_con"])
+    maxmin["psd_con"][kk]["expr_val"][:] = JuMP.value.(maxmin["psd_con"][kk]["expr"])[:]
+  end
   maxmin["UB_Val"]=JuMP.objective_value(maxmin["model"])
   for l in keys(maxmin["x_soln"])
     x_var = variable_by_name(maxmin["model"],"x[$l]_1")
@@ -378,9 +383,9 @@ end
 
 
 testcase = Dict(
-	"file" => "data/case57.m", 
- 	"name" => "case57K4",  	
- 	"attack_budget" => 4,
+	"file" => "data/case9.m", 
+ 	"name" => "case9K3",  	
+ 	"attack_budget" => 3,
  	"inactive_indices" => [],
  	"protected_indices" => []
 	)
