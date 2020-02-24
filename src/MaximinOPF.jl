@@ -39,7 +39,7 @@ function MaximinOPFModel(pm_data, powerform)
         close(io)
 
         maxmin_model = DualizeMinmaxModel(minmax_pm)
-        for l in pm.data["undecided_branches"]
+        for l in minmax_pm.data["undecided_branches"]
             if has_lower_bound(variable_by_name(maxmin_model,"x[$l]_1"))
                 delete_lower_bound(variable_by_name(maxmin_model,"x[$l]_1"))
             end
@@ -70,7 +70,6 @@ function MaximinOPFModel(minmax_model::JuMP.Model, line_idx=[])
         end
 	return maxmin_model
 end
-
 
 function MinimaxOPFModel(pm_data, powerform)
     if powerform in supported_pm
@@ -144,10 +143,11 @@ function PF_FeasModel(pm_data, powerform, x_vals=Dict{Int64,Float64}() )
           end
         end
         objective_feasibility_problem(pm,x_vals)
+        return pm
     else
 	println("Do nothing")
+	return nothing
     end
-    return pm
 end
 
 
@@ -171,7 +171,7 @@ function SolveMinmaxDual(pm_data,pm_form,optimizer)
   for l in pm.data["inactive_branches"]
         pm.data["x_vals"][l] = 1
   end
-  return model, pm 
+  return model, pm, con_dict
 end #end of function
 
 function SolveMinmaxDual(model::JuMP.Model,optimizer)
@@ -186,6 +186,7 @@ end
 function DualizeMinmaxModel(minmax_model_pm::AbstractPowerModel)
     if typeof(minmax_model_pm) in conic_supported_pm 
 	dualizable_minmax_model = ConvertModelToDualizableForm(minmax_model_pm.model)
+        AssignModelDefaultConstraintNames(dualizable_minmax_model)
         dualized_minmax_model = dualize(dualizable_minmax_model)
         return dualized_minmax_model
     else 
@@ -195,6 +196,7 @@ function DualizeMinmaxModel(minmax_model_pm::AbstractPowerModel)
 end
 
 function DualizeMinmaxModel(dualizable_minmax_model::JuMP.Model)
+    AssignModelDefaultConstraintNames(dualizable_minmax_model)
     dualized_minmax_model = dualize(dualizable_minmax_model)
 end
 
@@ -206,111 +208,175 @@ function ConvertModelToDualizableForm(model::JuMP.Model)
         dualizable_model = JuMP.Model()
         bridged_model = MOI.Bridges.Constraint.Square{Float64}(backend(dualizable_model))
         MOI.copy_to(bridged_model,soc_model)    
-#GenericAffExpr{Float64,VariableRef}, MathOptInterface.EqualTo{Float64} 
-#GenericAffExpr{Float64,VariableRef}, MathOptInterface.GreaterThan{Float64}
-#GenericAffExpr{Float64,VariableRef}, MathOptInterface.LessThan{Float64}
-#Array{GenericAffExpr{Float64,VariableRef},1}, MathOptInterface.SecondOrderCone
-#Array{GenericAffExpr{Float64,VariableRef},1}, MathOptInterface.RotatedSecondOrderCone
-#Array{GenericAffExpr{Float64,VariableRef},1}, MathOptInterface.PositiveSemidefiniteConeTriangle
-#VariableRef, MathOptInterface.GreaterThan{Float64}
-#VariableRef, MathOptInterface.LessThan{Float64}
-        con_types=list_of_constraint_types(dualizable_model)
+	return dualizable_model
+end
+
+function AssignModelDefaultConstraintNames(model::JuMP.Model)
+    type_str_map = Dict{DataType,String}(
+	VariableRef=>"Var", 
+	GenericAffExpr{Float64,VariableRef}=>"Expr", 
+        Array{GenericAffExpr{Float64,VariableRef},1}=>"VecExpr", 
+	MathOptInterface.EqualTo{Float64}=>"EQ",
+	MathOptInterface.GreaterThan{Float64}=>"GE",
+	MathOptInterface.LessThan{Float64}=>"LE",
+	MathOptInterface.SecondOrderCone=>"SOC",
+	MathOptInterface.RotatedSecondOrderCone=>"RSOC",
+	MathOptInterface.PositiveSemidefiniteConeTriangle=>"PSD",
+	MathOptInterface.PositiveSemidefiniteConeSquare=>"PSDSQ",
+    )
+        con_types=list_of_constraint_types(model)
         n_con_types=length(con_types)
+	con_dict = Dict{Tuple{DataType,DataType},Dict{Int64,String}}() 
+
 	for kk=1:n_con_types
+	  con = all_constraints(model, con_types[kk][1], con_types[kk][2]) 
+	  con_dict[ ( con_types[kk][1],  con_types[kk][2] )  ] = Dict{Int64,String}()
+	    n_con=length(con)
+	    for jj=1:n_con
+		if length(JuMP.name(con[jj])) == 0
+	  	  con_dict[ ( con_types[kk][1],  con_types[kk][2] )  ][jj] = string(type_str_map[con_types[kk][1]],"_",type_str_map[con_types[kk][2]],"[",jj,"]")
+  		  JuMP.set_name(con[jj],con_dict[ ( con_types[kk][1] ,  con_types[kk][2] ) ][jj] )
+		else
+	  	  con_dict[(  con_types[kk][1],  con_types[kk][2] ) ][jj]  = JuMP.name(con[jj])
+		end
+	    end
+	end
+#=
+
+
 	  if con_types[kk][2] == MathOptInterface.SecondOrderCone
-	    soc_con = all_constraints(dualizable_model, con_types[kk][1], con_types[kk][2]) 
+	    soc_con = all_constraints(model, con_types[kk][1], con_types[kk][2]) 
+	    con_dict["SOC"] = Dict{Int,String}()
 	    n_soc_con=length(soc_con)
 	    for jj=1:n_soc_con
 		if length(JuMP.name(soc_con[jj])) == 0
-  		  JuMP.set_name(soc_con[jj],string("SOC[",jj,"]"))
+	          con_dict["SOC"][jj]=string("SOC[",jj,"]")
+  		  JuMP.set_name(soc_con[jj],con_dict["SOC"][jj])
+		else
+		  con_dict["SOC"][jj]=JuMP.name(soc_con[jj])
 		end
 	    end
 	  elseif con_types[kk][2]== MathOptInterface.RotatedSecondOrderCone
-	    rsoc_con = all_constraints(dualizable_model, con_types[kk][1], con_types[kk][2]) 
+	    rsoc_con = all_constraints(model, con_types[kk][1], con_types[kk][2]) 
+	    con_dict["RSOC"] = Dict{Int,String}()
 	    n_rsoc_con=length(rsoc_con)
 	    for jj=1:n_rsoc_con
 		if length(JuMP.name(rsoc_con[jj])) == 0
-  		  JuMP.set_name(rsoc_con[jj],string("RSOC[",jj,"]"))
+		  con_dict["RSOC"][jj]=string("RSOC[",jj,"]")
+  		  JuMP.set_name(rsoc_con[jj],con_dict["RSOC"][jj])
+		else
+		  con_dict["RSOC"][jj]=JuMP.name(rsoc_con[jj])
 		end
 	    end
-	  elseif con_types[kk][2]== MathOptInterface.PositiveSemidefiniteConeTriangle
-	    psd_con = all_constraints(dualizable_model, con_types[kk][1], con_types[kk][2]) 
+	  elseif con_types[kk][2] == MathOptInterface.PositiveSemidefiniteConeTriangle
+	    psd_con = all_constraints(model, con_types[kk][1], con_types[kk][2]) 
+	    con_dict["PSD"] = Dict{Int,String}()
 	    n_psd_con=length(psd_con)
 	    for jj=1:n_psd_con
 		if length(JuMP.name(psd_con[jj])) == 0
-  		  JuMP.set_name(psd_con[jj],string("PSD[",jj,"]"))
+		  con_dict["PSD"][jj]=string("PSD[",jj,"]")
+  		  JuMP.set_name(psd_con[jj], con_dict["PSD"][jj])
+		else
+		  con_dict["PSD"][jj]=JuMP.name(psd_con[jj])
 		end
 	    end
 	  elseif con_types[kk][2]== MathOptInterface.PositiveSemidefiniteConeSquare
-	    psdsq_con = all_constraints(dualizable_model, con_types[kk][1], con_types[kk][2]) 
-	    n_psdsq_con=length(psd_con)
+	    psdsq_con = all_constraints(model, con_types[kk][1], con_types[kk][2]) 
+	    con_dict["PSDSQ"] = Dict{Int,String}()
+	    n_psdsq_con=length(psdsq_con)
 	    for jj=1:n_psdsq_con
 		if length(JuMP.name(psdsq_con[jj])) == 0
-  		  JuMP.set_name(psdsq_con[jj],string("PSDSQ[",jj,"]"))
+		  con_dict["PSDSQ"][jj]=string("PSDSQ[",jj,"]")
+  		  JuMP.set_name(psdsq_con[jj], con_dict["PSDSQ"][jj])
+		else
+		  con_dict["PSDSQ"][jj]=JuMP.name(psdsq_con[jj])
 		end
 	    end
 	  elseif con_types[kk][2] == MathOptInterface.GreaterThan{Float64} && con_types[kk][1] == VariableRef
-	    var_lb = all_constraints(dualizable_model, con_types[kk][1], con_types[kk][2]) 
+	    var_lb = all_constraints(model, con_types[kk][1], con_types[kk][2]) 
+	    con_dict["VAR_LB"] = Dict{Int,String}()
 	    n_var_lb = length(var_lb)
 	    for jj=1:n_var_lb
 		if length(JuMP.name(var_lb[jj])) == 0
-  		  JuMP.set_name(var_lb[jj],string("VAR_LB[",jj,"]"))
+		  con_dict["VAR_LB"][jj]=string("VAR_LB[",jj,"]")
+  		  JuMP.set_name(var_lb[jj],con_dict["VAR_LB"][jj])
+		else
+		  con_dict["VAR_LB"][jj]=JuMP.name(var_lb[jj])
 		end
 	    end
 	  elseif con_types[kk][2] == MathOptInterface.LessThan{Float64} && con_types[kk][1] ==VariableRef
-	    var_ub = all_constraints(dualizable_model, con_types[kk][1], con_types[kk][2]) 
+	    var_ub = all_constraints(model, con_types[kk][1], con_types[kk][2]) 
+	    con_dict["VAR_UB"] = Dict{Int,String}()
 	    n_var_ub = length(var_ub)
 	    for jj=1:n_var_ub
 		if length(JuMP.name(var_ub[jj])) == 0
-  		  JuMP.set_name(var_ub[jj],string("VAR_UB[",jj,"]"))
+  		  con_dict["VAR_UB"][jj] = string("VAR_UB[",jj,"]")
+  		  JuMP.set_name(var_ub[jj], con_dict["VAR_UB"][jj])
+		else
+		  con_dict["VAR_UB"][jj]=JuMP.name(var_ub[jj])
 		end
 	    end
 	  elseif con_types[kk][2] == MathOptInterface.EqualTo{Float64} && con_types[kk][1] == GenericAffExpr{Float64,VariableRef} 
-	    eq_con = all_constraints(dualizable_model, con_types[kk][1], con_types[kk][2]) 
+	    eq_con = all_constraints(model, con_types[kk][1], con_types[kk][2]) 
+	    con_dict["EQ"] = Dict{Int,String}()
 	    n_eq_con = length(eq_con)
 	    for jj=1:n_eq_con
 		if length(JuMP.name(eq_con[jj])) == 0
-  		  JuMP.set_name(eq_con[jj],string("EQ[",jj,"]"))
+  		  con_dict["EQ"][jj] = string("EQ[",jj,"]")
+  		  JuMP.set_name(eq_con[jj],con_dict["EQ"][jj])
+		else
+		  con_dict["EQ"][jj]=JuMP.name(eq_con[jj])
 		end
 	    end
 	  elseif con_types[kk][2] == MathOptInterface.GreaterThan{Float64} && con_types[kk][1] == GenericAffExpr{Float64,VariableRef} 
-	    ge_con = all_constraints(dualizable_model, con_types[kk][1], con_types[kk][2]) 
+	    ge_con = all_constraints(model, con_types[kk][1], con_types[kk][2]) 
+	    con_dict["GE"] = Dict{Int,String}()
 	    n_ge_con = length(ge_con)
 	    for jj=1:n_ge_con
 		if length(JuMP.name(ge_con[jj])) == 0
-  		  JuMP.set_name(ge_con[jj],string("GE[",jj,"]"))
+  		  con_dict["GE"][jj] = string("GE[",jj,"]")
+  		  JuMP.set_name(ge_con[jj],con_dict["GE"][jj])
+		else
+		  con_dict["GE"][jj]=JuMP.name(ge_con[jj])
 		end
 	    end
 	  elseif con_types[kk][2] == MathOptInterface.LessThan{Float64} && con_types[kk][1] == GenericAffExpr{Float64,VariableRef} 
-	    le_con = all_constraints(dualizable_model, con_types[kk][1], con_types[kk][2]) 
+	    le_con = all_constraints(model, con_types[kk][1], con_types[kk][2]) 
+	    con_dict["LE"] = Dict{Int,String}()
 	    n_le_con = length(le_con)
 	    for jj=1:n_le_con
 		if length(JuMP.name(le_con[jj])) == 0
-  		  JuMP.set_name(le_con[jj],string("LE[",jj,"]"))
+  		  con_dict["LE"][jj] = string("LE[",jj,"]")
+  		  JuMP.set_name(le_con[jj],con_dict["LE"][jj])
+		else
+		  con_dict["LE"][jj]=JuMP.name(le_con[jj])
 		end
 	    end
 	  end
 	end
-	return dualizable_model
+=#
+	return con_dict
 end
-
 
 function write_to_cbf(model,fn_base::String)
     JuMP.write_to_file( model, string(fn_base,".cbf"), format = MOI.FileFormats.FORMAT_CBF)
 end
-function write_to_cbf_scip(model,fn_base::String)
+
+function convertSOCtoPSD(model::JuMP.Model)
     #BRIDGE SOC CONSTRAINTS
     model_rsoc_moi = MOI.Utilities.Model{Float64}()
     rsoc_bridged_model = MOI.Bridges.Constraint.SOCtoPSD{Float64}(model_rsoc_moi)
     MOI.copy_to(rsoc_bridged_model,backend(model))
-    #model_rsoc = JuMP.Model()
-    #MOI.copy_to(backend(model_rsoc),model_rsoc_moi)
 
     model_psd_moi = MOI.Utilities.Model{Float64}()
     psd_bridged_model = MOI.Bridges.Constraint.RSOCtoPSD{Float64}(model_psd_moi)
     MOI.copy_to(psd_bridged_model,model_rsoc_moi)
     model_psd = JuMP.Model()
     MOI.copy_to(backend(model_psd),model_psd_moi)
+    return model_psd
+end
+function write_to_cbf_scip(model,fn_base::String)
+    model_psd = convertSOCtoPSD(model)
 
     fname=string(fn_base,"_scip",".cbf")
     JuMP_write_to_file( model_psd, fname, format = MOI.FileFormats.FORMAT_CBF)
@@ -344,6 +410,7 @@ function Post_PF(pm::AbstractPowerModel)
     if !haskey(pm.data,"protected_branches")
         pm.data["protected_branches"] = []
     end
+    pm.data["all_branches"] = ids(pm,pm.cnw,:branch)
     pm.data["undecided_branches"] = filter(l->!(l in pm.data["protected_branches"] || l in pm.data["inactive_branches"]), ids(pm,pm.cnw,:branch))
     if typeof(pm) in [SOCBFPowerModel, SOCBFConicPowerModel] 
       build_opf_bf(pm)

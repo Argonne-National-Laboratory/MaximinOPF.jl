@@ -4,12 +4,12 @@ function variable_branch_flow_slacks(pm::AbstractPowerModel; nw::Int=pm.cnw)
     #u1_arcs = filter(a->!(a[1] in pm.data["inactive_branches"]),ref(pm,nw,:arcs)) #Exclude inactive arcs
     u1_arcs = ref(pm,nw,:arcs)
     up_br1 = var(pm, nw)[:up_br1] = JuMP.@variable(pm.model,
-            [(l,i,j) in u1_arcs,k=0:1], base_name="$(nw)_up_br",
+            [(l,i,j) in u1_arcs,k=0:1], base_name="$(nw)_up_br1",
             lower_bound = 0,
             start = 0
     )
     uq_br1 = var(pm, nw)[:uq_br1] = JuMP.@variable(pm.model,
-            [(l,i,j) in u1_arcs,k=0:1], base_name="$(nw)_uq_br",
+            [(l,i,j) in u1_arcs,k=0:1], base_name="$(nw)_uq_br1",
             lower_bound = 0,
             start = 0
     )
@@ -17,12 +17,12 @@ function variable_branch_flow_slacks(pm::AbstractPowerModel; nw::Int=pm.cnw)
     #u0_arcs = filter(a->!(a[1] in pm.data["protected_branches"]),ref(pm,nw,:arcs)) #Exclude protected arcs
     u0_arcs = ref(pm,nw,:arcs)
     up_br0 = var(pm, nw)[:up_br0] = JuMP.@variable(pm.model,
-            [(l,i,j) in u0_arcs,k=0:1], base_name="$(nw)_up_br",
+            [(l,i,j) in u0_arcs,k=0:1], base_name="$(nw)_up_br0",
             lower_bound = 0,
             start = 0
     )
     uq_br0 = var(pm, nw)[:uq_br0] = JuMP.@variable(pm.model,
-            [(l,i,j) in u0_arcs,k=0:1], base_name="$(nw)_uq_br",
+            [(l,i,j) in u0_arcs,k=0:1], base_name="$(nw)_uq_br0",
             lower_bound = 0,
             start = 0
     )

@@ -57,9 +57,9 @@ version = "1.0.2"
 
 [[DiffRules]]
 deps = ["NaNMath", "Random", "SpecialFunctions"]
-git-tree-sha1 = "10dca52cf6d4a62d82528262921daf63b99704a2"
+git-tree-sha1 = "eb0c34204c8410888844ada5359ac8b96292cfd1"
 uuid = "b552c78f-8df3-52c6-915a-8e097449b14b"
-version = "1.0.0"
+version = "1.0.1"
 
 [[Distributed]]
 deps = ["Random", "Serialization", "Sockets"]
@@ -90,15 +90,15 @@ version = "0.10.9"
 
 [[HTTP]]
 deps = ["Base64", "Dates", "IniFile", "MbedTLS", "Sockets"]
-git-tree-sha1 = "5c49dab19938b119fe204fd7d7e8e174f4e9c68b"
+git-tree-sha1 = "a8ca7e1524ea2bf2cb79d139dbf669cb82e7c04c"
 uuid = "cd3eb016-35fb-5094-929b-558a96fad6f3"
-version = "0.8.8"
+version = "0.8.9"
 
 [[InfrastructureModels]]
 deps = ["JuMP", "Memento"]
-git-tree-sha1 = "237b1f6947282fe7ca4d0d4c2c902d92df08ed97"
+git-tree-sha1 = "d838b1b09ab7483a6ab39d0ed35102155e46ef70"
 uuid = "2030c09a-7f63-5d83-885d-db604e0e9cc0"
-version = "0.4.0"
+version = "0.4.1"
 
 [[IniFile]]
 deps = ["Test"]
@@ -192,9 +192,9 @@ version = "0.9.3"
 
 [[MutableArithmetics]]
 deps = ["LinearAlgebra", "SparseArrays", "Test"]
-git-tree-sha1 = "f1c1ceab8adc1141ac5eba3881b0d53b277949c0"
+git-tree-sha1 = "e028134a24f45c5d2c2cbd98bfd4c9fa50cf7752"
 uuid = "d8a4904e-b15c-11e9-3269-09a3773c0cb0"
-version = "0.2.2"
+version = "0.2.6"
 
 [[NaNMath]]
 git-tree-sha1 = "928b8ca9b2791081dc71a51c55347c27c618760f"
@@ -225,9 +225,9 @@ uuid = "44cfe95a-1eb2-52ea-b672-e2afdf69b78f"
 
 [[PowerModels]]
 deps = ["InfrastructureModels", "JSON", "JuMP", "LinearAlgebra", "MathOptInterface", "Memento", "SparseArrays"]
-git-tree-sha1 = "3afa6af6fed16ce96c39a211e9e856b75c5cf4f2"
+git-tree-sha1 = "12f99ecc94fc72b5891f90f59b3f2c456e8d996e"
 uuid = "c36e90e8-916a-50a6-bd94-075b64ef4655"
-version = "0.15.0"
+version = "0.15.2"
 
 [[Printf]]
 deps = ["Unicode"]
@@ -256,9 +256,9 @@ uuid = "2f01184e-e22b-5df5-ae63-d93ebab69eaf"
 
 [[SpecialFunctions]]
 deps = ["OpenSpecFun_jll"]
-git-tree-sha1 = "268052ee908b2c086cc0011f528694f02f3e2408"
+git-tree-sha1 = "e19b98acb182567bcb7b75bb5d9eedf3a3b5ec6c"
 uuid = "276daf66-3868-5448-9aa4-cd146d93841b"
-version = "0.9.0"
+version = "0.10.0"
 
 [[StaticArrays]]
 deps = ["LinearAlgebra", "Random", "Statistics"]

@@ -1,6 +1,15 @@
 using JuMP
 
 function objective_feasibility_problem(pm::AbstractPowerModel, x_vals::Dict{Int64,Float64}=Dict{Int64,Float64}(); nw::Int=pm.cnw)
+    for l in ids(pm,pm.cnw,:branch)
+        if !haskey(x_vals,l)
+	    if l in pm.data["inactive_branches"]
+		x_vals[l]=1
+	    else
+		x_vals[l]=0
+	    end
+        end
+    end
     up_br1 = var(pm,nw,:up_br1)
     up_br0 = var(pm,nw,:up_br0)
     uq_br1 = var(pm,nw,:uq_br1)
