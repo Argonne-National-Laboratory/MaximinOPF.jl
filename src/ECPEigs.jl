@@ -25,6 +25,42 @@ function convertSOCtoPSD(model::JuMP.Model)
     return model_psd
 end
 
+function removeThermalLimitConstraints(model::JuMP.Model)
+    con_types=list_of_constraint_types(model)
+    n_con_types=length(con_types)
+    for cc=1:n_con_types
+        if con_types[cc][2]==MathOptInterface.SecondOrderCone
+	    #println("SOC:")
+	    soc_con = all_constraints(model, con_types[cc][1], con_types[cc][2]) 
+	    n_soc_con = length(soc_con)
+	    for nn=1:n_soc_con
+		soc_expr = constraint_object(soc_con[nn]).func 
+		n_vars=length( soc_expr ) 
+		if n_vars == 3  ### This condition identifies the thermal line limits in SOC form
+		  for ii=1:n_vars
+		    JuMP.fix(  soc_expr[ii], 0; force=true)
+		  end
+		  JuMP.delete(model,soc_con[nn])
+		end
+	    end
+	    #println(soc_con)
+        elseif con_types[cc][2]==MathOptInterface.RotatedSecondOrderCone
+	  ### These constraints are presumably associated with defining the quadratic cost function for the OPF and are not needed here.
+	    rsoc_con = all_constraints(model, con_types[cc][1], con_types[cc][2]) 
+	    n_rsoc_con = length(rsoc_con)
+	    for nn=1:n_rsoc_con
+		rsoc_expr = constraint_object(rsoc_con[nn]).func 
+		n_vars=length(rsoc_expr)
+		@assert n_vars == 3
+		for ii=1:n_vars
+		  JuMP.fix(  rsoc_expr[ii], 0; force=true)
+		end
+		JuMP.delete(model,rsoc_con[nn])
+	    end
+	end
+    end
+end
+
 function solveMaxminECP(pm_data,pm_form,pm_optimizer,io=Base.stdout)
   #println(io,"Formulating and solving the form ",pm_form, " for problem ",pm_data["name"], " with attack budget K=",pm_data["attacker_budget"],".")
   MAX_N_COLS=100
@@ -43,6 +79,7 @@ function solveMaxminECP(pm_data,pm_form,pm_optimizer,io=Base.stdout)
   bestLB=-1e20
 
   base_maxmin = MaximinOPF.MaximinOPFModel(pm_data, pm_form)
+  removeThermalLimitConstraints(base_maxmin)
   maxmin["model"] = convertSOCtoPSD(base_maxmin)
 
 
@@ -112,8 +149,8 @@ function solveMaxminECP(pm_data,pm_form,pm_optimizer,io=Base.stdout)
 	end
     end
     for l in feas["branch_ids"]
-	if JuMP.is_binary(variable_by_name(feas["model"],"x[$l]_1"))
-          JuMP.unset_binary(variable_by_name(feas["model"],"x[$l]_1"))
+	if JuMP.is_integer(variable_by_name(feas["model"],"x[$l]_1"))
+          JuMP.unset_integer(variable_by_name(feas["model"],"x[$l]_1"))
 	else
 	  JuMP.set_lower_bound(variable_by_name(feas["model"],"x[$l]_1"),0)
 	  JuMP.set_upper_bound(variable_by_name(feas["model"],"x[$l]_1"),1)
@@ -123,10 +160,10 @@ function solveMaxminECP(pm_data,pm_form,pm_optimizer,io=Base.stdout)
   all_vars = JuMP.all_variables(maxmin["model"])
   n_vars = length(all_vars)
   for vv=1:n_vars
-    if !JuMP.has_lower_bound(all_vars[vv]) && !JuMP.is_binary(all_vars[vv])
+    if !JuMP.has_lower_bound(all_vars[vv]) && !JuMP.is_integer(all_vars[vv]) && !JuMP.is_fixed(all_vars[vv])
 	JuMP.set_lower_bound(all_vars[vv],-1e3)
     end
-    if !JuMP.has_upper_bound(all_vars[vv]) && !JuMP.is_binary(all_vars[vv])
+    if !JuMP.has_upper_bound(all_vars[vv]) && !JuMP.is_integer(all_vars[vv]) && !JuMP.is_fixed(all_vars[vv])
 	JuMP.set_upper_bound(all_vars[vv],1e3)
     end
   end
@@ -135,7 +172,7 @@ function solveMaxminECP(pm_data,pm_form,pm_optimizer,io=Base.stdout)
   JuMP.set_parameter(maxmin["model"],"CPXPARAM_ScreenOutput",0)
   JuMP.set_optimizer(feas["model"],pm_optimizer)
 
-  cut_via_dual_feas(feas,maxmin; io=io)
+  cut_via_dual_feas(feas,maxmin; add_cut=true, io=io)
   resolveMP(maxmin; io=io)
   println(io,"Iteration 0: ")
   println("Iteration 0: ")
@@ -147,11 +184,11 @@ function solveMaxminECP(pm_data,pm_form,pm_optimizer,io=Base.stdout)
   maxmin["cut_str_ref"]=Dict{Int64,Dict{Int64,String}}()
   maxmin["cut_str_ref"][0]=Dict{Int64,String}()
   cut_refs=Dict{Int64,Any}()
-  cut_refs[0]=computeNewConstraintEig(maxmin;io=io)
+  #cut_refs[0]=computeNewConstraintEig(maxmin;io=io)
 
 
   for ii=1:1000
-    cut_via_dual_feas(feas,maxmin; add_cut=false, io=io)
+    cut_via_dual_feas(feas,maxmin; add_cut=true, io=io)
     if feas["opt_val"] > bestLB
       bestLB=feas["opt_val"]
       best_x_soln=copy(maxmin["x_soln"])
@@ -165,7 +202,7 @@ function solveMaxminECP(pm_data,pm_form,pm_optimizer,io=Base.stdout)
     print("\tUB: ",maxmin["UB_Val"]," with status: ",JuMP.termination_status(maxmin["model"])," with x solution: ")
       printX(maxmin["x_soln"])
     println("\tLB: ",feas["opt_val"], " with status: ",JuMP.termination_status(feas["model"]),", best value is: ",bestLB)
-    cut_refs[ii]=computeNewConstraintEig(maxmin;io=io)
+    #cut_refs[ii]=computeNewConstraintEig(maxmin;io=io)
     if maxmin["UB_Val"] - bestLB < 1e-3
 	println("Terminating at iteration $ii since the relaxed solution is feasible.")
 	print("Final attack solution: ")
@@ -325,10 +362,11 @@ println(io,"maxmin status $kk: ",JuMP.termination_status(maxmin["model"]))
       n_eigs = length(E[1])
 println(io,"eigenval_$kk: ", E[1])
       n_el = length(maxmin["psd_con"][kk]["expr"])
-      SG = zeros(n_el)
    if E[1][1] < -1e-6
-     eig_avg = sum(-E[1][mm] for mm in 1:1) #filter(mmm->(E[1][mmm]) < 0, 1:n_eigs))
-     for mm in 1:1 #filter(mmm->(E[1][mmm] < 0), 1:n_eigs)
+     SG = zeros(n_el)
+     eig_avg = sum(-E[1][mm] for mm in filter(mmm->(E[1][mmm]) < 0, 1:n_eigs))
+     for mm in filter(mmm->(E[1][mmm] <= 0), 1:n_eigs)
+#=
         for nn=1:n_el
 	  (ii,jj)=tri_sq_map[nn]
 	  if ii==jj
@@ -337,10 +375,22 @@ println(io,"eigenval_$kk: ", E[1])
 	     SG[nn] -= (E[1][mm]/eig_avg)*(E[2][ii,mm]*E[2][jj,mm] + E[2][jj,mm]*E[2][ii,mm]) 
 	  end
         end
+=#
+        for nn=1:n_el
+	  (ii,jj)=tri_sq_map[nn]
+	  if ii==jj
+	     SG[nn] = E[2][ii,mm]*E[2][jj,mm]  
+	  else
+	     SG[nn] = (E[2][ii,mm]*E[2][jj,mm] + E[2][jj,mm]*E[2][ii,mm]) 
+	  end
+        end
+        cref=@constraint(maxmin["model"], sum(trunc(SG[nn];digits=10)*(PSD_Vec[nn]-PSD0[nn]) for nn=1:n_el) + E[1][mm]   >= 0)
+        n_cuts += 1
+        cut_refs[n_cuts]=cref
      end
-     cref=@constraint(maxmin["model"], sum(trunc(SG[nn];digits=10)*PSD_Vec[nn] for nn=1:n_el)  >= 0)
-     n_cuts += 1
-     cut_refs[n_cuts]=cref
+     #cref=@constraint(maxmin["model"], sum(trunc(SG[nn];digits=10)*PSD_Vec[nn] for nn=1:n_el)  >= 0)
+     #n_cuts += 1
+     #cut_refs[n_cuts]=cref
    end
   end
   println("Eigs: Adding $n_cuts cuts.")
@@ -383,9 +433,9 @@ end
 
 
 testcase = Dict(
-	"file" => "data/case9.m", 
- 	"name" => "case9K3",  	
- 	"attack_budget" => 3,
+	"file" => "data/case30.m", 
+ 	"name" => "case30K4",  	
+ 	"attack_budget" => 4,
  	"inactive_indices" => [],
  	"protected_indices" => []
 	)
@@ -399,6 +449,8 @@ pm_optimizer=with_optimizer(Mosek.Optimizer,MSK_IPAR_LOG=0,MSK_IPAR_NUM_THREADS=
 
 io = open(string(testcase["name"],".out"), "w")
 #io = Base.stdout
-pm_form=SparseSDPWRMPowerModel
+#sdp_relax=[SDPWRMPowerModel, SparseSDPWRMPowerModel]
+#pm_form=SparseSDPWRMPowerModel
+pm_form=SDPWRMPowerModel
 solveMaxminECP(pm_data,pm_form,pm_optimizer,io)
 close(io)
