@@ -23,10 +23,16 @@ nonconvex_pm=[ACPPowerModel, ACRPowerModel, ACTPowerModel]
 not_supported_pm=[IVRPowerModel]
 
 
-function MaximinOPFModel(pm_data, powerform)
-    println("Calling MaximinOPFModel() with powerform: ",powerform)
-    if powerform in conic_supported_pm 
-        minmax_pm = MinimaxOPFModel(pm_data, powerform)
+function MaximinOPFModel(pm_data, pm_form; rm_rsoc=true, rm_therm_line_lim=false)
+    println("Calling MaximinOPFModel() with powerform: ",pm_form)
+    if pm_form in conic_supported_pm 
+        minmax_pm = MinimaxOPFModel(pm_data, pm_form)
+	if rm_rsoc
+	  removeRSOC(minmax_pm)
+	end
+	if pm_form in conic_supported_pm && rm_therm_line_lim
+	  removeThermalLineLimits(minmax_pm)
+	end
 
         #Test Out
         io = open(string(pm_data["name"],".out"), "w")
@@ -50,9 +56,43 @@ function MaximinOPFModel(pm_data, powerform)
         end
 	return maxmin_model
     else
-        println("Model type: ",powerform," is either nonconic and/or nonconvex and thus is not currently supported by function MaximinOPFModel().")
+        println("Model type: ",pm_form," is either nonconic and/or nonconvex and thus is not currently supported by function MaximinOPFModel().")
 	println("WARNING: function MaximinOPFModel() is returning 'nothing'")
 	return nothing
+    end
+end
+
+function removeRSOC(pm)
+    con_types=list_of_constraint_types(pm.model)
+    n_con_types=length(con_types)
+    for cc=1:n_con_types
+        if con_types[cc][2]==MathOptInterface.RotatedSecondOrderCone
+	  ### These constraints are presumably associated with defining the quadratic cost function for the OPF and are usually not needed here.
+	    rsoc_con = all_constraints(pm.model, con_types[cc][1], con_types[cc][2]) 
+	    n_rsoc_con = length(rsoc_con)
+	    for nn=1:n_rsoc_con
+		JuMP.delete(pm.model,rsoc_con[nn])
+	    end
+	end
+    end
+end
+
+function removeThermalLineLimits(pm)
+    con_types=list_of_constraint_types(pm.model)
+    n_con_types=length(con_types)
+    for cc=1:n_con_types
+        if con_types[cc][2]==MathOptInterface.SecondOrderCone
+	    #println("SOC:")
+	    soc_con = all_constraints(pm.model, con_types[cc][1], con_types[cc][2]) 
+	    n_soc_con = length(soc_con)
+	    for nn=1:n_soc_con
+		soc_expr = constraint_object(soc_con[nn]).func 
+		n_vars=length( soc_expr ) 
+		if n_vars == 3  ### This condition identifies the thermal line limits in SOC form
+		  JuMP.delete(pm.model,soc_con[nn])
+		end
+	    end
+	end
     end
 end
 
