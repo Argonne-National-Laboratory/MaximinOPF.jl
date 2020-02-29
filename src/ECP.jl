@@ -28,7 +28,8 @@ end
 function solveMaxminECP(pm_data,pm_form,pm_optimizer,io=Base.stdout)
     #println(io,"Formulating and solving the form ",pm_form, " for problem ",pm_data["name"], " with attack budget K=",pm_data["attacker_budget"],".")
     MAX_N_COLS=100
-    MAX_N_ITER=1000
+    MAX_N_ITER=500
+    using_eigs = false
     time_Start = time_ns()
     feas_pm = MaximinOPF.PF_FeasModel(pm_data, pm_form)
     #println(io,feas_pm.model)
@@ -65,59 +66,84 @@ function solveMaxminECP(pm_data,pm_form,pm_optimizer,io=Base.stdout)
     println(io,maxmin["model"])
     #relax_integrality(maxmin)
 
-    cut_pairs = Dict{Int64,Tuple{Any,Any}}()
-	add_initial_cuts(maxmin,feas,cut_pairs;io=io)
+
+    if using_eigs
+        maxmin["cuts"]=Dict{Int64,Any}()
+	    add_initial_cuts(maxmin;io=io)
+    else
+        cut_pairs = Dict{Int64,Tuple{Any,Any}}()
+	    add_initial_cuts(maxmin,feas,cut_pairs;io=io)
+    end
     
 
-    cut_via_dual_feas(feas,maxmin,cut_pairs; add_cut=true, io=io)
-    resolveMP(maxmin,feas; io=io)
+    if !using_eigs
+        cut_via_dual_feas(feas,maxmin,cut_pairs; add_cut=true, io=io)
+    end
+    resolveMP(maxmin; io=io)
     println(io,"Iteration 0: ")
     println("Iteration 0: ")
     print("\tUB: ",maxmin["UB_Val"]," with status: ",JuMP.termination_status(maxmin["model"])," with x solution: ")
     printX(maxmin["x_soln"])
-    println("\tLB: ",feas["opt_val"], " with status: ",JuMP.termination_status(feas["model"]),", best value is: ",bestLB)
-    #eval_cut_con(maxmin; io=io)
-
-    #computeNewConstraintEig(maxmin;io=io)
-
-
-  for ii=1:MAX_N_ITER
-    cut_via_dual_feas(feas,maxmin,cut_pairs; add_cut=true, io=io)
-    if feas["opt_val"] > bestLB
-      bestLB=feas["opt_val"]
-      best_x_soln=copy(maxmin["x_soln"])
-      println(io,"Updating incumbent solution: ")
-      printX(best_x_soln,io)
-      println(io,"The incumbent value is now: ",bestLB,".")
-      println("Updating incumbent solution: ")
-      printX(best_x_soln)
-      println("The incumbent value is now: ",bestLB,".")
-    end
-    oldUB = maxmin["UB_Val"]
-    resolveMP(maxmin,feas; io=io)
-    println(io,"Iteration $ii: ")
-    println("Iteration $ii: ")
-    print("\tUB: ",maxmin["UB_Val"]," with status: ",JuMP.termination_status(maxmin["model"])," with x solution: ")
-      printX(maxmin["x_soln"])
-    println("\tLB: ",feas["opt_val"], " with status: ",JuMP.termination_status(feas["model"]),", best value is: ",bestLB)
-    #cut_refs[ii]=computeNewConstraintEig(maxmin;io=io)
-    if maxmin["UB_Val"] - bestLB < 1e-3
-	    println("Terminating at iteration $ii since the relaxed solution is feasible.")
-	    print("Final attack solution: ")
-	    printX(best_x_soln)
-	    println("With value: ", bestLB)
-	    break
-    end
-    if oldUB + 1e-3 < maxmin["UB_Val"]
-	    println("FLAGGING: oldUB ",oldUB, " < ", maxmin["UB_Val"],", somethings wrong, terminating.")
-	    break
+    if !using_eigs
+        println("\tLB: ",feas["opt_val"], " with status: ",JuMP.termination_status(feas["model"]),", best value is: ",bestLB)
     end
 
-  end
-    cut_pair_keys = sort(collect(keys(cut_pairs)))
-    for cc in cut_pair_keys
-        println(io,"Cut $cc: ",cut_pairs[cc][1])
+    new_cut = true
+    if using_eigs
+        new_cut = computeNewConstraintEig(maxmin;io=io)
     end
+
+
+    for ii=1:MAX_N_ITER
+        if !new_cut
+	        println("Terminating at iteration $ii since the relaxed solution is feasible.")
+            break
+        end
+        if !using_eigs
+            cut_via_dual_feas(feas,maxmin,cut_pairs; add_cut=true, io=io)
+            if feas["opt_val"] > bestLB
+                bestLB=feas["opt_val"]
+                best_x_soln=copy(maxmin["x_soln"])
+                println(io,"Updating incumbent solution: ")
+                printX(best_x_soln,io)
+                println(io,"The incumbent value is now: ",bestLB,".")
+                println("Updating incumbent solution: ")
+                printX(best_x_soln)
+                println("The incumbent value is now: ",bestLB,".")
+            end
+        end
+        oldUB = maxmin["UB_Val"]
+        resolveMP(maxmin; io=io)
+        println(io,"Iteration $ii: ")
+        println("Iteration $ii: ")
+        print("\tUB: ",maxmin["UB_Val"]," with status: ",JuMP.termination_status(maxmin["model"])," with x solution: ")
+        printX(maxmin["x_soln"])
+        if !using_eigs
+            println("\tLB: ",feas["opt_val"], " with status: ",JuMP.termination_status(feas["model"]),", best value is: ",bestLB)
+        end
+        if using_eigs
+            new_cut = computeNewConstraintEig(maxmin;io=io)
+        end
+        if maxmin["UB_Val"] - bestLB < 1e-3
+	        println("Terminating at iteration $ii since the relaxed solution is feasible.")
+	        print("Final attack solution: ")
+	        printX(best_x_soln)
+	        println("With value: ", bestLB)
+	        break
+        end
+        if oldUB + 1e-3 < maxmin["UB_Val"]
+	        println("FLAGGING: oldUB ",oldUB, " < ", maxmin["UB_Val"],", somethings wrong, terminating.")
+	        break
+        end
+    end
+    if !using_eigs
+        cut_pair_keys = sort(collect(keys(cut_pairs)))
+        for cc in cut_pair_keys
+            println(io,"Cut $cc: ",cut_pairs[cc][1])
+        end
+    end
+    time_End = (time_ns()-time_Start)/1e9
+    println("Finishing after ", time_End," seconds.")
 end
 
 function gatherPSDConInfo(model_dict)
@@ -153,16 +179,18 @@ function add_initial_cuts(maxmin,feas,cut_pairs; io=Base.stdout)
         n_els = length(psd_expr[1])
         @assert n_els == length(psd_expr[2])
 	    jj,ii=1,1
+        SG = Array{Float64,1}(undef,n_els)
         for mm in 1:n_els
             if ii==jj
                 diag_psd_vars[jj] = (psd_expr[1][mm],psd_expr[2][mm])
+                SG[mm] = 1
                 JuMP.@constraint(maxmin["model"],psd_expr[1][mm] >= 0)
                 JuMP.@constraint(feas["model"],psd_expr[2][mm] >= 0)
-                JuMP.@constraint(maxmin["model"],psd_expr[1][mm] <= 1e3)
-                JuMP.@constraint(feas["model"],psd_expr[2][mm] <= 1e3)
                 jj += 1
                 ii = 1
             else
+                SG[mm] = 2
+#=
                 cut_pairs[ length(cut_pairs) ] = (
                     JuMP.@constraint(maxmin["model"], diag_psd_vars[ii][1] + 2*psd_expr[1][mm] + psd_expr[1][mm + jj-ii] >= 0),
                     JuMP.@constraint(feas["model"], diag_psd_vars[ii][2] + 2*psd_expr[2][mm] + psd_expr[2][mm + jj-ii] >= 0)
@@ -171,34 +199,42 @@ function add_initial_cuts(maxmin,feas,cut_pairs; io=Base.stdout)
                     JuMP.@constraint(maxmin["model"], diag_psd_vars[ii][1] - 2*psd_expr[1][mm] + psd_expr[1][mm + jj-ii] >= 0),
                     JuMP.@constraint(feas["model"], diag_psd_vars[ii][2] - 2*psd_expr[2][mm] + psd_expr[2][mm + jj-ii] >= 0)
                 )
+=#
                 ii += 1
             end
         end
+        JuMP.@constraint(maxmin["model"], sum( diag_psd_vars[ii][1] for ii in keys(diag_psd_vars)) <= 1e4)
+        JuMP.@constraint(maxmin["model"], sum( SG[mm]*psd_expr[1][mm] for mm in 1:n_els) >= 0)
+        JuMP.@constraint(feas["model"], sum( diag_psd_vars[ii][2] for ii in keys(diag_psd_vars)) <= 1e4)
+        JuMP.@constraint(feas["model"], sum( SG[mm]*psd_expr[2][mm] for mm in 1:n_els) >= 0)
     end
     #delete_inactive_cuts(maxmin,feas,cut_pairs; io=io)
 end
 
 function add_initial_cuts(model_dict; io=Base.stdout)
-    model_dict["cuts"]=Dict{Int64,Any}()
     n_expr = length(model_dict["psd_con"])
     for nn=1:n_expr
 	    diag_psd_vars = Dict{Int64,Any}()
         psd_expr=model_dict["psd_con"][nn]["expr"]
         n_els = length(psd_expr)
 	    jj,ii=1,1
+        SG = Array{Float64,1}(undef,n_els)
         for mm in 1:n_els
             if ii==jj
+                SG[mm] = 1
                 diag_psd_vars[jj] = psd_expr[mm]
                 model_dict["cuts"][ length(model_dict["cuts"]) ]=JuMP.@constraint(model_dict["model"],psd_expr[mm] >= 0)
-                model_dict["cuts"][ length(model_dict["cuts"]) ]=JuMP.@constraint(model_dict["model"],psd_expr[mm] <= 1e3)
                 jj += 1
                 ii = 1
             else
-                model_dict["cuts"][ length(model_dict["cuts"]) ]=JuMP.@constraint(model_dict["model"], diag_psd_vars[ii] + 2*psd_expr[mm] + psd_expr[mm + jj-ii] >= 0)
-                model_dict["cuts"][ length(model_dict["cuts"]) ]=JuMP.@constraint(model_dict["model"], diag_psd_vars[ii] - 2*psd_expr[mm] + psd_expr[mm + jj-ii] >= 0)
+                SG[mm] = 2
+                #model_dict["cuts"][ length(model_dict["cuts"]) ]=JuMP.@constraint(model_dict["model"], diag_psd_vars[ii] + 2*psd_expr[mm] + psd_expr[mm + jj-ii] >= 0)
+                #model_dict["cuts"][ length(model_dict["cuts"]) ]=JuMP.@constraint(model_dict["model"], diag_psd_vars[ii] - 2*psd_expr[mm] + psd_expr[mm + jj-ii] >= 0)
                 ii += 1
             end
         end
+        JuMP.@constraint(model_dict["model"], sum( diag_psd_vars[ii] for ii in keys(diag_psd_vars)) <= 1e4)
+        JuMP.@constraint(model_dict["model"], sum( SG[mm]*psd_expr[mm] for mm in 1:n_els) >= 0)
     end
 end
 
@@ -384,74 +420,65 @@ function triFrobIP(tri_mat1::Array{Float64,1},tri_mat2::Array{Float64,1})
 end
 ###Input is symmetric matrix in triangular form
 function computeEigenDecomp(tri_mat::Array{Float64,1})
-   n_el=length(tri_mat)
-   ncols=(Int)((-1+sqrt(1+8*n_el))/2)
-   psd_mat = zeros(ncols,ncols)
-   nn=1
-   sq_tri_map=Dict{Tuple{Int,Int},Int}()
-   tri_sq_map=Dict{Int,Tuple{Int,Int}}()
-   for jj=1:ncols
-      for ii=1:jj
-	 tri_sq_map[nn]=(ii,jj)
-	 sq_tri_map[(ii,jj)]=nn
-	 psd_mat[ii,jj] = tri_mat[nn] 
-	 psd_mat[jj,ii] = psd_mat[ii,jj]
-	 nn += 1
-      end
-   end
-   E = eigs(psd_mat, which=:SR, nev=(ncols-1))
-   return E, sq_tri_map, tri_sq_map
+    n_el=length(tri_mat)
+    ncols=(Int)((-1+sqrt(1+8*n_el))/2)
+    @assert 2*n_el == (ncols+1)*ncols
+    psd_mat = zeros(ncols,ncols)
+    ii,jj=1,1
+    for nn=1:n_el
+        if ii==jj
+	        psd_mat[ii,jj] = tri_mat[nn] 
+            jj += 1; ii = 1
+        else
+	        psd_mat[ii,jj] = tri_mat[nn] 
+	        psd_mat[jj,ii] = tri_mat[nn] 
+            ii += 1
+        end
+    end
+    E = eigs(psd_mat, which=:SR, nev=(ncols-1))
+    return E
 end
 
 function computeNewConstraintEig(maxmin;io=Base.stdout)
-  n_cuts = 0
-  cut_refs = Dict{Int64,Any}()
-  for kk in keys(maxmin["psd_con"])
-println(io,"maxmin status $kk: ",JuMP.termination_status(maxmin["model"]))
-      PSD_Vec = maxmin["psd_con"][kk]["expr"]
-      PSD0 = maxmin["psd_con"][kk]["expr_val"]
-#println(io,"PSD0[$kk}: ",PSD0)
-      E, sq_tri_map, tri_sq_map = computeEigenDecomp(PSD0)
-      n_eigs = length(E[1])
-println(io,"eigenval_$kk: ", E[1])
-      n_el = length(maxmin["psd_con"][kk]["expr"])
-   if E[1][1] < -1e-6
-     SG = zeros(n_el)
-     eig_avg = sum(-E[1][mm] for mm in filter(mmm->(E[1][mmm]) < 0, 1:n_eigs))
-     for mm in filter(mmm->(E[1][mmm] <= 0), 1:n_eigs)
-#=
-        for nn=1:n_el
-	  (ii,jj)=tri_sq_map[nn]
-	  if ii==jj
-	     SG[nn] -= (E[1][mm]/eig_avg)*E[2][ii,mm]*E[2][jj,mm]  
-	  else
-	     SG[nn] -= (E[1][mm]/eig_avg)*(E[2][ii,mm]*E[2][jj,mm] + E[2][jj,mm]*E[2][ii,mm]) 
-	  end
+    new_cut = false
+    for kk in keys(maxmin["psd_con"])
+        println(io,"maxmin status $kk: ",JuMP.termination_status(maxmin["model"]))
+        PSD_Vec = maxmin["psd_con"][kk]["expr"]
+        PSD0 = maxmin["psd_con"][kk]["expr_val"]
+        #println(io,"PSD0[$kk}: ",PSD0)
+        E = computeEigenDecomp(PSD0)
+        n_eigs = length(E[1])
+        println(io,"eigenval_$kk: ", E[1])
+        n_el = length(maxmin["psd_con"][kk]["expr"])
+        if E[1][1] < -1e-6
+            new_cut = true
+            SG = zeros(n_el)
+            #neg_eig_sum = sum(E[1][mm] for mm in filter(mmm->(E[1][mmm]) < 0, 1:n_eigs))
+            for mm in filter(mmm->(E[1][mmm] <= 0), 1:n_eigs)
+                #SG[1:n_el] .= 0
+                ii,jj=1,1
+                for nn=1:n_el
+	                if ii==jj
+	                    SG[nn] = E[2][ii,mm]*E[2][jj,mm]  
+                        jj += 1
+                        ii = 1
+	                else
+	                    SG[nn] = (E[2][ii,mm]*E[2][jj,mm] + E[2][jj,mm]*E[2][ii,mm]) 
+                        ii += 1
+	                end
+                end
+                maxmin["cuts"][ length(maxmin["cuts"]) ] = @constraint(maxmin["model"], sum(SG[nn]*PSD_Vec[nn] for nn=1:n_el) >= 0)
+            end
+            #maxmin["cuts"][ length(maxmin["cuts"]) ] = @constraint(maxmin["model"], sum(SG[nn]*(PSD_Vec[nn]-PSD0[nn]) for nn=1:n_el) + neg_eig_sum   >= 0)
+            #maxmin["cuts"][ length(maxmin["cuts"]) ] = @constraint(maxmin["model"], sum(SG[nn]*PSD_Vec[nn] for nn=1:n_el) >= 0)
         end
-=#
-        for nn=1:n_el
-	  (ii,jj)=tri_sq_map[nn]
-	  if ii==jj
-	     SG[nn] = E[2][ii,mm]*E[2][jj,mm]  
-	  else
-	     SG[nn] = (E[2][ii,mm]*E[2][jj,mm] + E[2][jj,mm]*E[2][ii,mm]) 
-	  end
-        end
-        cref=@constraint(maxmin["model"], sum(trunc(SG[nn];digits=10)*(PSD_Vec[nn]-PSD0[nn]) for nn=1:n_el) + E[1][mm]   >= 0)
-        n_cuts += 1
-        cut_refs[n_cuts]=cref
-     end
-     #cref=@constraint(maxmin["model"], sum(trunc(SG[nn];digits=10)*PSD_Vec[nn] for nn=1:n_el)  >= 0)
-     #n_cuts += 1
-     #cut_refs[n_cuts]=cref
-   end
-  end
-  println("Eigs: Adding $n_cuts cuts.")
-  return cut_refs
+    end
+    println(io,"End of computeNewConstraintEig() call.")
+    return new_cut
 end
 
 
-function resolveMP(maxmin,feas;io=Base.stdout)
+function resolveMP(maxmin;io=Base.stdout)
   JuMP.optimize!(maxmin["model"])
   for kk in keys(maxmin["psd_con"])
     maxmin["psd_con"][kk]["expr_val"][:] = JuMP.value.(maxmin["psd_con"][kk]["expr"])[:]
@@ -486,9 +513,9 @@ end
 
 
 testcase = Dict(
-	"file" => "data/case30.m", 
- 	"name" => "case30K4",  	
- 	"attack_budget" => 4,
+	"file" => "data/case9.m", 
+ 	"name" => "case9K3",  	
+ 	"attack_budget" => 3,
  	"inactive_indices" => [],
  	"protected_indices" => []
 	)
