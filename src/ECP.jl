@@ -7,6 +7,7 @@ using MosekTools
 using CPLEX
 #using SCIP
 using LinearAlgebra
+using SparseArrays
 using Arpack
 using Printf
 PowerModels.silence()
@@ -28,8 +29,8 @@ end
 function solveMaxminECP(pm_data,pm_form,pm_optimizer,io=Base.stdout)
     #println(io,"Formulating and solving the form ",pm_form, " for problem ",pm_data["name"], " with attack budget K=",pm_data["attacker_budget"],".")
     MAX_N_COLS=100
-    MAX_N_ITER=500
-    using_eigs = false
+    MAX_N_ITER=40
+    using_eigs = true
     time_Start = time_ns()
     feas_pm = MaximinOPF.PF_FeasModel(pm_data, pm_form)
     #println(io,feas_pm.model)
@@ -38,6 +39,7 @@ function solveMaxminECP(pm_data,pm_form,pm_optimizer,io=Base.stdout)
     maxmin["branch_ids"] = pm_data["undecided_branches"]
     println(maxmin["branch_ids"])
     maxmin["x_soln"]=Dict{Int64,Float64}()
+    maxmin["x_soln_01"]=spzeros(Int64,maximum(maxmin["branch_ids"]))
     for l in maxmin["branch_ids"]
         maxmin["x_soln"][l] = 0
     end
@@ -48,7 +50,7 @@ function solveMaxminECP(pm_data,pm_form,pm_optimizer,io=Base.stdout)
     maxmin["model"] = convertSOCtoPSD(base_maxmin)
     JuMP.set_optimizer(maxmin["model"],with_optimizer(CPLEX.Optimizer))
     JuMP.set_parameter(maxmin["model"],"CPXPARAM_ScreenOutput",0)
-    JuMP.@constraint(maxmin["model"],objective_function(maxmin["model"], AffExpr) <= 1e4)
+    #JuMP.@constraint(maxmin["model"],objective_function(maxmin["model"], AffExpr) <= 1e4)
     gatherPSDConInfo(maxmin)
 
 
@@ -63,12 +65,13 @@ function solveMaxminECP(pm_data,pm_form,pm_optimizer,io=Base.stdout)
     relax_integrality(feas)
 
     removePSD_Constraints(maxmin) 
+    lb_ids,ub_ids=add_artificial_var_bds(maxmin["model"]; bd_mag=1e1, io=io)
     println(io,maxmin["model"])
     #relax_integrality(maxmin)
 
 
     if using_eigs
-        maxmin["cuts"]=Dict{Int64,Any}()
+        maxmin["cuts"]=Dict{SparseVector{Int64,Int64},Dict{Int64,Any}}()
 	    add_initial_cuts(maxmin;io=io)
     else
         cut_pairs = Dict{Int64,Tuple{Any,Any}}()
@@ -112,6 +115,8 @@ function solveMaxminECP(pm_data,pm_form,pm_optimizer,io=Base.stdout)
                 println("The incumbent value is now: ",bestLB,".")
             end
         end
+        #artificial_lb_maxmin_vars = JuMP.all_variables(maxmin["model"])[lb_ids]
+        #artificial_ub_maxmin_vars = JuMP.all_variables(maxmin["model"])[ub_ids]
         oldUB = maxmin["UB_Val"]
         resolveMP(maxmin; io=io)
         println(io,"Iteration $ii: ")
@@ -132,8 +137,8 @@ function solveMaxminECP(pm_data,pm_form,pm_optimizer,io=Base.stdout)
 	        break
         end
         if oldUB + 1e-3 < maxmin["UB_Val"]
-	        println("FLAGGING: oldUB ",oldUB, " < ", maxmin["UB_Val"],", somethings wrong, terminating.")
-	        break
+	        println("FLAGGING: oldUB ",oldUB, " < ", maxmin["UB_Val"],", somethings might be wrong.")
+	        #break
         end
     end
     if !using_eigs
@@ -144,6 +149,35 @@ function solveMaxminECP(pm_data,pm_form,pm_optimizer,io=Base.stdout)
     end
     time_End = (time_ns()-time_Start)/1e9
     println("Finishing after ", time_End," seconds.")
+    for kk in keys(maxmin["cuts"])
+        println(io,"For Bin ",kk,":")
+        for ii in keys(maxmin["cuts"][kk])
+            println(io,"\tSub-Bin ",ii, " has ",length(maxmin["cuts"][kk][ii])," cuts.")
+        end
+    end
+end
+
+function add_artificial_var_bds(model::JuMP.Model; bd_mag=1e6, io=Base.stdout)
+    all_vars = JuMP.all_variables(model)
+    n_vars = length(all_vars)
+    var_ids = collect(1:n_vars)
+    artificial_lb_var_ids=[]
+    artificial_ub_var_ids=[]
+    for vv in var_ids
+        if !has_lower_bound(all_vars[vv])
+            set_lower_bound(all_vars[vv], -bd_mag)
+            #@constraint(model, all_vars[vv] >= -bd_mag)
+            push!(artificial_lb_var_ids,vv)
+            println(io,"Artificial LB of ",-bd_mag," for variable ",all_vars[vv])
+        end
+        if !has_upper_bound(all_vars[vv])
+            set_upper_bound(all_vars[vv], bd_mag)
+            #@constraint(model, all_vars[vv] <= bd_mag)
+            push!(artificial_ub_var_ids,vv)
+            println(io,"Artificial UB of ", bd_mag," for variable ",all_vars[vv])
+        end
+    end
+    return artificial_lb_var_ids, artificial_ub_var_ids
 end
 
 function gatherPSDConInfo(model_dict)
@@ -174,39 +208,39 @@ function add_initial_cuts(maxmin,feas,cut_pairs; io=Base.stdout)
     n_expr = length(maxmin["psd_con"])
     @assert n_expr == length(feas["psd_con"])
     for nn=1:n_expr
-	    diag_psd_vars = Dict{Int64,Tuple{Any,Any}}()
         psd_expr=(maxmin["psd_con"][nn]["expr"],feas["psd_con"][nn]["expr"])
         n_els = length(psd_expr[1])
         @assert n_els == length(psd_expr[2])
 	    jj,ii=1,1
         SG = Array{Float64,1}(undef,n_els)
         for mm in 1:n_els
+            if typeof(psd_expr[1][mm])==VariableRef
+                if JuMP.has_upper_bound(psd_expr[1][mm])
+                    JuMP.delete_upper_bound( psd_expr[1][mm] ) ### aggregated UB constraint added later in function
+                end
+            end
             if ii==jj
-                diag_psd_vars[jj] = (psd_expr[1][mm],psd_expr[2][mm])
                 SG[mm] = 1
-                JuMP.@constraint(maxmin["model"],psd_expr[1][mm] >= 0)
+                if typeof(psd_expr[1][mm])==VariableRef
+                    JuMP.set_lower_bound(psd_expr[1][mm], 0)
+                else
+                    JuMP.@constraint(maxmin["model"],psd_expr[1][mm] >= 0)
+                end
                 JuMP.@constraint(feas["model"],psd_expr[2][mm] >= 0)
                 jj += 1
                 ii = 1
             else
                 SG[mm] = 2
-#=
-                cut_pairs[ length(cut_pairs) ] = (
-                    JuMP.@constraint(maxmin["model"], diag_psd_vars[ii][1] + 2*psd_expr[1][mm] + psd_expr[1][mm + jj-ii] >= 0),
-                    JuMP.@constraint(feas["model"], diag_psd_vars[ii][2] + 2*psd_expr[2][mm] + psd_expr[2][mm + jj-ii] >= 0)
-                )
-                cut_pairs[ length(cut_pairs) ] = (
-                    JuMP.@constraint(maxmin["model"], diag_psd_vars[ii][1] - 2*psd_expr[1][mm] + psd_expr[1][mm + jj-ii] >= 0),
-                    JuMP.@constraint(feas["model"], diag_psd_vars[ii][2] - 2*psd_expr[2][mm] + psd_expr[2][mm + jj-ii] >= 0)
-                )
-=#
+                if typeof(psd_expr[1][mm])==VariableRef
+                    JuMP.set_lower_bound( psd_expr[1][mm], -1e3 )
+                else
+                    JuMP.@constraint(maxmin["model"],psd_expr[1][mm] >= -1e3)
+                end
                 ii += 1
             end
         end
-        JuMP.@constraint(maxmin["model"], sum( diag_psd_vars[ii][1] for ii in keys(diag_psd_vars)) <= 1e4)
-        JuMP.@constraint(maxmin["model"], sum( SG[mm]*psd_expr[1][mm] for mm in 1:n_els) >= 0)
-        JuMP.@constraint(feas["model"], sum( diag_psd_vars[ii][2] for ii in keys(diag_psd_vars)) <= 1e4)
-        JuMP.@constraint(feas["model"], sum( SG[mm]*psd_expr[2][mm] for mm in 1:n_els) >= 0)
+        JuMP.@constraint(maxmin["model"], sum( SG[mm]*psd_expr[1][mm] for mm in 1:n_els) <= 1e3)
+        JuMP.@constraint(feas["model"], sum( SG[mm]*psd_expr[2][mm] for mm in 1:n_els) <= 1e3)
     end
     #delete_inactive_cuts(maxmin,feas,cut_pairs; io=io)
 end
@@ -214,27 +248,36 @@ end
 function add_initial_cuts(model_dict; io=Base.stdout)
     n_expr = length(model_dict["psd_con"])
     for nn=1:n_expr
-	    diag_psd_vars = Dict{Int64,Any}()
         psd_expr=model_dict["psd_con"][nn]["expr"]
         n_els = length(psd_expr)
 	    jj,ii=1,1
         SG = Array{Float64,1}(undef,n_els)
         for mm in 1:n_els
+            if typeof(psd_expr[mm])==VariableRef
+                if JuMP.has_upper_bound(psd_expr[mm])
+                    JuMP.delete_upper_bound( psd_expr[mm] ) ### aggregated UB constraint added later in function
+                end
+            end
             if ii==jj
                 SG[mm] = 1
-                diag_psd_vars[jj] = psd_expr[mm]
-                model_dict["cuts"][ length(model_dict["cuts"]) ]=JuMP.@constraint(model_dict["model"],psd_expr[mm] >= 0)
+                if typeof(psd_expr[mm])==VariableRef
+                    JuMP.set_lower_bound(psd_expr[mm], 0)
+                else
+                    JuMP.@constraint(model_dict["model"],psd_expr[mm] >= 0)
+                end
                 jj += 1
                 ii = 1
             else
                 SG[mm] = 2
-                #model_dict["cuts"][ length(model_dict["cuts"]) ]=JuMP.@constraint(model_dict["model"], diag_psd_vars[ii] + 2*psd_expr[mm] + psd_expr[mm + jj-ii] >= 0)
-                #model_dict["cuts"][ length(model_dict["cuts"]) ]=JuMP.@constraint(model_dict["model"], diag_psd_vars[ii] - 2*psd_expr[mm] + psd_expr[mm + jj-ii] >= 0)
+                if typeof(psd_expr[mm])==VariableRef
+                    JuMP.set_lower_bound( psd_expr[mm], -1e3 )
+                else
+                    JuMP.@constraint(model_dict["model"],psd_expr[mm] >= -1e3)
+                end
                 ii += 1
             end
         end
-        JuMP.@constraint(model_dict["model"], sum( diag_psd_vars[ii] for ii in keys(diag_psd_vars)) <= 1e4)
-        JuMP.@constraint(model_dict["model"], sum( SG[mm]*psd_expr[mm] for mm in 1:n_els) >= 0)
+        JuMP.@constraint(model_dict["model"], sum( SG[mm]*psd_expr[mm] for mm in 1:n_els) <= 1e3)
     end
 end
 
@@ -335,6 +378,7 @@ function cut_via_dual_feas(feas,maxmin,cut_pairs; add_cut=true, fix_x=true, io=B
     end
 end
 
+#=
 function eval_cut_con(model_dict; io=Base.stdout)
   println(io,"Evaluating cut values: ")
   for cc in keys(model_dict["cuts"])
@@ -381,7 +425,9 @@ function delete_inactive_cuts(maxmin,feas,cut_pairs; io=Base.stdout)
     enforce_integrality(maxmin)
     return del_ids
 end
+=#
 
+#=
 function delete_inactive_cuts(model_dict,del_ids=[]; io=Base.stdout)
     if length(del_ids)==0
         del_ids = eval_cut_dual(model_dict; io=io)
@@ -400,6 +446,7 @@ function delete_inactive_cuts(model_dict,del_ids=[]; io=Base.stdout)
     end
     return del_ids
 end
+=#
 
 ###Inputs are symmetric matrices in triangular form
 function triFrobIP(tri_mat1::Array{Float64,1},tri_mat2::Array{Float64,1})
@@ -441,7 +488,15 @@ end
 
 function computeNewConstraintEig(maxmin;io=Base.stdout)
     new_cut = false
+    
+    if !haskey(maxmin["cuts"],maxmin["x_soln_01"])
+        maxmin["cuts"][ maxmin["x_soln_01"] ]=Dict{Int64,Any}()
+    end
+    cut_bin = maxmin["cuts"][ maxmin["x_soln_01"] ]
     for kk in keys(maxmin["psd_con"])
+        if !haskey(cut_bin,kk)
+            cut_bin[kk]=[]
+        end
         println(io,"maxmin status $kk: ",JuMP.termination_status(maxmin["model"]))
         PSD_Vec = maxmin["psd_con"][kk]["expr"]
         PSD0 = maxmin["psd_con"][kk]["expr_val"]
@@ -450,11 +505,11 @@ function computeNewConstraintEig(maxmin;io=Base.stdout)
         n_eigs = length(E[1])
         println(io,"eigenval_$kk: ", E[1])
         n_el = length(maxmin["psd_con"][kk]["expr"])
+        SG = zeros(n_el)
         if E[1][1] < -1e-6
             new_cut = true
-            SG = zeros(n_el)
             #neg_eig_sum = sum(E[1][mm] for mm in filter(mmm->(E[1][mmm]) < 0, 1:n_eigs))
-            for mm in filter(mmm->(E[1][mmm] <= 0), 1:n_eigs)
+            for mm in 1:1 ###filter(mmm->(E[1][mmm] < 0), 1:n_eigs)
                 #SG[1:n_el] .= 0
                 ii,jj=1,1
                 for nn=1:n_el
@@ -467,7 +522,7 @@ function computeNewConstraintEig(maxmin;io=Base.stdout)
                         ii += 1
 	                end
                 end
-                maxmin["cuts"][ length(maxmin["cuts"]) ] = @constraint(maxmin["model"], sum(SG[nn]*PSD_Vec[nn] for nn=1:n_el) >= 0)
+                push!( cut_bin[kk], @constraint(maxmin["model"], sum(SG[nn]*PSD_Vec[nn] for nn=1:n_el) >= 0))
             end
             #maxmin["cuts"][ length(maxmin["cuts"]) ] = @constraint(maxmin["model"], sum(SG[nn]*(PSD_Vec[nn]-PSD0[nn]) for nn=1:n_el) + neg_eig_sum   >= 0)
             #maxmin["cuts"][ length(maxmin["cuts"]) ] = @constraint(maxmin["model"], sum(SG[nn]*PSD_Vec[nn] for nn=1:n_el) >= 0)
@@ -484,15 +539,18 @@ function resolveMP(maxmin;io=Base.stdout)
     maxmin["psd_con"][kk]["expr_val"][:] = JuMP.value.(maxmin["psd_con"][kk]["expr"])[:]
   end
   maxmin["UB_Val"]=JuMP.objective_value(maxmin["model"])
-  for l in keys(maxmin["x_soln"])
+  maxmin["x_soln_01"]=spzeros(Int64,maximum(maxmin["branch_ids"]))
+  maxmin["x_soln"]=Dict{Int64,Float64}()
+  for l in maxmin["branch_ids"]
     x_var = variable_by_name(maxmin["model"],"x[$l]_1")
     x_val = JuMP.value(x_var)
     if x_val > 1.0-1.0e-8
-	x_val = 1
+	    x_val = 1
+        maxmin["x_soln_01"][l] = 1
     elseif x_val < 1.0e-8
-	x_val = 0
+	    x_val = 0
     end
-    maxmin["x_soln"][l]= x_val
+    maxmin["x_soln"][l] = x_val
   end
 end
 
@@ -513,9 +571,9 @@ end
 
 
 testcase = Dict(
-	"file" => "data/case9.m", 
- 	"name" => "case9K3",  	
- 	"attack_budget" => 3,
+	"file" => "data/case30.m", 
+ 	"name" => "case30K4",  	
+ 	"attack_budget" => 4,
  	"inactive_indices" => [],
  	"protected_indices" => []
 	)
