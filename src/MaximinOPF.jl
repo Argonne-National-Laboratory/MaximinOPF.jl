@@ -13,14 +13,14 @@ function MaximinOPFModel(pm_data, powerform)
     m = MinimaxOPFModel(pm_data, powerform)
 
     #Test Out
-    io = open(string(pm_data["name"],".out"), "w")
-    println(io,"name: ", pm_data["name"])
-    println(io,"attacker_budget: ", pm_data["attacker_budget"])
-    println(io,"inactive_branches: ", pm_data["inactive_branches"])
-    println(io,"protected_branches: ", pm_data["protected_branches"])
-    println(io, "Model:")
-    println(io, m.model)
-    close(io)
+    # io = open(string(pm_data["name"],".out"), "w")
+    # println(io,"name: ", pm_data["name"])
+    # println(io,"attacker_budget: ", pm_data["attacker_budget"])
+    # println(io,"inactive_branches: ", pm_data["inactive_branches"])
+    # println(io,"protected_branches: ", pm_data["protected_branches"])
+    # println(io, "Model:")
+    # println(io, m.model)
+    # close(io)
 
     if powerform == ACRPowerModel
         println("ACRPowerModel is returned only MinMaxModel")
@@ -152,6 +152,16 @@ function DualizeMinmaxModel(minmax_model_pm::AbstractPowerModel)
     return dualized_minmax_model
 end
 
+function SOCtoPSD(model)
+    #BRIDGE SOC CONSTRAINTS
+    model_psd_moi = MOI.Utilities.Model{Float64}()
+    bridged_model = MOI.Bridges.Constraint.SOCtoPSD{Float64}(model_psd_moi)
+    MOI.copy_to(bridged_model,backend(model))
+    model_psd = JuMP.Model()
+    MOI.copy_to(model_psd,model_psd_moi)
+    #JuMP.write_to_file( model_psd, string(fn_base,"_scip",".cbf"), format = MOI.FileFormats.FORMAT_CBF)
+    return model_psd
+end
 
 function write_to_cbf(model,fn_base::String)
     JuMP.write_to_file( model, string(fn_base,".cbf"), format = MOI.FileFormats.FORMAT_CBF)
