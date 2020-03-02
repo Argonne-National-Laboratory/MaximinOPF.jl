@@ -1,0 +1,13 @@
+FLAGS=
+FNAME=PowerModelsPres
+pdflatex --main_memory=10000000 ${FNAME}.tex
+bibtex --main_memory=10000000 ${FNAME}.aux
+pdflatex --main_memory=10000000 ${FNAME}.tex
+pdflatex --main_memory=10000000 ${FNAME}.tex
+
+rm *.aux
+rm *.bbl
+rm *.blg
+#rm *.log
+rm *.out
+rm *.thm

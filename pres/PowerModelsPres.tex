@@ -1,0 +1,685 @@
+\documentclass[xcolor=dvipsnames]{beamer}
+\usepackage{etex}
+%\usetheme[background=light]{metropolis}           % Use metropolis theme
+
+\usepackage{algorithm, algorithmicx}
+\usepackage{algpseudocode} %can use [noned] for a python-like pseudo-code.
+\usepackage{amsmath,amssymb}
+\usepackage{amsfonts}
+%\usepackage{graphics,graphicx}
+\usepackage{booktabs}	 
+\usepackage{multirow}
+\usepackage{float}
+\usepackage{caption, subcaption}
+\usepackage{lineno}
+\usepackage{tikz}
+\usepackage{pgfplots}
+\usepackage{comment}
+%\usepackage{pgfplots,pgfplotstable}
+
+\DeclareMathOperator*{\argmin}{argmin}
+\DeclareMathOperator*{\argmax}{argmax}
+
+\newcommand{\braces}[1]{\left\{ #1 \right \}}
+\newcommand{\brackets}[1]{\left[ #1 \right]}
+\newcommand{\norm}[1]{\left \| #1 \right \|}
+\newcommand{\conv}{\text{conv}}
+
+\newcommand{\LFlows}{\mathcal{F}}
+\newcommand{\auxSlk}{a}
+\newcommand{\sg}{\sigma}
+\newcommand{\cc}{\alpha}
+\newcommand{\CCC}{A}
+\newcommand{\vv}{v}
+\newcommand{\vR}{\vv^{R}}
+\newcommand{\vI}{\vv^{I}}
+%\newcommand{\vv0}{\overline{v}}
+\newcommand{\vvv}{\overline{v}}
+\newcommand{\vmin}{v^{min}}
+\newcommand{\vmax}{v^{max}}
+\newcommand{\p}[1]{p^{#1}}
+\newcommand{\pbus}{p^N}
+\newcommand{\qbus}{q^N}
+\newcommand{\pbusH}{p^H}
+\newcommand{\qbusH}{q^H}
+%\newcommand{\p0}{\overline{p}}
+\newcommand{\ppp}{\overline{p}}
+\newcommand{\q}[1]{q^{#1}}
+\newcommand{\qqq}{\overline{q}}
+\newcommand{\s}{s}
+\newcommand{\ii}{i}
+\newcommand{\jj}{j}
+\newcommand{\llll}{l}
+\newcommand{\from}{f}
+\newcommand{\tto}{t}
+\newcommand{\g}{g}
+\newcommand{\Y}{Y}
+\newcommand{\B}{B}
+\newcommand{\x}{x}
+\newcommand{\I}{I}
+\newcommand{\G}{G}
+
+\newcommand{\YffR}{Y^{ffR}}
+\newcommand{\YftR}{Y^{ftR}}
+\newcommand{\YtfR}{Y^{tfR}}
+\newcommand{\YttR}{Y^{ttR}}
+\newcommand{\YffI}{Y^{ffI}}
+\newcommand{\YftI}{Y^{ftI}}
+\newcommand{\YtfI}{Y^{tfI}}
+\newcommand{\YttI}{Y^{ttI}}
+\newcommand{\YshR}{Y^{shR}}
+\newcommand{\YshI}{Y^{shI}}
+\newcommand{\WW}{W}
+\newcommand{\WSet}{\mathcal{W}}
+\newcommand{\W}{w}
+\newcommand{\Wff}{{\W}^{ff}}
+\newcommand{\Wtt}{{\W}^{tt}}
+\newcommand{\WftR}{{\W}^{ftR}}
+\newcommand{\WftI}{{\W}^{ftI}}
+\newcommand{\WtfR}{{\W}^{tfR}}
+\newcommand{\WtfI}{{\W}^{tfI}}
+\newcommand{\Lines}{L}
+
+\newcommand{\red}[1]{\textcolor{BrickRed}{#1}}
+\newcommand{\blue}[1]{\textcolor{Cyan}{#1}}
+
+\title{Applying proximal bundle method approaches to the dual SDP reformulation of ACOPF}
+\date{}
+\author{Brian Dandurand \\
+joint work with: \\
+Kibaek Kim \\
+Sang-il Yim
+}
+\institute{Division of Mathematics and Computer Science \\ Argonne National Laboratory, USA}
+
+%\titlegraphic{\hfill\includegraphics[height=2.5cm]{rmitlogo.png}}
+
+\setbeamercolor{progress bar}{fg=BlueGreen}
+\setbeamercolor{alerted text}{fg=BlueGreen}
+
+\setbeamertemplate{frame footer}{bdandurand@anl.gov $\|\|$ 16 Aug 2019} 
+
+\setbeamertemplate{title graphic}{
+  \vbox to 0pt {
+    \vspace*{.55\textheight}  % change the value as necessary
+    \inserttitlegraphic%
+  }%
+  \nointerlineskip%
+}
+
+
+
+\begin{document}
+  \maketitle
+
+\begin{frame}{Power System Model}
+Balance between generation and demand must be maintained over an AC power network under physical constraints on the power generation, and voltage magnitude.
+Buses are indexed by $i \in N$ and lines (including transformers) are indexed by $l \in L$.
+\begin{footnotesize}
+\begin{subequations}
+\label{EqDSP}
+\begin{align}
+  & W \in v\, v^* \label{rank1}\\
+  & P_i^{min} \leq p_i^G \leq P_i^{max}, \quad Q_i^{min} \leq q_i^G \leq Q_i^{max}, \quad i\in N \label{PGBds} \\
+  & p_i^{sh}(\WW_{ii}) 
++ \sum_{\llll \in \Lines_\ii^{\from} } \p{\from}_{\llll}(\WW_\llll)  
+	+\sum_{\llll \in \Lines_\ii^{\tto} } \p{\tto}_{\llll}(\WW_\llll) - p^G_i + P^D_i = 0, \quad i\in N, \label{PFlowEq}\\ 
+  & q_\ii^{sh}(\WW_{\ii\ii}) + \sum_{\llll \in \Lines_\ii^{\from} } \q{\from}_{\llll}(\WW_\llll) 
+	+\sum_{\llll \in \Lines_\ii^{\tto} } \q{\tto}_{\llll}(\WW_\llll) - q^G_i + Q^D_i = 0, \quad i\in N, \label{QFlowEq} \\
+  & (V_i^{min})^2 \leq W_{ii} \leq (V_i^{max})^2,\quad i\in N, \label{VMagBds} 
+\end{align}
+\end{subequations}
+\end{footnotesize}
+where $v,W,p^G,q^G,u$ are decision variables.  
+\end{frame}
+
+%\begin{frame}{PowerModels.jl}
+%Core Problem Specifications
+%\begin{itemize}
+%\item Power Flow (pf)
+%\item Optimal Power Flow (opf)
+%\item Optimal Transmission Switching (ots)
+%\item Transmission Network Expansion Planning (tnep)
+%\end{itemize}
+%Core Network Formulations parameterized by set $\WSet$
+%\begin{itemize}
+%\item AC rectangular with $\WSet = \{ v v^* \; : \; v \in \mathbb{C}^{|N|}\}$
+%\item AC polar %with $W_{i,j}=|V_i||V_j|(\cos(\theta_i-\theta_j) + \mathfrak{i}\sin(\theta_i-\theta_j))$
+%\item SDP where $\WSet = \{ \WW \; : \; \WW \succeq 0\}$
+%\item SOCP where $\WSet = \{ \WW \; : \; \WW_l \succeq 0\;\text{for}\; l \in L\}$ where $\WW_l := \left[\begin{array}{cc} \WW_{i,i} & \WW_{i,j} \\ \WW_{j,i} & \WW_{j,j} \end{array}\right]$ for $(i,j)=l \in L$.
+%\item DC 
+%\item LPAC
+%\item QC
+%\end{itemize}
+%\end{frame}
+
+\begin{frame}{Power System Model: Feasibility Problem}
+\begin{footnotesize}
+Balance between generation and demand must be maintained over an AC power network under physical constraints on the power generation, and voltage magnitude.
+Buses are indexed by $i \in N$ and lines (including transformers) are indexed by $l \in L$.
+\begin{subequations}
+\begin{align}
+&\min_{\substack{v,W,p,q,\\ u \geqq 0}} \quad 
+  \sum_{i \in N} u_i^p + u_i^q  + \sum_{l \in L} u_l^{pf1} + u_l^{ft1} + u_l^{qf1} + u_l^{qt1}  \notag \\
+  & W \in \WSet \notag\\
+  & P_i^{min} \leq p_i^G \leq P_i^{max}, \quad Q_i^{min} \leq q_i^G \leq Q_i^{max}, \quad i\in N \notag \\
+  & (V_i^{min})^2 \leq W_{ii} \leq (V_i^{max})^2,\quad i\in N, \notag \\
+  & -u_i^p \le p_i^{sh}(\WW_{ii}) - p^G_i + P^D_i 
+	+ \sum_{\llll \in \Lines_\ii^{\from} } \p{\from}_{\llll}(\WW_\llll)  
+	+\sum_{\llll \in \Lines_\ii^{\tto}   } \p{\tto}_{\llll}(\WW_\llll)
+	\le u_i^p \quad i\in N, \notag\\ 
+  & -u_i^q \le q_i^{sh}(\WW_{ii}) - q^G_i + Q^D_i 
+	+ \sum_{\llll \in \Lines_\ii^{\from}} \q{\from}_{\llll}(\WW_\llll)
+	+ \sum_{\llll \in \Lines_\ii^{\tto} } \q{\tto}_{\llll}(\WW_\llll)
+	\le u_i^q \quad i\in N. \notag \\
+& -u_l^{pf1} \le \p{\from}_{\llll}(\WW_\llll) - p_{l}^{f} \le u_l^{pf1}, \quad
+ -u_l^{pt1} \le \p{\tto}_{\llll}(\WW_\llll)  - p_{l}^{t} \le u_l^{pt1}, \quad \llll \in L \notag \\
+& -u_l^{qf1} \le \q{\from}_{\llll}(\WW_\llll) - q_{l}^{f} \le u_l^{qf1}, \quad 
+ -u_l^{qt1} \le \q{\tto}_{\llll}(\WW_\llll)  - q_{l}^{t} \le u_l^{qt1}, \quad \llll \in L \notag
+\end{align}
+\end{subequations}
+where $W,p^G,q^G,u$ are decision variables. 
+\end{footnotesize}
+%&  (p_{l}^{f,0,-} + p_{l}^{f,0,+}) + (p_{l}^{t,0,-} + p_{l}^{t,0,+}) + (q_{l}^{f,0,-} + q_{l}^{f,0,+}) + (q_{l}^{t,0,-} + q_{l}^{t,0,+})  \notag \\
+%& =  (p_{l}^{f,1,-} + p_{l}^{f,1,+}) + (p_{l}^{t,1,-} + p_{l}^{t,1,+}) + (q_{l}^{f,1,-} + q_{l}^{f,1,+}) + (q_{l}^{t,1,-} + q_{l}^{t,1,+}) + u^K, \quad \llll \in L. \notag
+\end{frame}
+
+\begin{frame}{Definitions for defining the Feasibility Problem with Robustness}
+$K$ is the nonnegative integer budget of the attacker, the number of lines that may be cut.
+$L$ is the set of lines (including transformers)
+\begin{enumerate}
+\item $L^0 \subseteq L$ is the set of lines that are fixed as on; an attacker is committed to \emph{not} attacking line $l \in L^0$
+\item $L^1 \subseteq L$ is the set of lines that are fixed as off; an attacker is committed to attacking $l \in L^1$
+\item $L^* = L \backslash (L^0 \cup L^1)$ are the remaining ``undecided" lines that the attacker needs to decide whether or not to attack.
+\end{enumerate}
+$\{ L^0, L^1, L^*\}$ is a partition of the set $L$.
+\end{frame}
+
+
+\begin{frame}{Power System Model: Robust Feasibility Problem}
+\begin{footnotesize}
+Input: Budget set $X_K:=\{ x \in \{0,1\}^{|L|}\; : \; x_l=1, l \in L^1,\; x_l=0, l \in L^0,\; \sum_{l \in L} x_l \le K\}$, where $K\ge 0$ is the attack budget. Partition $\{ L^1,L^0,L^* \}$ of $L$
+\begin{subequations}
+\begin{align}
+\max_{x \in X_K} &\min_{\substack{p,q\;\text{free}\\ u \geqq 0,W\in \WSet}} \quad 
+ \sum_{i \in N} u_i^p + u_i^q + \sum_{l \in L^*} (1-x_l)\left( u_l^{pf1} + u_l^{pt1} + u_l^{qf1} + u_l^{qt1} \right) \notag \\
+&\qquad\qquad+ \sum_{l \in L^*} x_l\left( u_l^{pf0} + u_l^{pt0} + u_l^{qf0} + u_l^{qt0} \right)  \notag \\
+  & P_i^{min} \leq p_i^G \leq P_i^{max}, \quad Q_i^{min} \leq q_i^G \leq Q_i^{max}, \quad (V_i^{min})^2 \leq W_{ii} \leq (V_i^{max})^2,\quad i\in N \notag \\
+  & -u_i^p \le p_i^{sh}(\WW_{ii}) - p^G_i + P^D_i 
+	+ \sum_{\llll \in \Lines_\ii^{\from} \cap (L^* \cup L^0)  } p_{l}^{f}  
+	+\sum_{\llll \in \Lines_\ii^{\tto} \cap (L^* \cup L^0) } p_{l}^{t} 
+	\le u_i^p \quad i\in N, \notag\\ 
+  & -u_i^q \le q_i^{sh}(\WW_{ii}) - q^G_i + Q^D_i 
+	+ \sum_{\llll \in \Lines_\ii^{\from} \cap (L^* \cup L^0) } q_{l}^{f}
+	+ \sum_{\llll \in \Lines_\ii^{\tto} \cap (L^* \cup L^0) } q_{l}^{t} 
+	\le u_i^q \quad i\in N, \notag \\
+& p_{l}^{f}=\p{\from}_{\llll}(\WW_\llll),\; p_l^t=\p{\tto}_{\llll}(\WW_\llll),\quad q_l^f=\q{\from}_{\llll}(\WW_\llll),\; q_l^t=\q{\tto}_{\llll}(\WW_\llll) , \quad \llll \in L^0 \notag \\
+& -u_l^{pf1} \le \p{\from}_{\llll}(\WW_\llll) - p_{l}^{f} \le u_l^{pf1}, \quad
+ -u_l^{pt1} \le \p{\tto}_{\llll}(\WW_\llll)  - p_{l}^{t} \le u_l^{pt1}, \quad \llll \in L^* \notag \\
+& -u_l^{qf1} \le \q{\from}_{\llll}(\WW_\llll) - q_{l}^{f} \le u_l^{qf1}, \quad 
+ -u_l^{qt1} \le \q{\tto}_{\llll}(\WW_\llll)  - q_{l}^{t} \le u_l^{qt1}, \quad \llll \in L^*. \notag \\
+& -u_l^{pf0} \le p_l^f \le u_l^{pf0},\quad-u_l^{pt0} \le p_l^t \le u_l^{pt0}, \quad l \in L^* \notag\\ 
+& -u_l^{qf0} \le q_l^f \le u_l^{qf0},\quad-u_l^{qt0} \le q_l^t \le u_l^{qt0}, \quad l \in L^* \notag
+\end{align}
+\end{subequations}
+\end{footnotesize}
+%&  (p_{l}^{f,0,-} + p_{l}^{f,0,+}) + (p_{l}^{t,0,-} + p_{l}^{t,0,+}) + (q_{l}^{f,0,-} + q_{l}^{f,0,+}) + (q_{l}^{t,0,-} + q_{l}^{t,0,+})  \notag \\
+%& =  (p_{l}^{f,1,-} + p_{l}^{f,1,+}) + (p_{l}^{t,1,-} + p_{l}^{t,1,+}) + (q_{l}^{f,1,-} + q_{l}^{f,1,+}) + (q_{l}^{t,1,-} + q_{l}^{t,1,+}) + u^K, \quad \llll \in L. \notag
+\end{frame}
+
+\begin{frame}{Double-checking dual equivalence: Forming the Lagrangian}
+\begin{tiny}
+\begin{subequations}
+\begin{align}
+\max_{x \in X} &\min_{\substack{p,q\\ u \geqq 0,W \in \WSet}} \quad 
+  \sum_{i \in N} u_i^{p}(1-|\alpha_{\ii}|) +  u_i^{q}(1-|\beta_{\ii}|) + p_\ii^G(\zeta_\ii^{p+}-\zeta_\ii^{p-} - \alpha_\ii) + q_\ii^G(\zeta_\ii^{q+}-\zeta_\ii^{q-} - \beta_\ii)\notag \\
+  &+\sum_{\ii \in N} W_\ii(\gamma_{\ii}^+-\gamma_{\ii}^-) +p_\ii^{sh}(\WW_{ii})\alpha_\ii + q_\ii^{sh}(\WW_{ii})\beta_\ii - \langle C , \WW \rangle + \langle C, W \rangle \notag\\
+&+\sum_{(i,j)=l \in L^0} (\alpha_i - \lambda_l^f) p_l^f + (\alpha_j - \lambda_l^t) p_l^t 
++ (\beta_i - \mu_l^t) q_l^f + (\beta_j -\mu_l^t) q_l^t\notag\\
+&+\sum_{(i,j)=l \in L^*} (\alpha_i - \lambda_l^f + \pi_l^f) p_l^f + (\alpha_j - \lambda_l^t + \pi_l^t) p_l^t 
++ (\beta_i - \mu_l^t + \phi_l^f) q_l^f + (\beta_j -\mu_l^t + \phi_l^t) q_l^t\notag\\
+&+\sum_{l \in L^* \cup L^0} \lambda_l^f p_l^f(\WW_l) + \lambda_l^t p_l^t(\WW_l) + \mu_l^f q_l^f(\WW_l) + \mu_l^t q_l^t(\WW_l) \notag\\
+  &+\sum_{\ii \in N}  (V_\ii^{min})^2 \gamma_\ii^- - (V_\ii^{max})^2 \gamma_\ii^+ 
+- \zeta_\ii^{p+}P_\ii^{max} + \zeta_\ii^{p-}P_\ii^{min} + \alpha_\ii P_\ii^D 
+- \zeta_\ii^{q+}Q_\ii^{max} + \zeta_\ii^{q-}Q_\ii^{min} + \beta_\ii Q_\ii^D \notag \\
+& + \sum_{l \in L^* } u_l^{pf1}(1 -x_l  - |\lambda_l^f|) + u_l^{pt1}(1 - x_l - |\lambda_l^t|) + u_l^{qf1}(1 - x_l - |\mu_l^f|) + u_l^{qt1}(1 - x_l - |\mu_l^t|) \notag \\
+& + \sum_{l \in L^* } u_l^{pf0}(x_l  - |\pi_l^f|) + u_l^{pt0}(x_l - |\pi_l^t|) + u_l^{qf0}(x_l - |\phi_l^f|) + u_l^{qt0}(x_l - |\phi_l^t|) \notag
+\end{align}
+\end{subequations}
+(The dual feasibility conditions can be read-off readily...)
+\end{tiny}
+\end{frame}
+
+\begin{frame}{Definition}
+If we assume that $\WSet$ has a conic structure, then its dual cone is defined by
+$$\WSet^* := \{ C \; : \; \langle C, \WW \rangle \ge 0\; \text{for all}\; \WW \in \WSet \}.$$
+\end{frame}
+
+%\begin{frame}{Power System Model: Robust Feasibility Problem}
+%\begin{footnotesize}
+%Let an attacker have budget $K$, adjusted budget $\bar{K}=K-|L^1|$, and let $x_l=1$ indicate line $l$ is attacked, $x_l=0$ otherwise. Define $X:=\{ x \in \{0,1\}^{|L|}\; : \; x_l=1, l \in L^1,\; x_l=0, l \in L^0,\; \sum_{l \in L} x_l \le K\}$.
+%\begin{subequations}
+%\begin{align}
+%\max_{x \in X}&\min_{\substack{v,W,p,q,\\ u \geqq 0}} \quad 
+%  \sum_{i \in N} u_i^p + u_i^q  + \sum_{l \in L^*} u_l^{pf1} + u_l^{ft1} + u_l^{qf1} + u_l^{qt1}  \notag \\
+%  & W \in \WSet \notag\\
+%  & P_i^{min} \leq p_i^G \leq P_i^{max}, \quad Q_i^{min} \leq q_i^G \leq Q_i^{max}, \quad i\in N \notag \\
+%  & (V_i^{min})^2 \leq W_{ii} \leq (V_i^{max})^2,\quad i\in N, \notag \\
+%  & -u_i^p \le p_i^{sh}(\WW_{ii}) - p^G_i + P^D_i 
+%	+ \sum_{\llll \in \Lines_\ii^{\from} } (1-x_l)\p{\from}_{\llll}
+%	+\sum_{\llll \in \Lines_\ii^{\tto}   } (1-x_l)\p{\tto}_{\llll}
+%	\le u_i^p \quad i\in N, \notag\\ 
+%  & -u_i^q \le q_i^{sh}(\WW_{ii}) - q^G_i + Q^D_i 
+%	+ \sum_{\llll \in \Lines_\ii^{\from}} (1-x_l)\q{\from}_{\llll}
+%	+ \sum_{\llll \in \Lines_\ii^{\tto} } (1-x_l)\q{\tto}_{\llll}
+%	\le u_i^q \quad i\in N. \notag \\
+%&\p{\from}_{\llll}(\WW_\llll) - p_{l}^{f} = 0, \quad \p{\tto}_{\llll}(\WW_\llll)  - p_{l}^{t} = 0, 
+%\quad \q{\from}_{\llll}(\WW_\llll) - q_{l}^{f} = 0, \quad  \q{\tto}_{\llll}(\WW_\llll)  - q_{l}^{t} = 0, \quad \llll \in L^0 \notag \\
+%& -u_l^{pf1} \le \p{\from}_{\llll}(\WW_\llll) - p_{l}^{f} \le u_l^{pf1}, \quad
+% -u_l^{pt1} \le \p{\tto}_{\llll}(\WW_\llll)  - p_{l}^{t} \le u_l^{pt1}, \quad \llll \in L^* \notag \\
+%& -u_l^{qf1} \le \q{\from}_{\llll}(\WW_\llll) - q_{l}^{f} \le u_l^{qf1}, \quad 
+% -u_l^{qt1} \le \q{\tto}_{\llll}(\WW_\llll)  - q_{l}^{t} \le u_l^{qt1}, \quad \llll \in L^* \notag
+%\end{align}
+%\end{subequations}
+%where $W,p^G,q^G,u$ are decision variables. 
+%\end{footnotesize}
+%%&  (p_{l}^{f,0,-} + p_{l}^{f,0,+}) + (p_{l}^{t,0,-} + p_{l}^{t,0,+}) + (q_{l}^{f,0,-} + q_{l}^{f,0,+}) + (q_{l}^{t,0,-} + q_{l}^{t,0,+})  \notag \\
+%%& =  (p_{l}^{f,1,-} + p_{l}^{f,1,+}) + (p_{l}^{t,1,-} + p_{l}^{t,1,+}) + (q_{l}^{f,1,-} + q_{l}^{f,1,+}) + (q_{l}^{t,1,-} + q_{l}^{t,1,+}) + u^K, \quad \llll \in L. \notag
+%\end{frame}
+%
+%\begin{frame}{Double-checking dual equivalence: Forming the Lagrangian}
+%\begin{tiny}
+%\begin{subequations}
+%\begin{align}
+%\max_{x \in X} &\min_{\substack{p,q\\ u \geqq 0,W \in \WSet}} \quad 
+%  \sum_{i \in N} u_i^{p}(1-|\alpha_{\ii}|) +  u_i^{q}(1-|\beta_{\ii}|) + p_\ii^G(\zeta_\ii^{p+}-\zeta_\ii^{p-} - \alpha_\ii) + q_\ii^G(\zeta_\ii^{q+}-\zeta_\ii^{q-} - \beta_\ii)\notag \\
+%  &+\sum_{\ii \in N} W_\ii(\gamma_{\ii}^+-\gamma_{\ii}^-) +p_\ii^{sh}(\WW_{ii})\alpha_\ii + q_\ii^{sh}(\WW_{ii})\beta_\ii - \langle C , \WW \rangle + \langle C, v v^* \rangle \notag\\
+%&+\sum_{(i,j)=l \in L^* \cup L^0} (\alpha_i - \lambda_l^f) p_l^f + (\alpha_j - \lambda_l^t) p_l^t 
+%+ (\beta_i - \mu_l^t) q_l^f + (\beta_j -\mu_l^t) q_l^t\notag\\
+%&+\sum_{(i,j)=l \in L^*} -x_l\alpha_i p_l^f + -x_l^t\alpha_j p_l^t 
+%+ -x_l\beta_i  q_l^f + -x_l\beta_j q_l^t\notag\\
+%&+\sum_{l \in L^* \cup L^0} \lambda_l^f p_l^f(\WW_l) + \lambda_l^t p_l^t(\WW_l) + \mu_l^f q_l^f(\WW_l) + \mu_l^t q_l^t(\WW_l) \notag\\
+%  &+\sum_{\ii \in N}  (V_\ii^{min})^2 \gamma_\ii^- - (V_\ii^{max})^2 \gamma_\ii^+ 
+%- \zeta_\ii^{p+}P_\ii^{max} + \zeta_\ii^{p-}P_\ii^{min} + \alpha_\ii P_\ii^D 
+%- \zeta_\ii^{q+}Q_\ii^{max} + \zeta_\ii^{q-}Q_\ii^{min} + \beta_\ii Q_\ii^D \notag \\
+%& + \sum_{l \in L^* } u_l^{pf1}(1 - |\lambda_l^f|) + u_l^{pt1}(1 - |\lambda_l^t|) + u_l^{qf1}(1 - |\mu_l^f|) + u_l^{qt1}(1 - |\mu_l^t|) \notag
+%\end{align}
+%\end{subequations}
+%(The dual feasibility conditions can be read-off readily...)
+%\end{tiny}
+%\end{frame}
+%
+%\begin{frame}{Double-checking dual equivalence: Forming the dual problem}
+%\begin{tiny}
+%\begin{subequations}
+%\begin{align}
+%\max_{x \in X}& \max_{\substack{\gamma,\zeta \ge 0\\-1\le \alpha,\beta \le 1,\\ \lambda,\mu\; \text{free}}} \quad 
+% \sum_{\ii \in N}  (V_\ii^{min})^2 \gamma_\ii^- - (V_\ii^{max})^2 \gamma_\ii^+ + \zeta_\ii^{p-}P_\ii^{min} - \zeta_\ii^{p+}P_\ii^{max} +\alpha_\ii P_\ii^D 
+%+ \zeta_\ii^{q-}Q_\ii^{min} - \zeta_\ii^{q+}Q_\ii^{max} + \beta_\ii Q_\ii^D \notag \\
+%&s.t.\; (\zeta_\ii^{p+}-\zeta_\ii^{p-} - \alpha_\ii) = 0, \qquad (\zeta_\ii^{q+}-\zeta_\ii^{q-} - \beta_\ii) = 0,\quad \ii \in N. \notag \\
+%&  (1-x_l)\alpha_i -\lambda_\llll^f = 0,\quad (1-x_l)\alpha_j - \lambda_l^t = 0,\quad (1-x_l)\beta_i - \mu_l^f  = 0,\quad (1-x_l)\beta_j - \mu_l^t = 0,\quad (i,j)=l \in L^* \notag \\
+%%& |\lambda_l^f| \le 1,\quad |\lambda_l^t| \le 1,\quad|\mu_l^f| \le 1,\quad |\mu_l^t| \le 1,\quad l \in L^* \notag \\
+%%& \lambda_l^f = 0,\quad \lambda_l^t = 0,\quad \mu_l^f = 0,\quad \mu_l^t = 0,\quad l \in L^1 \notag \\
+%& H(\alpha,\beta,\gamma,\lambda,\mu) \in \WSet^*\notag
+%\end{align}
+%\end{subequations}
+%where $H(\alpha,\beta,\gamma,\lambda,\mu)$ is the matrix such that for all $\WW$, 
+%\begin{align*}
+%\langle H(\alpha,\beta,\gamma,\lambda,\mu), W \rangle = &\sum_{\ii \in N} W_{\ii\ii}(\gamma_\ii^+-\gamma_\ii^-) + \alpha_\ii p_\ii^{sh}(\WW_{ii}) + \beta_\ii q_\ii^{sh}(\WW_{ii}) \\
+%&+ \sum_{l \in L^*} \lambda_l^f p_l^f(\WW_l) + \lambda_l^t p_l^t(\WW_l) + \mu_l^f q_l^f(\WW_l) + \mu_l^t q_l^t(\WW_l) \notag \\
+%&+ \sum_{(i,j)=l \in L^0} \alpha_i p_l^f(\WW_l) + \alpha_j p_l^t(\WW_l) + \beta_i q_l^f(\WW_l) + \beta_j q_l^t(\WW_l).
+%\end{align*}
+%Note: The dual variables $\lambda,\mu,x$ are indexed by $L^*$ and only appear for such indices.
+%\end{tiny}
+%\end{frame}
+
+\begin{frame}{Double-checking dual equivalence: Forming the dual problem}
+\begin{tiny}
+\begin{subequations}
+\begin{align}
+\max_{x \in X}& \max_{\substack{\gamma,\zeta \ge 0\\-1\le \alpha,\beta \le 1,\\ \lambda,\mu\; \text{free}}} \quad 
+ \sum_{\ii \in N}  (V_\ii^{min})^2 \gamma_\ii^- - (V_\ii^{max})^2 \gamma_\ii^+ + \zeta_\ii^{p-}P_\ii^{min} - \zeta_\ii^{p+}P_\ii^{max} +\alpha_\ii P_\ii^D 
++ \zeta_\ii^{q-}Q_\ii^{min} - \zeta_\ii^{q+}Q_\ii^{max} + \beta_\ii Q_\ii^D \notag \\
+&s.t.\; (\zeta_\ii^{p+}-\zeta_\ii^{p-} - \alpha_\ii) = 0, \qquad (\zeta_\ii^{q+}-\zeta_\ii^{q-} - \beta_\ii) = 0,\quad \ii \in N. \notag \\
+& | \alpha_i -\lambda_\llll^f| \le x_l,\quad| \alpha_j - \lambda_l^t| \le x_l,\quad |\beta_i - \mu_l^f | \le x_l,\quad|\beta_j - \mu_l^t| \le x_l,\quad (i,j)=l \in L^* \notag \\
+& |\lambda_l^f| \le 1-x_l,\quad |\lambda_l^t| \le 1-x_l,\quad|\mu_l^f| \le 1-x_l,\quad |\mu_l^t| \le 1-x_l,\quad l \in L^* \notag \\
+%& |\lambda_l^f| \le 1,\quad |\lambda_l^t| \le 1,\quad|\mu_l^f| \le 1,\quad |\mu_l^t| \le 1,\quad l \in L^* \notag \\
+%& \lambda_l^f = 0,\quad \lambda_l^t = 0,\quad \mu_l^f = 0,\quad \mu_l^t = 0,\quad l \in L^1 \notag \\
+& H(\alpha,\beta,\gamma,\lambda,\mu) \in \WSet^*\notag
+\end{align}
+\end{subequations}
+where $H(\alpha,\beta,\gamma,\lambda,\mu)$ is the matrix such that for all $\WW$, 
+\begin{align*}
+\langle H(\alpha,\beta,\gamma,\lambda,\mu), W \rangle = &\sum_{\ii \in N} W_{\ii\ii}(\gamma_\ii^+-\gamma_\ii^-) + \alpha_\ii p_\ii^{sh}(\WW_{ii}) + \beta_\ii q_\ii^{sh}(\WW_{ii}) \\
+&+ \sum_{l \in L^*} \lambda_l^f p_l^f(\WW_l) + \lambda_l^t p_l^t(\WW_l) + \mu_l^f q_l^f(\WW_l) + \mu_l^t q_l^t(\WW_l) \notag \\
+&+ \sum_{(i,j)=l \in L^0} \alpha_i p_l^f(\WW_l) + \alpha_j p_l^t(\WW_l) + \beta_i q_l^f(\WW_l) + \beta_j q_l^t(\WW_l).
+\end{align*}
+Note: The dual variables $\lambda,\mu,x$ are indexed by $L^*$ and only appear for such indices.
+\end{tiny}
+\end{frame}
+
+
+\begin{frame}{Power System Model: Returning to the maxmin problem parameterized by attack constraint set $X_K$}
+\begin{footnotesize}
+Input: Budget $K$, Partition $\{ L^1,L^0,L^* \}$ of $L$
+\begin{subequations}
+\begin{align}
+\max_{x \in X_K} &\min_{\substack{p,q\;\text{free}\\ u \geqq 0,W\in \WSet}} \quad 
+ \sum_{i \in N} u_i^p + u_i^q + \sum_{l \in L^*} (1-x_l)\left( u_l^{pf1} + u_l^{pt1} + u_l^{qf1} + u_l^{qt1} \right) \notag \\
+&\qquad\qquad+ \sum_{l \in L^*} x_l\left( u_l^{pf0} + u_l^{pt0} + u_l^{qf0} + u_l^{qt0} \right)  \notag \\
+  & P_i^{min} \leq p_i^G \leq P_i^{max}, \quad Q_i^{min} \leq q_i^G \leq Q_i^{max}, \quad (V_i^{min})^2 \leq W_{ii} \leq (V_i^{max})^2,\quad i\in N \notag \\
+  & -u_i^p \le p_i^{sh}(\WW_{ii}) - p^G_i + P^D_i 
+	+ \sum_{\llll \in \Lines_\ii^{\from} \cap (L^* \cup L^0)  } p_{l}^{f}  
+	+\sum_{\llll \in \Lines_\ii^{\tto} \cap (L^* \cup L^0) } p_{l}^{t} 
+	\le u_i^p \quad i\in N, \notag\\ 
+  & -u_i^q \le q_i^{sh}(\WW_{ii}) - q^G_i + Q^D_i 
+	+ \sum_{\llll \in \Lines_\ii^{\from} \cap (L^* \cup L^0) } q_{l}^{f}
+	+ \sum_{\llll \in \Lines_\ii^{\tto} \cap (L^* \cup L^0) } q_{l}^{t} 
+	\le u_i^q \quad i\in N, \notag \\
+& p_{l}^{f}=\p{\from}_{\llll}(\WW_\llll),\quad p_l^t=\p{\tto}_{\llll}(\WW_\llll),\quad q_l^f=\q{\from}_{\llll}(\WW_\llll),\quad q_l^t=\q{\tto}_{\llll}(\WW_\llll) , \quad \llll \in L^0 \notag \\
+& -u_l^{pf1} \le \p{\from}_{\llll}(\WW_\llll) - p_{l}^{f} \le u_l^{pf1}, \quad
+ -u_l^{pt1} \le \p{\tto}_{\llll}(\WW_\llll)  - p_{l}^{t} \le u_l^{pt1}, \quad \llll \in L^* \notag \\
+& -u_l^{qf1} \le \q{\from}_{\llll}(\WW_\llll) - q_{l}^{f} \le u_l^{qf1}, \quad 
+ -u_l^{qt1} \le \q{\tto}_{\llll}(\WW_\llll)  - q_{l}^{t} \le u_l^{qt1}, \quad \llll \in L^*. \notag \\
+& -u_l^{pf0} \le p_l^f \le u_l^{pf0},\quad-u_l^{pt0} \le p_l^t \le u_l^{pt0}, \quad l \in L^* \notag\\ 
+& -u_l^{qf0} \le q_l^f \le u_l^{qf0},\quad-u_l^{qt0} \le q_l^t \le u_l^{qt0}, \quad l \in L^* \notag
+\end{align}
+\end{subequations}
+\end{footnotesize}
+%&  (p_{l}^{f,0,-} + p_{l}^{f,0,+}) + (p_{l}^{t,0,-} + p_{l}^{t,0,+}) + (q_{l}^{f,0,-} + q_{l}^{f,0,+}) + (q_{l}^{t,0,-} + q_{l}^{t,0,+})  \notag \\
+%& =  (p_{l}^{f,1,-} + p_{l}^{f,1,+}) + (p_{l}^{t,1,-} + p_{l}^{t,1,+}) + (q_{l}^{f,1,-} + q_{l}^{f,1,+}) + (q_{l}^{t,1,-} + q_{l}^{t,1,+}) + u^K, \quad \llll \in L. \notag
+\end{frame}
+
+
+\begin{frame}{Power System Model: Switch max and min, carry the resulting inequality}
+\begin{footnotesize}
+Input: Budget $K$, Partition $\{ L^1,L^0,L^* \}$ of $L$
+\begin{subequations}
+\begin{align}
+ & \le \min_{\substack{p,q\;\text{free}\\ u \geqq 0,W\in \WSet}} \quad 
+ \sum_{i \in N} u_i^p + u_i^q  \notag\\
+& + \max_{x \in X_K}\sum_{l \in L^*} (1-x_l)\left( u_l^{pf1} + u_l^{pt1} + u_l^{qf1} + u_l^{qt1} \right) 
++ x_l\left( u_l^{pf0} + u_l^{pt0} + u_l^{qf0} + u_l^{qt0} \right)  \notag \\
+  & P_i^{min} \leq p_i^G \leq P_i^{max}, \quad Q_i^{min} \leq q_i^G \leq Q_i^{max}, \quad (V_i^{min})^2 \leq W_{ii} \leq (V_i^{max})^2,\quad i\in N \notag \\
+  & -u_i^p \le p_i^{sh}(\WW_{ii}) - p^G_i + P^D_i 
+	+ \sum_{\llll \in \Lines_\ii^{\from} \cap (L^* \cup L^0)  } p_{l}^{f}  
+	+\sum_{\llll \in \Lines_\ii^{\tto} \cap (L^* \cup L^0) } p_{l}^{t} 
+	\le u_i^p \quad i\in N, \notag\\ 
+  & -u_i^q \le q_i^{sh}(\WW_{ii}) - q^G_i + Q^D_i 
+	+ \sum_{\llll \in \Lines_\ii^{\from} \cap (L^* \cup L^0) } q_{l}^{f}
+	+ \sum_{\llll \in \Lines_\ii^{\tto} \cap (L^* \cup L^0) } q_{l}^{t} 
+	\le u_i^q \quad i\in N, \notag \\
+& p_{l}^{f}=\p{\from}_{\llll}(\WW_\llll),\quad p_l^t=\p{\tto}_{\llll}(\WW_\llll),\quad q_l^f=\q{\from}_{\llll}(\WW_\llll),\quad q_l^t=\q{\tto}_{\llll}(\WW_\llll) , \quad \llll \in L^0 \notag \\
+& -u_l^{pf1} \le \p{\from}_{\llll}(\WW_\llll) - p_{l}^{f} \le u_l^{pf1}, \quad
+ -u_l^{pt1} \le \p{\tto}_{\llll}(\WW_\llll)  - p_{l}^{t} \le u_l^{pt1}, \quad \llll \in L^* \notag \\
+& -u_l^{qf1} \le \q{\from}_{\llll}(\WW_\llll) - q_{l}^{f} \le u_l^{qf1}, \quad 
+ -u_l^{qt1} \le \q{\tto}_{\llll}(\WW_\llll)  - q_{l}^{t} \le u_l^{qt1}, \quad \llll \in L^*. \notag \\
+& -u_l^{pf0} \le p_l^f \le u_l^{pf0},\quad-u_l^{pt0} \le p_l^t \le u_l^{pt0}, \quad l \in L^* \notag\\ 
+& -u_l^{qf0} \le q_l^f \le u_l^{qf0},\quad-u_l^{qt0} \le q_l^t \le u_l^{qt0}, \quad l \in L^* \notag
+\end{align}
+\end{subequations}
+\end{footnotesize}
+%&  (p_{l}^{f,0,-} + p_{l}^{f,0,+}) + (p_{l}^{t,0,-} + p_{l}^{t,0,+}) + (q_{l}^{f,0,-} + q_{l}^{f,0,+}) + (q_{l}^{t,0,-} + q_{l}^{t,0,+})  \notag \\
+%& =  (p_{l}^{f,1,-} + p_{l}^{f,1,+}) + (p_{l}^{t,1,-} + p_{l}^{t,1,+}) + (q_{l}^{f,1,-} + q_{l}^{f,1,+}) + (q_{l}^{t,1,-} + q_{l}^{t,1,+}) + u^K, \quad \llll \in L. \notag
+\end{frame}
+
+\begin{frame}{Power System Model: Switch max and min, carry the resulting inequality}
+\begin{footnotesize}
+Input: Budget $K$, Partition $\{ L^1,L^0,L^* \}$ of $L$
+\begin{subequations}\label{MinmaxX}
+\begin{align}
+ &=\min_{\substack{p,q\;\text{free}\\ u \geqq 0,W\in \WSet}} \quad 
+ \psi + \sum_{i \in N} u_i^p + u_i^q  + \sum_{l \in L^*} u_l^{pf1} + u_l^{pt1} + u_l^{qf1} + u_l^{qt1}\\
+  & P_i^{min} \leq p_i^G \leq P_i^{max}, \quad Q_i^{min} \leq q_i^G \leq Q_i^{max}, \quad (V_i^{min})^2 \leq W_{ii} \leq (V_i^{max})^2,\quad i\in N \notag \\
+  & -u_i^p \le p_i^{sh}(\WW_{ii}) - p^G_i + P^D_i 
+	+ \sum_{\llll \in \Lines_\ii^{\from} \cap (L^* \cup L^0)  } p_{l}^{f}  
+	+\sum_{\llll \in \Lines_\ii^{\tto} \cap (L^* \cup L^0) } p_{l}^{t} 
+	\le u_i^p \quad i\in N, \notag\\ 
+  & -u_i^q \le q_i^{sh}(\WW_{ii}) - q^G_i + Q^D_i 
+	+ \sum_{\llll \in \Lines_\ii^{\from} \cap (L^* \cup L^0) } q_{l}^{f}
+	+ \sum_{\llll \in \Lines_\ii^{\tto} \cap (L^* \cup L^0) } q_{l}^{t} 
+	\le u_i^q \quad i\in N, \notag \\
+& p_{l}^{f}=\p{\from}_{\llll}(\WW_\llll),\quad p_l^t=\p{\tto}_{\llll}(\WW_\llll),\quad q_l^f=\q{\from}_{\llll}(\WW_\llll),\quad q_l^t=\q{\tto}_{\llll}(\WW_\llll) , \quad \llll \in L^0 \notag \\
+& -u_l^{pf1} \le \p{\from}_{\llll}(\WW_\llll) - p_{l}^{f} \le u_l^{pf1}, \quad
+ -u_l^{pt1} \le \p{\tto}_{\llll}(\WW_\llll)  - p_{l}^{t} \le u_l^{pt1}, \quad \llll \in L^* \notag \\
+& -u_l^{qf1} \le \q{\from}_{\llll}(\WW_\llll) - q_{l}^{f} \le u_l^{qf1}, \quad 
+ -u_l^{qt1} \le \q{\tto}_{\llll}(\WW_\llll)  - q_{l}^{t} \le u_l^{qt1}, \quad \llll \in L^*. \notag \\
+& -u_l^{pf0} \le p_l^f \le u_l^{pf0},\quad-u_l^{pt0} \le p_l^t \le u_l^{pt0}, \quad l \in L^* \notag\\ 
+& -u_l^{qf0} \le q_l^f \le u_l^{qf0},\quad-u_l^{qt0} \le q_l^t \le u_l^{qt0}, \quad l \in L^* \notag \\ 
+& \sum_{l \in L^*} x_l\left[ \left( u_l^{pf0} + u_l^{pt0} + u_l^{qf0} + u_l^{qt0} \right) -  \left( u_l^{pf1} + u_l^{pt1} + u_l^{qf1} + u_l^{qt1} \right) \right] \le \psi,\quad x \in X_K  \label{OverXK} \\
+\end{align}
+\end{subequations}
+\end{footnotesize}
+%&  (p_{l}^{f,0,-} + p_{l}^{f,0,+}) + (p_{l}^{t,0,-} + p_{l}^{t,0,+}) + (q_{l}^{f,0,-} + q_{l}^{f,0,+}) + (q_{l}^{t,0,-} + q_{l}^{t,0,+})  \notag \\
+%& =  (p_{l}^{f,1,-} + p_{l}^{f,1,+}) + (p_{l}^{t,1,-} + p_{l}^{t,1,+}) + (q_{l}^{f,1,-} + q_{l}^{f,1,+}) + (q_{l}^{t,1,-} + q_{l}^{t,1,+}) + u^K, \quad \llll \in L. \notag
+\end{frame}
+
+
+\begin{frame}{Power System Model: Single level min reformulation}
+\begin{footnotesize}
+For $X_K$ of the given form, we can reformulate the last constraint. (Otherwise, we would need to add the constraints parameterized by $x \in X_K$ as lazy cuts.)
+\begin{subequations}\label{MinMaxRef}
+\begin{align}
+ &=\min_{\substack{p,q\;\text{free}\\ u \geqq 0,W\in \WSet}} \quad 
+ \left[\bar{K} u^K + \sum_{l \in L^*} u_l^+\right] + \sum_{i \in N} u_i^p + u_i^q  + \sum_{l \in L^*} u_l^{pf1} + u_l^{pt1} + u_l^{qf1} + u_l^{qt1}\\
+  & P_i^{min} \leq p_i^G \leq P_i^{max}, \quad Q_i^{min} \leq q_i^G \leq Q_i^{max}, \quad (V_i^{min})^2 \leq W_{ii} \leq (V_i^{max})^2,\quad i\in N \notag \\
+  & -u_i^p \le p_i^{sh}(\WW_{ii}) - p^G_i + P^D_i 
+	+ \sum_{\llll \in \Lines_\ii^{\from} \cap (L^* \cup L^0)  } p_{l}^{f}  
+	+\sum_{\llll \in \Lines_\ii^{\tto} \cap (L^* \cup L^0) } p_{l}^{t} 
+	\le u_i^p \quad i\in N, \notag\\ 
+  & -u_i^q \le q_i^{sh}(\WW_{ii}) - q^G_i + Q^D_i 
+	+ \sum_{\llll \in \Lines_\ii^{\from} \cap (L^* \cup L^0) } q_{l}^{f}
+	+ \sum_{\llll \in \Lines_\ii^{\tto} \cap (L^* \cup L^0) } q_{l}^{t} 
+	\le u_i^q \quad i\in N, \notag \\
+& p_{l}^{f}=\p{\from}_{\llll}(\WW_\llll),\quad p_l^t=\p{\tto}_{\llll}(\WW_\llll),\quad q_l^f=\q{\from}_{\llll}(\WW_\llll),\quad q_l^t=\q{\tto}_{\llll}(\WW_\llll) , \quad \llll \in L^0 \notag \\
+& -u_l^{pf1} \le \p{\from}_{\llll}(\WW_\llll) - p_{l}^{f} \le u_l^{pf1}, \quad
+ -u_l^{pt1} \le \p{\tto}_{\llll}(\WW_\llll)  - p_{l}^{t} \le u_l^{pt1}, \quad \llll \in L^* \notag \\
+& -u_l^{qf1} \le \q{\from}_{\llll}(\WW_\llll) - q_{l}^{f} \le u_l^{qf1}, \quad 
+ -u_l^{qt1} \le \q{\tto}_{\llll}(\WW_\llll)  - q_{l}^{t} \le u_l^{qt1}, \quad \llll \in L^*. \notag \\
+& -u_l^{pf0} \le p_l^f \le u_l^{pf0},\quad-u_l^{pt0} \le p_l^t \le u_l^{pt0}, \quad l \in L^* \notag\\ 
+& -u_l^{qf0} \le q_l^f \le u_l^{qf0},\quad-u_l^{qt0} \le q_l^t \le u_l^{qt0}, \quad l \in L^* \notag \\ 
+& (u_l^{pf0} + u_l^{pt0} + u_l^{qf0} + u_l^{qt0}) - (u_l^{pf1} + u_l^{pt1} + u_l^{qf1} + u_l^{qt1}) \le u_l^+ + u^K,\quad l \in L^* \label{RefOverXK}
+\end{align}
+\end{subequations}
+\end{footnotesize}
+%&  (p_{l}^{f,0,-} + p_{l}^{f,0,+}) + (p_{l}^{t,0,-} + p_{l}^{t,0,+}) + (q_{l}^{f,0,-} + q_{l}^{f,0,+}) + (q_{l}^{t,0,-} + q_{l}^{t,0,+})  \notag \\
+%& =  (p_{l}^{f,1,-} + p_{l}^{f,1,+}) + (p_{l}^{t,1,-} + p_{l}^{t,1,+}) + (q_{l}^{f,1,-} + q_{l}^{f,1,+}) + (q_{l}^{t,1,-} + q_{l}^{t,1,+}) + u^K, \quad \llll \in L. \notag
+\end{frame}
+
+\begin{frame}
+
+\begin{itemize}
+\item One may verify that the above single-level min formulation has the same dual problem once it is noted that $x \in X_K$ in the dual problem can be taken as the dual multipliers associated with the last constraint~\eqref{RefOverXK} over $l \in L^*$. 
+\item \red{The derivation of~\eqref{MinMaxRef} via~\eqref{MinmaxX} provides a way to validate the single-level minimization problem~\eqref{MinMaxRef}, where we can recover the $x \in X_K$ corresponding to the binding constraints~\eqref{OverXK}, and solve the inner minimization problem~\eqref{MinmaxX} enforcing~\eqref{RefOverXK} only at those fixed $x$ and subsequently verifying that no other constraint~\eqref{OverXK} over $x \in X_K$ is violated.}
+\item \blue{The above single-level formulation~\eqref{MinMaxRef} can be formulated building on the PowerModels.jl interfaces.}
+\end{itemize}
+\end{frame}
+
+
+
+
+
+%\begin{frame}{Power System Model: Feasibility Problem with robustness parameterized by attack budget $\bar{K}=K-|L^1|$}
+%\begin{footnotesize}
+%Input: Budget $K$, Partition $\{ L^1,L^0,L^* \}$ of $L$
+%\begin{subequations}
+%\begin{align}
+%&\min_{\substack{p,q\;\text{free}\\ u \geqq 0,W\in \WSet}} \quad 
+% \left[\bar{K} u^K + \sum_{l \in L^*} u_l^+\right] + \left[\sum_{i \in N} u_i^p + u_i^q + \sum_{l \in L^*} u_l^{pf1} + u_l^{ft1} + u_l^{qf1} + u_l^{qt1} \right] \notag \\
+%  & P_i^{min} \leq p_i^G \leq P_i^{max}, \quad Q_i^{min} \leq q_i^G \leq Q_i^{max}, \quad (V_i^{min})^2 \leq W_{ii} \leq (V_i^{max})^2,\quad i\in N \notag \\
+%  & -u_i^p \le p_i^{sh}(\WW_{ii}) - p^G_i + P^D_i 
+%	+ \sum_{\llll \in \Lines_\ii^{\from} \cap (L^* \cup L^0)  } p_{l}^{f}  
+%	+\sum_{\llll \in \Lines_\ii^{\tto} \cap (L^* \cup L^0) } p_{l}^{t} 
+%	\le u_i^p \quad i\in N, \notag\\ 
+%  & -u_i^q \le q_i^{sh}(\WW_{ii}) - q^G_i + Q^D_i 
+%	+ \sum_{\llll \in \Lines_\ii^{\from} \cap (L^* \cup L^0) } q_{l}^{f}
+%	+ \sum_{\llll \in \Lines_\ii^{\tto} \cap (L^* \cup L^0) } q_{l}^{t} 
+%	\le u_i^q \quad i\in N, \notag \\
+%& p_{l}^{f}=\p{\from}_{\llll}(\WW_\llll),\quad p_l^t=\p{\tto}_{\llll}(\WW_\llll),\quad q_l^f=\q{\from}_{\llll}(\WW_\llll),\quad q_l^t=\q{\tto}_{\llll}(\WW_\llll) , \quad \llll \in L^0 \notag \\
+%& -u_l^{pf1} \le \p{\from}_{\llll}(\WW_\llll) - p_{l}^{f} \le u_l^{pf1}, \quad
+% -u_l^{pt1} \le \p{\tto}_{\llll}(\WW_\llll)  - p_{l}^{t} \le u_l^{pt1}, \quad \llll \in L^* \notag \\
+%& -u_l^{qf1} \le \q{\from}_{\llll}(\WW_\llll) - q_{l}^{f} \le u_l^{qf1}, \quad 
+% -u_l^{qt1} \le \q{\tto}_{\llll}(\WW_\llll)  - q_{l}^{t} \le u_l^{qt1}, \quad \llll \in L^* \notag \\
+%& -u_l^{pf0} \le p_l^f \le u_l^{pf0},\quad-u_l^{pt0} \le p_l^t \le u_l^{pt0}, \quad l \in L^* \notag\\ 
+%& -u_l^{qf0} \le q_l^f \le u_l^{qf0},\quad-u_l^{qt0} \le q_l^t \le u_l^{qt0}, \quad l \in L^* \notag \\
+%& (u_l^{pf0} + u_l^{pt0} + u_l^{qf0} + u_l^{qt0}) - (u_l^{pf1} + u_l^{pt1} + u_l^{qf1} + u_l^{qt1}) \le u_l^+ + u^K,\quad l \in L^* \notag
+%\end{align}
+%\end{subequations}
+%\end{footnotesize}
+%%&  (p_{l}^{f,0,-} + p_{l}^{f,0,+}) + (p_{l}^{t,0,-} + p_{l}^{t,0,+}) + (q_{l}^{f,0,-} + q_{l}^{f,0,+}) + (q_{l}^{t,0,-} + q_{l}^{t,0,+})  \notag \\
+%%& =  (p_{l}^{f,1,-} + p_{l}^{f,1,+}) + (p_{l}^{t,1,-} + p_{l}^{t,1,+}) + (q_{l}^{f,1,-} + q_{l}^{f,1,+}) + (q_{l}^{t,1,-} + q_{l}^{t,1,+}) + u^K, \quad \llll \in L. \notag
+%\end{frame}
+%
+%\begin{frame}{Meaning of the above model}
+%\begin{itemize}
+%\item At optimality, the term $\left[\bar{K} u^K + \sum_{l \in L^*} u_l^+\right]$ in the objective is equal to the sum of the $\bar{K}$ largest values
+%of $y_l := (u_l^{pf0} + u_l^{pt0} + u_l^{qf0} + u_l^{qt0}) - (u_l^{pf1} + u_l^{pt1} + u_l^{qf1} + u_l^{qt1})$, $l \in L^*$
+%\item The corresponding lines in such a maximal sum is denoted $L^{\bar{K}} \subseteq L^*$. Note that there may be more than one such set $L^{\bar{K}}$. 
+%\item For $l \in L^{\bar{K}}$, the values $u_l^{pf0},u_l^{pt0},u_l^{qf0},u_l^{qt0}$ take the absolute value of the corresponding line flows
+%$p_l^f,p_l^t,q_l^f,q_l^t$
+%\item The $y_l$ may be thought of as upper-bounding estimates for the additional absolute power residues/losses that would result if these corresponding $\bar{K}$ lines were removed.
+%\item Thus, the minimization is in terms of minimizing power residues $\left[\sum_{i \in N} u_i^p + u_i^q + \sum_{l \in L^*} u_l^{pf1} + u_l^{ft1} + u_l^{qf1} + u_l^{qt1} \right]$ plus the potential power residues/losses resulting from an attacker cutting lines from some $L^{\bar{K}} \subseteq L^*$ . 
+%\end{itemize}
+%\end{frame}
+
+\begin{frame}{Generating the max-min problem via Dualization.jl}
+For models in conic form, Dualization.jl may be used to obtain the dual of the above model, and the dual variable $x$ corresponding to the last constraint can be restricted to binary
+\begin{itemize}
+\item Otherwise, posing the full mixed-binary max-min problem is not so automatic
+\end{itemize}
+\end{frame}
+
+
+%\begin{frame}{Power System Model: Feasibility Problem with robustness parameterized by attack budget $\bar{K}=K-|L^1|$}
+%\begin{footnotesize}
+%\begin{subequations}
+%\begin{align}
+%&\min_{\substack{p,q\\ u \geqq 0,W\in \WSet}} \quad 
+% \bar{K} u^K + \sum_{i \in N} u_i^p + u_i^q + \sum_{l \in L^*} u_l^{+}   \notag \\
+%  & P_i^{min} \leq p_i^G \leq P_i^{max}, \quad Q_i^{min} \leq q_i^G \leq Q_i^{max}, \quad (V_i^{min})^2 \leq W_{ii} \leq (V_i^{max})^2,\quad i\in N \notag \\
+%  & -u_i^p \le p_i^{sh}(\WW_{ii}) - p^G_i + P^D_i 
+%	+ \sum_{\llll \in \Lines_\ii^{\from} \cap (L^* \cup L^0)  } p_{l}^{f}  
+%	+\sum_{\llll \in \Lines_\ii^{\tto} \cap (L^* \cup L^0) } p_{l}^{t} 
+%	\le u_i^p \quad i\in N, \notag\\ 
+%  & -u_i^q \le q_i^{sh}(\WW_{ii}) - q^G_i + Q^D_i 
+%	+ \sum_{\llll \in \Lines_\ii^{\from} \cap (L^* \cup L^0) } q_{l}^{f}
+%	+ \sum_{\llll \in \Lines_\ii^{\tto} \cap (L^* \cup L^0) } q_{l}^{t} 
+%	\le u_i^q \quad i\in N, \notag \\
+%%& p_{l}^{f}=\p{\from}_{\llll}(\WW_\llll),\quad p_l^t=\p{\tto}_{\llll}(\WW_\llll),\quad q_l^f=\q{\from}_{\llll}(\WW_\llll),\quad q_l^t=\q{\tto}_{\llll}(\WW_\llll) , \quad \llll \in L^0 \notag \\
+%%& -u_l^{+} \le \p{\from}_{\llll}(\WW_\llll) - p_{l}^{f} \le u_l^{+}, \quad
+%% -u_l^{+} \le \p{\tto}_{\llll}(\WW_\llll)  - p_{l}^{t} \le u_l^{+}, \quad \llll \in L^* \notag \\
+%%& -u_l^{+} \le \q{\from}_{\llll}(\WW_\llll) - q_{l}^{f} \le u_l^{+}, \quad 
+%% -u_l^{+} \le \q{\tto}_{\llll}(\WW_\llll)  - q_{l}^{t} \le u_l^{+}, \quad \llll \in L^* \notag \\
+%& -u_l^{pf0} \le p_l^f \le u_l^{pf0},\quad-u_l^{pt0} \le p_l^t \le u_l^{pt0}, \quad l \in L^* \notag\\ 
+%& -u_l^{qf0} \le q_l^f \le u_l^{qf0},\quad-u_l^{qt0} \le q_l^t \le u_l^{qt0}, \quad l \in L^* \notag \\
+%& u_l^{pf0} + u_l^{pt0} + u_l^{qf0} + u_l^{qt0} \le u_l^{+} + u^K,\quad l \in L^* \notag
+%\end{align}
+%\end{subequations}
+%\end{footnotesize}
+%%&  (p_{l}^{f,0,-} + p_{l}^{f,0,+}) + (p_{l}^{t,0,-} + p_{l}^{t,0,+}) + (q_{l}^{f,0,-} + q_{l}^{f,0,+}) + (q_{l}^{t,0,-} + q_{l}^{t,0,+})  \notag \\
+%%& =  (p_{l}^{f,1,-} + p_{l}^{f,1,+}) + (p_{l}^{t,1,-} + p_{l}^{t,1,+}) + (q_{l}^{f,1,-} + q_{l}^{f,1,+}) + (q_{l}^{t,1,-} + q_{l}^{t,1,+}) + u^K, \quad \llll \in L. \notag
+%\end{frame}
+%
+%\begin{frame}{Double-checking dual equivalence: Forming the Lagrangian}
+%\begin{tiny}
+%\begin{subequations}
+%\begin{align}
+%&\min_{\substack{p,q\\ u \geqq 0,W \in \WSet}} \quad 
+%  \sum_{i \in N} u_i^{p}(1-|\alpha_{\ii}|) +  u_i^{q}(1-|\beta_{\ii}|)   
+%+ u^K( \bar{K}-\sum_{l \in L^*} x_l) \notag \\
+%  &+\sum_{\ii \in N} W_\ii(\gamma_{\ii}^+-\gamma_{\ii}^-) +p_\ii^{sh}(\WW_{ii})\alpha_\ii + q_\ii^{sh}(\WW_{ii})\beta_\ii - \langle C , \WW \rangle + \langle C, v v^* \rangle \notag\\
+%&+\sum_{(i,j)=l \in L^0} \alpha_i p_l^f(\WW_l) + \alpha_j p_l^t(\WW_l) + \beta_i q_l^f(\WW_l) + \beta_j q_l^t(\WW_l) \notag\\
+%&+\sum_{l \in L^*} \lambda_l^f p_l^f(\WW_l) + \lambda_l^t p_l^t(\WW_l) + \mu_l^f q_l^f(\WW_l) + \mu_l^t q_l^t(\WW_l) \notag\\
+%&+ p_\ii^G(\zeta_\ii^{p+}-\zeta_\ii^{p-} - \alpha_\ii) + q_\ii^G(\zeta_\ii^{q+}-\zeta_\ii^{q-} - \beta_\ii)\notag \\
+%  &+\sum_{\ii \in N}  (V_\ii^{min})^2 \gamma_\ii^- - (V_\ii^{max})^2 \gamma_\ii^+ 
+%- \zeta_\ii^{p+}P_\ii^{max} + \zeta_\ii^{p-}P_\ii^{min} + \alpha_\ii P_\ii^D 
+%- \zeta_\ii^{q+}Q_\ii^{max} + \zeta_\ii^{q-}Q_\ii^{min} + \beta_\ii Q_\ii^D \notag \\
+%  &+ \sum_{(i,j)=l \in L^* } p_{l}^{f}(\alpha_i-\lambda_l^f+\nu_l^{pf}) + p_{l}^{t}(\alpha_j-\lambda_l^t + \nu_l^{pt}) 
+%                 + q_{l}^{f}(\beta_i-\mu_l^f+\nu_l^{qf}) + q_{l}^{t}(\beta_j-\mu_l^t-\nu_l^{qt})  \notag \\
+%  & + \sum_{l \in L^* } u_l^{pf0}(x_l-|\nu_l^{pf}|) + u_l^{pt0}(x_l-|\nu_l^{pt}|) + u_l^{qf0}(x_l-|\nu_l^{qf}|) + u_l^{qt0}(x_l - |\nu_l^{qt}|) \notag \\
+%& + \sum_{l \in L^* } u_l^{pf1}(1-x_l - |\lambda_l^f|) + u_l^{pt1}(1-x_l-|\lambda_l^t|) + u_l^{qf1}(1-x_l-|\mu_l^f|) + u_l^{qt1}(1-x_l-|\mu_l^t|) \notag
+%\end{align}
+%\end{subequations}
+%(The dual feasibility conditions can be read-off readily...)
+%\end{tiny}
+%\end{frame}
+%
+%
+%\begin{frame}{Double-checking dual equivalence: Forming the Lagrangian}
+%\begin{tiny}
+%\begin{subequations}
+%\begin{align}
+%&\min_{\substack{p,q\\ u \geqq 0,W \in \WSet}} \quad 
+%  \sum_{i \in N} u_i^{p}(1-|\alpha_{\ii}|) +  u_i^{q}(1-|\beta_{\ii}|)   
+%+ u^K(K-|L^1|-\sum_{l \in L^*} x_l) \notag \\
+%  &+\sum_{\ii \in N} W_\ii(\gamma_{\ii}^+-\gamma_{\ii}^-) +p_\ii^{sh}(\WW_{ii})\alpha_\ii + q_\ii^{sh}(\WW_{ii})\beta_\ii - \langle C , \WW \rangle + \langle C, v v^* \rangle \notag\\
+%&+\sum_{(i,j)=l \in L^0} \alpha_i p_l^f(\WW_l) + \alpha_j p_l^t(\WW_l) + \beta_i q_l^f(\WW_l) + \beta_j q_l^t(\WW_l) \notag\\
+%&+\sum_{l \in L^*} \lambda_l^f p_l^f(\WW_l) + \lambda_l^t p_l^t(\WW_l) + \mu_l^f q_l^f(\WW_l) + \mu_l^t q_l^t(\WW_l) \notag\\
+%&+ p_\ii^G(\zeta_\ii^{p+}-\zeta_\ii^{p-} - \alpha_\ii) + q_\ii^G(\zeta_\ii^{q+}-\zeta_\ii^{q-} - \beta_\ii)\notag \\
+%  &+\sum_{\ii \in N}  (V_\ii^{min})^2 \gamma_\ii^- - (V_\ii^{max})^2 \gamma_\ii^+ 
+%- \zeta_\ii^{p+}P_\ii^{max} + \zeta_\ii^{p-}P_\ii^{min} + \alpha_\ii P_\ii^D 
+%- \zeta_\ii^{q+}Q_\ii^{max} + \zeta_\ii^{q-}Q_\ii^{min} + \beta_\ii Q_\ii^D \notag \\
+%  &+ \sum_{(i,j)=l \in L^* } p_{l}^{f}(\alpha_i-\lambda_l^f+\nu_l^{pf}) + p_{l}^{t}(\alpha_j-\lambda_l^t + \nu_l^{pt}) 
+%                 + q_{l}^{f}(\beta_i-\mu_l^f+\nu_l^{qf}) + q_{l}^{t}(\beta_j-\mu_l^t-\nu_l^{qt})  \notag \\
+%  & + \sum_{l \in L^* } u_l^{pf0}(x_l-|\nu_l^{pf}|) + u_l^{pt0}(x_l-|\nu_l^{pt}|) + u_l^{qf0}(x_l-|\nu_l^{qf}|) + u_l^{qt0}(x_l - |\nu_l^{qt}|) \notag \\
+%& + \sum_{l \in L^* } u_l^{pf1}(1-x_l - |\lambda_l^f|) + u_l^{pt1}(1-x_l-|\lambda_l^t|) + u_l^{qf1}(1-x_l-|\mu_l^f|) + u_l^{qt1}(1-x_l-|\mu_l^t|) \notag
+%\end{align}
+%\end{subequations}
+%(The dual feasibility conditions can be read-off readily...)
+%\end{tiny}
+%\end{frame}
+
+
+
+%\begin{frame}{Double-checking dual equivalence: Forming the dual problem}
+%\begin{tiny}
+%\begin{subequations}
+%\begin{align}
+%& \max_{\substack{\gamma,\zeta \ge 0\\-1\le \alpha,\beta \le 1,\\ \lambda,\mu,x\; \text{free}}} \quad 
+% \sum_{\ii \in N}  (V_\ii^{min})^2 \gamma_\ii^- - (V_\ii^{max})^2 \gamma_\ii^+ + \zeta_\ii^{p-}P_\ii^{min} - \zeta_\ii^{p+}P_\ii^{max} +\alpha_\ii P_\ii^D 
+%+ \zeta_\ii^{q-}Q_\ii^{min} - \zeta_\ii^{q+}Q_\ii^{max} + \beta_\ii Q_\ii^D \notag \\
+%&s.t.\; (\zeta_\ii^{p+}-\zeta_\ii^{p-} - \alpha_\ii) = 0, \qquad (\zeta_\ii^{q+}-\zeta_\ii^{q-} - \beta_\ii) = 0,\quad \ii \in N. \notag \\
+%& | \alpha_i -\lambda_\llll^f| \le x_l,\quad| \alpha_j - \lambda_l^t| \le x_l,\quad |\beta_i - \mu_l^f | \le x_l,\quad|\beta_j - \mu_l^t| \le x_l,\quad (i,j)=l \in L^* \notag \\
+%& |\lambda_l^f| \le 1-x_l,\quad |\lambda_l^t| \le 1-x_l,\quad|\mu_l^f| \le 1-x_l,\quad |\mu_l^t| \le 1-x_l,\quad l \in L^* \notag \\
+%%& \lambda_l^f = 0,\quad \lambda_l^t = 0,\quad \mu_l^f = 0,\quad \mu_l^t = 0,\quad l \in L^1 \notag \\
+%& (K-|L^1|-\sum_{l \in L^*} x_l) \ge 0, \qquad\qquad C \in \WSet^* \notag, \qquad C=H\\
+%\end{align}
+%\end{subequations}
+%where $H(\alpha,\beta,\gamma,\lambda,\mu)$ is the matrix such that for all $\WW$, 
+%\begin{align*}
+%\langle H(\alpha,\beta,\gamma,\lambda,\mu), W \rangle = &\sum_{\ii \in N} W_{\ii\ii}(\gamma_\ii^+-\gamma_\ii^-) + \alpha_\ii p_\ii^{sh}(\WW_{ii}) + \beta_\ii q_\ii^{sh}(\WW_{ii}) \\
+%&+ \sum_{l \in L^*} \lambda_l^f p_l^f(\WW_l) + \lambda_l^t p_l^t(\WW_l) + \mu_l^f q_l^f(\WW_l) + \mu_l^t q_l^t(\WW_l) \notag \\
+%&+ \sum_{(i,j)=l \in L^0} \alpha_i p_l^f(\WW_l) + \alpha_j p_l^t(\WW_l) + \beta_i q_l^f(\WW_l) + \beta_j q_l^t(\WW_l).
+%\end{align*}
+%Note: The dual variables $\lambda,\mu,x$ are indexed by $L^*$ and only appear for such indices.
+%\end{tiny}
+%\end{frame}
+
+
+\begin{frame}
+So far, the problem above has been prototyped for the conic SOC formulation of the power flow problem. 
+\begin{itemize}
+\item This involved creating new variables $u$ and new slack versions of the power flow balance and line flow definition constraints
+\item We have tested this model for various line-cut contingencies for case 9, 30, and 57.
+\end{itemize}
+The above model needs to be exended.
+\end{frame}
+
+ 
+
+% #References 
+
+\begin{frame}[allowframebreaks]{References} 
+
+\bibliographystyle{apalike} 
+%\bibliography{../pscc-scopf}
+
+
+
+\end{frame}
+      
+
+
+
+
+\end{document}
