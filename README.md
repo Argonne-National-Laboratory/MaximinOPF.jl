@@ -1,6 +1,9 @@
 
-## To install and test
-Run the instaruction below to install and test MaximinOPF
+## CAPS
+TODO: Description of the package
+
+### Getting Start
+
 
 ```
 (Shell)> cd <proj_root>
