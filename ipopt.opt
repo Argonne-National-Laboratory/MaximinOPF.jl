@@ -1,7 +1,7 @@
 print_level 0
 
-jac_d_constant yes
-jac_c_constant yes
+#jac_d_constant yes
+#jac_c_constant yes
 hessian_constant yes
 
 max_iter 50000
@@ -21,7 +21,7 @@ acceptable_compl_inf_tol 1e-6
 
 #mu_strategy adaptive
 
-linear_solver ma57
+#linear_solver ma57
 #ma57_pivtol 1e-4
 #ma57_automatic_scaling yes
 

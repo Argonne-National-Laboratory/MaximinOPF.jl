@@ -20,8 +20,8 @@ if [ "$#" -eq 4 ]; then
 fi
 
 if [ "$#" -eq 3 ]; then
-    #env OMP_NUM_THREADS=1 JULIA_NUM_THREADS=1 julia --depwarn=no -O3 ${ALG}.jl $1 $2 $3 1 > ${OUTDIR}/case$1K$2H$3R1 &
-    env OMP_NUM_THREADS=1 JULIA_NUM_THREADS=1 julia --depwarn=no -O3 ${ALG}.jl $1 $2 $3 1 
+    env OMP_NUM_THREADS=1 JULIA_NUM_THREADS=1 julia --depwarn=no -O3 ${ALG}.jl $1 $2 $3 1 > ${OUTDIR}/case$1K$2H$3R1 &
+    #env OMP_NUM_THREADS=1 JULIA_NUM_THREADS=1 julia --depwarn=no -O3 ${ALG}.jl $1 $2 $3 1 
 fi
 
 if [ "$#" -eq 2 ]; then
