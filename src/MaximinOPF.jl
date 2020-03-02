@@ -53,6 +53,8 @@ function MaximinOPFModel(pm_data, pm_form; rm_rsoc=true, rm_therm_line_lim=false
                 delete_upper_bound(variable_by_name(maxmin_model,"x[$l]_1"))
             end
             JuMP.set_integer(variable_by_name(maxmin_model,"x[$l]_1"))
+            set_lower_bound(variable_by_name(maxmin_model,"x[$l]_1"),0)
+            set_upper_bound(variable_by_name(maxmin_model,"x[$l]_1"),1)
         end
 	return maxmin_model
     else
@@ -107,6 +109,8 @@ function MaximinOPFModel(minmax_model::JuMP.Model, line_idx=[])
                 delete_upper_bound(variable_by_name(maxmin_model,"x[$l]_1"))
             end
             JuMP.set_integer(variable_by_name(maxmin_model,"x[$l]_1"))
+            set_lower_bound(variable_by_name(maxmin_model,"x[$l]_1"),0)
+            set_upper_bound(variable_by_name(maxmin_model,"x[$l]_1"),1)
         end
 	return maxmin_model
 end
@@ -225,15 +229,17 @@ end
 
 function DualizeMinmaxModel(minmax_model_pm::AbstractPowerModel)
     if typeof(minmax_model_pm) in conic_supported_pm 
-	dualizable_minmax_model = ConvertModelToDualizableForm(minmax_model_pm.model)
+	    dualizable_minmax_model = ConvertModelToDualizableForm(minmax_model_pm.model)
         AssignModelDefaultConstraintNames(dualizable_minmax_model)
         dualized_minmax_model = dualize(dualizable_minmax_model)
+        #add_artificial_var_bds(dualized_minmax_model)  #Some solvers may require the feasible set to be bounded.
         return dualized_minmax_model
     else 
         println("DualizeMinmaxModel not supported for convex conic PowerModels, returning nothing.")
-	return nothing
+	    return nothing
     end
 end
+
 
 function DualizeMinmaxModel(dualizable_minmax_model::JuMP.Model)
     AssignModelDefaultConstraintNames(dualizable_minmax_model)
@@ -281,120 +287,6 @@ function AssignModelDefaultConstraintNames(model::JuMP.Model)
 		end
 	    end
 	end
-#=
-
-
-	  if con_types[kk][2] == MathOptInterface.SecondOrderCone
-	    soc_con = all_constraints(model, con_types[kk][1], con_types[kk][2]) 
-	    con_dict["SOC"] = Dict{Int,String}()
-	    n_soc_con=length(soc_con)
-	    for jj=1:n_soc_con
-		if length(JuMP.name(soc_con[jj])) == 0
-	          con_dict["SOC"][jj]=string("SOC[",jj,"]")
-  		  JuMP.set_name(soc_con[jj],con_dict["SOC"][jj])
-		else
-		  con_dict["SOC"][jj]=JuMP.name(soc_con[jj])
-		end
-	    end
-	  elseif con_types[kk][2]== MathOptInterface.RotatedSecondOrderCone
-	    rsoc_con = all_constraints(model, con_types[kk][1], con_types[kk][2]) 
-	    con_dict["RSOC"] = Dict{Int,String}()
-	    n_rsoc_con=length(rsoc_con)
-	    for jj=1:n_rsoc_con
-		if length(JuMP.name(rsoc_con[jj])) == 0
-		  con_dict["RSOC"][jj]=string("RSOC[",jj,"]")
-  		  JuMP.set_name(rsoc_con[jj],con_dict["RSOC"][jj])
-		else
-		  con_dict["RSOC"][jj]=JuMP.name(rsoc_con[jj])
-		end
-	    end
-	  elseif con_types[kk][2] == MathOptInterface.PositiveSemidefiniteConeTriangle
-	    psd_con = all_constraints(model, con_types[kk][1], con_types[kk][2]) 
-	    con_dict["PSD"] = Dict{Int,String}()
-	    n_psd_con=length(psd_con)
-	    for jj=1:n_psd_con
-		if length(JuMP.name(psd_con[jj])) == 0
-		  con_dict["PSD"][jj]=string("PSD[",jj,"]")
-  		  JuMP.set_name(psd_con[jj], con_dict["PSD"][jj])
-		else
-		  con_dict["PSD"][jj]=JuMP.name(psd_con[jj])
-		end
-	    end
-	  elseif con_types[kk][2]== MathOptInterface.PositiveSemidefiniteConeSquare
-	    psdsq_con = all_constraints(model, con_types[kk][1], con_types[kk][2]) 
-	    con_dict["PSDSQ"] = Dict{Int,String}()
-	    n_psdsq_con=length(psdsq_con)
-	    for jj=1:n_psdsq_con
-		if length(JuMP.name(psdsq_con[jj])) == 0
-		  con_dict["PSDSQ"][jj]=string("PSDSQ[",jj,"]")
-  		  JuMP.set_name(psdsq_con[jj], con_dict["PSDSQ"][jj])
-		else
-		  con_dict["PSDSQ"][jj]=JuMP.name(psdsq_con[jj])
-		end
-	    end
-	  elseif con_types[kk][2] == MathOptInterface.GreaterThan{Float64} && con_types[kk][1] == VariableRef
-	    var_lb = all_constraints(model, con_types[kk][1], con_types[kk][2]) 
-	    con_dict["VAR_LB"] = Dict{Int,String}()
-	    n_var_lb = length(var_lb)
-	    for jj=1:n_var_lb
-		if length(JuMP.name(var_lb[jj])) == 0
-		  con_dict["VAR_LB"][jj]=string("VAR_LB[",jj,"]")
-  		  JuMP.set_name(var_lb[jj],con_dict["VAR_LB"][jj])
-		else
-		  con_dict["VAR_LB"][jj]=JuMP.name(var_lb[jj])
-		end
-	    end
-	  elseif con_types[kk][2] == MathOptInterface.LessThan{Float64} && con_types[kk][1] ==VariableRef
-	    var_ub = all_constraints(model, con_types[kk][1], con_types[kk][2]) 
-	    con_dict["VAR_UB"] = Dict{Int,String}()
-	    n_var_ub = length(var_ub)
-	    for jj=1:n_var_ub
-		if length(JuMP.name(var_ub[jj])) == 0
-  		  con_dict["VAR_UB"][jj] = string("VAR_UB[",jj,"]")
-  		  JuMP.set_name(var_ub[jj], con_dict["VAR_UB"][jj])
-		else
-		  con_dict["VAR_UB"][jj]=JuMP.name(var_ub[jj])
-		end
-	    end
-	  elseif con_types[kk][2] == MathOptInterface.EqualTo{Float64} && con_types[kk][1] == GenericAffExpr{Float64,VariableRef} 
-	    eq_con = all_constraints(model, con_types[kk][1], con_types[kk][2]) 
-	    con_dict["EQ"] = Dict{Int,String}()
-	    n_eq_con = length(eq_con)
-	    for jj=1:n_eq_con
-		if length(JuMP.name(eq_con[jj])) == 0
-  		  con_dict["EQ"][jj] = string("EQ[",jj,"]")
-  		  JuMP.set_name(eq_con[jj],con_dict["EQ"][jj])
-		else
-		  con_dict["EQ"][jj]=JuMP.name(eq_con[jj])
-		end
-	    end
-	  elseif con_types[kk][2] == MathOptInterface.GreaterThan{Float64} && con_types[kk][1] == GenericAffExpr{Float64,VariableRef} 
-	    ge_con = all_constraints(model, con_types[kk][1], con_types[kk][2]) 
-	    con_dict["GE"] = Dict{Int,String}()
-	    n_ge_con = length(ge_con)
-	    for jj=1:n_ge_con
-		if length(JuMP.name(ge_con[jj])) == 0
-  		  con_dict["GE"][jj] = string("GE[",jj,"]")
-  		  JuMP.set_name(ge_con[jj],con_dict["GE"][jj])
-		else
-		  con_dict["GE"][jj]=JuMP.name(ge_con[jj])
-		end
-	    end
-	  elseif con_types[kk][2] == MathOptInterface.LessThan{Float64} && con_types[kk][1] == GenericAffExpr{Float64,VariableRef} 
-	    le_con = all_constraints(model, con_types[kk][1], con_types[kk][2]) 
-	    con_dict["LE"] = Dict{Int,String}()
-	    n_le_con = length(le_con)
-	    for jj=1:n_le_con
-		if length(JuMP.name(le_con[jj])) == 0
-  		  con_dict["LE"][jj] = string("LE[",jj,"]")
-  		  JuMP.set_name(le_con[jj],con_dict["LE"][jj])
-		else
-		  con_dict["LE"][jj]=JuMP.name(le_con[jj])
-		end
-	    end
-	  end
-	end
-=#
 	return con_dict
 end
 
@@ -457,6 +349,62 @@ function Post_PF(pm::AbstractPowerModel)
     else
       build_opf(pm)
     end
+
+#=
+    #println("Variables: ",var(pm,pm.cnw,:w))
+    w_var = var(pm,pm.cnw,:w)
+    w_ids_aux = filter( iii->( has_lower_bound(w_var[iii]) || has_upper_bound(w_var[iii]) ), keys(w_var))
+    #w_ids_aux = filter(iii->(has_lower_bound(w_var[iii])), keys(w_var))
+    @variable(pm.model, u_w[ii in w_ids_aux] >= 0)
+    for ii in w_ids_aux
+        if has_lower_bound(w_var[ii])
+            lb = lower_bound(w_var[ii])
+            delete_lower_bound(w_var[ii])
+            @constraint(pm.model, w_var[ii] - lb +  u_w[ii] >= 0)
+        end
+        if has_upper_bound(w_var[ii])
+            ub = upper_bound(w_var[ii])
+            delete_upper_bound(w_var[ii])
+            @constraint(pm.model, w_var[ii] - ub -  u_w[ii] <= 0)
+        end
+    end
+
+    #println("Variables: ",var(pm,pm.cnw,:wr))
+    wr_var = var(pm,pm.cnw,:wr)
+    wr_ids_aux = filter(iii->( has_lower_bound(wr_var[iii]) || has_upper_bound(wr_var[iii]) ), keys(wr_var))
+    #wr_ids_aux = filter(iii->( has_lower_bound(wr_var[iii]) ), keys(wr_var))
+    @variable(pm.model, u_wr[ii in wr_ids_aux] >= 0)
+    for ii in wr_ids_aux
+        if has_lower_bound(wr_var[ii])
+            lb = lower_bound(wr_var[ii])
+            delete_lower_bound(wr_var[ii])
+            @constraint(pm.model, wr_var[ii] - lb +  u_wr[ii] >= 0)
+        end
+        if has_upper_bound(wr_var[ii])
+            ub = upper_bound(wr_var[ii])
+            delete_upper_bound(wr_var[ii])
+            @constraint(pm.model, wr_var[ii] - ub -  u_wr[ii] <= 0)
+        end
+    end
+
+    #println("Variables: ",var(pm,pm.cnw,:wi))
+    wi_var = var(pm,pm.cnw,:wi)
+    wi_ids_aux = filter( iii->( has_lower_bound(wi_var[iii]) || has_upper_bound(wi_var[iii]) ), keys(wi_var) )
+    #wi_ids_aux = filter( iii->( has_lower_bound(wi_var[iii]) ), keys(wi_var) )
+    @variable(pm.model, u_wi[ii in wi_ids_aux] >= 0)
+    for ii in wi_ids_aux
+        if has_lower_bound(wi_var[ii])
+            lb = lower_bound(wi_var[ii])
+            delete_lower_bound(wi_var[ii])
+            @constraint(pm.model, wi_var[ii] - lb +  u_wi[ii] >= 0)
+        end
+        if has_upper_bound(wi_var[ii])
+            ub = upper_bound(wi_var[ii])
+            delete_upper_bound(wi_var[ii])
+            @constraint(pm.model, wi_var[ii] - ub -  u_wi[ii] <= 0 )
+        end
+    end
+=#
 
     # Add new variables, modify some existing constraints and add new ones also.
     variable_branch_flow_slacks(pm)
