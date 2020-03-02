@@ -1,16 +1,15 @@
 
-## CAPS
-TODO: Description of the package
+# CAPS.jl
+CAPS is a Julia package to build a JuMP model for the cyber attack strategies in the power system with the maximin optimization problem. 
 
-### Getting Start
+## Getting Started
 
+* Installation
+* Building a model
+* Optimization options
 
-```
-(Shell)> cd <proj_root>
-(Shell)> julia
-(Julia)> ]
-(v1.2) pkg> activate .
-(MaximinOPF) pkg> test
-```
+### Installation
 
-EOF
+### Building a model
+
+### Optimization options
