@@ -6,6 +6,7 @@ using MathOptInterface
 include("Variables.jl")
 include("Objectives.jl")
 include("Constraints.jl")
+include("utils.jl")
 greet() = print("Hello World!")
 
 supported_pm=[  ACPPowerModel, ACRPowerModel, ACTPowerModel, 
@@ -309,7 +310,8 @@ function convertSOCtoPSD(model::JuMP.Model)
 end
 function write_to_cbf_scip(model,fn_base::String)
     model_psd = convertSOCtoPSD(model)
-
+    add_artificial_var_bds(model_psd)
+    add_psd_initial_cuts(model_psd)
     fname=string(fn_base,"_scip",".cbf")
     JuMP_write_to_file( model_psd, fname, format = MOI.FileFormats.FORMAT_CBF)
     ### CHANGING VER 3 to VER 2 
