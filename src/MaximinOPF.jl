@@ -24,7 +24,7 @@ nonconvex_pm=[ACPPowerModel, ACRPowerModel, ACTPowerModel]
 not_supported_pm=[IVRPowerModel]
 
 
-function MaximinOPFModel(pm_data, pm_form; rm_rsoc=true, rm_therm_line_lim=false)
+function MaximinOPFModel(pm_data, pm_form; enforce_int=true, rm_rsoc=true, rm_therm_line_lim=false)
     println("Calling MaximinOPFModel() with powerform: ",pm_form)
     if pm_form in conic_supported_pm 
         minmax_pm = MinimaxOPFModel(pm_data, pm_form)
@@ -46,16 +46,20 @@ function MaximinOPFModel(pm_data, pm_form; rm_rsoc=true, rm_therm_line_lim=false
         close(io)
 
         maxmin_model = DualizeMinmaxModel(minmax_pm)
-        for l in minmax_pm.data["undecided_branches"]
-            if has_lower_bound(variable_by_name(maxmin_model,"x[$l]_1"))
-                delete_lower_bound(variable_by_name(maxmin_model,"x[$l]_1"))
+        if enforce_int
+            for l in minmax_pm.data["undecided_branches"]
+                if has_lower_bound(variable_by_name(maxmin_model,"x[$l]_1"))
+                    delete_lower_bound(variable_by_name(maxmin_model,"x[$l]_1"))
+                end
+                if has_upper_bound(variable_by_name(maxmin_model,"x[$l]_1"))
+                    delete_upper_bound(variable_by_name(maxmin_model,"x[$l]_1"))
+                end
+                JuMP.set_integer(variable_by_name(maxmin_model,"x[$l]_1"))
+                JuMP.@constraint(maxmin_model, variable_by_name(maxmin_model,"x[$l]_1") >= 0)
+                JuMP.@constraint(maxmin_model, variable_by_name(maxmin_model,"x[$l]_1") <= 1)
+                #set_lower_bound(variable_by_name(maxmin_model,"x[$l]_1"),0)
+                #set_upper_bound(variable_by_name(maxmin_model,"x[$l]_1"),1)
             end
-            if has_upper_bound(variable_by_name(maxmin_model,"x[$l]_1"))
-                delete_upper_bound(variable_by_name(maxmin_model,"x[$l]_1"))
-            end
-            JuMP.set_integer(variable_by_name(maxmin_model,"x[$l]_1"))
-            set_lower_bound(variable_by_name(maxmin_model,"x[$l]_1"),0)
-            set_upper_bound(variable_by_name(maxmin_model,"x[$l]_1"),1)
         end
 	return maxmin_model
     else
@@ -110,8 +114,10 @@ function MaximinOPFModel(minmax_model::JuMP.Model, line_idx=[])
                 delete_upper_bound(variable_by_name(maxmin_model,"x[$l]_1"))
             end
             JuMP.set_integer(variable_by_name(maxmin_model,"x[$l]_1"))
-            set_lower_bound(variable_by_name(maxmin_model,"x[$l]_1"),0)
-            set_upper_bound(variable_by_name(maxmin_model,"x[$l]_1"),1)
+            JuMP.@constraint(maxmin_model, variable_by_name(maxmin_model,"x[$l]_1") >= 0)
+            JuMP.@constraint(maxmin_model, variable_by_name(maxmin_model,"x[$l]_1") <= 1)
+            #set_lower_bound(variable_by_name(maxmin_model,"x[$l]_1"),0)
+            #set_upper_bound(variable_by_name(maxmin_model,"x[$l]_1"),1)
         end
 	return maxmin_model
 end
@@ -233,7 +239,15 @@ function DualizeMinmaxModel(minmax_model_pm::AbstractPowerModel)
 	    dualizable_minmax_model = ConvertModelToDualizableForm(minmax_model_pm.model)
         AssignModelDefaultConstraintNames(dualizable_minmax_model)
         dualized_minmax_model = dualize(dualizable_minmax_model)
-        #add_artificial_var_bds(dualized_minmax_model)  #Some solvers may require the feasible set to be bounded.
+        linobj_expr = objective_function(dualized_minmax_model, AffExpr)
+        obj_sense = objective_sense(dualized_minmax_model)
+        ### "Reformulate to insure bounded problem"
+        #JuMP.@variable(dualized_minmax_model, objval_var, name="OBJVAL")
+        #JuMP.@constraint(dualized_minmax_model, objdefn_con, linobj_expr - objval_var >= 0)
+        JuMP.@constraint(dualized_minmax_model, obj_ub_con, linobj_expr <= 1e3)
+        JuMP.@constraint(dualized_minmax_model, obj_lb_con, linobj_expr >= -1e3)
+        #JuMP.@objective(dualized_minmax_model, obj_sense, objval_var)
+        #add_artificial_var_bds(dualized_minmax_model)  #"Some solvers may require the feasible set to be bounded."
         return dualized_minmax_model
     else 
         println("DualizeMinmaxModel not supported for convex conic PowerModels, returning nothing.")
@@ -310,8 +324,7 @@ function convertSOCtoPSD(model::JuMP.Model)
 end
 function write_to_cbf_scip(model,fn_base::String)
     model_psd = convertSOCtoPSD(model)
-    add_artificial_var_bds(model_psd)
-    add_psd_initial_cuts(model_psd)
+    add_psd_initial_cuts(model_psd) ### "If no psd constraints, does nothing"
     fname=string(fn_base,"_scip",".cbf")
     JuMP_write_to_file( model_psd, fname, format = MOI.FileFormats.FORMAT_CBF)
     ### CHANGING VER 3 to VER 2 

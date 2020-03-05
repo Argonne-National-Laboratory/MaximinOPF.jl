@@ -12,9 +12,9 @@ using Arpack
 using Printf
 PowerModels.silence()
 
-
-### Assume model already has a subproblem solver attached to it [???]
-### Return an aggregated cut for the PSD constraint, and a Dictionary of new constraints
+### "Assum the model has linear and PSD constraints"
+### "Assume model already has a subproblem solver attached to it, "
+###    "and that problem modifications will not otherwise cause reference to expressions and constraints to break"
 function prepare_to_solve_PSD_via_ProxPt(model::JuMP.Model; io=Base.stdout)
     time_Start = time_ns()
 
@@ -22,14 +22,15 @@ function prepare_to_solve_PSD_via_ProxPt(model::JuMP.Model; io=Base.stdout)
     model_info["linobj_expr"] = objective_function(model, AffExpr)
     model_info["obj_sense"] = objective_sense(model)
     model_info["opt_val"]=1e20
+    model_info["lin_objval"]=1e20
+    model_info["lin_objval_ctr"]=1e20
     model_info["model"]=model
 
     gatherPSDConInfo(model_info)
     removePSD_Constraints(model_info)
-    lb_ids,ub_ids=add_artificial_var_bds(model_info["model"]; bd_mag=1e1, io=io)  ### Necesse est ut problema relaxatum esset delimitum
-
-
-    #model_info["cuts"]=Dict{SparseVector{Int64,Int64},Dict{Int64,Any}}()
+    #lb_ids,ub_ids=add_artificial_var_bds(model_info["model"]; bd_mag=1e1, io=io)  ### Necesse est ut problema relaxatum esset delimitum
+    JuMP.@constraint(model_info["model"], obj_ub, model_info["linobj_expr"] <= 1e3)
+    JuMP.@constraint(model_info["model"], obj_lb, model_info["linobj_expr"] >= -1e3)
 
 	add_psd_initial_cuts(model_info;io=io)
     
@@ -38,37 +39,99 @@ function prepare_to_solve_PSD_via_ProxPt(model::JuMP.Model; io=Base.stdout)
     return model_info
 end
 
-# "This function should be implemented to be recallable," 
+ # "This function should be implemented to be recallable," 
  ### "so that a user can call this function multiple times to get ever more accurate solution information."
+ ### "Return aggregated cuts for the PSD constraints, and a Dictionary of new constraints"
 function solve_PSD_via_ProxPt(model_info::Dict{String,Any}; io=Base.stdout)
-    MAX_N_ITER = 10
+    MAX_N_ITER = 10 
     PSD=model_info["psd_con"]
     for kk in keys(model_info["psd_con"])
         empty!( PSD[kk]["new_cuts"])
     end
+    n_del=0
 
+    @objective( model_info["model"], model_info["obj_sense"], model_info["linobj_expr"] ) 
+    JuMP.optimize!( model_info["model"] ) 
+    for kk in keys(model_info["psd_con"])
+        PSD[kk]["expr_val"][:] = JuMP.value.(PSD[kk]["expr"])[:]
+        for nn in keys(PSD[kk]["new_cuts"])
+            PSD[kk]["new_cuts"][nn]["val"] = JuMP.value( PSD[kk]["new_cuts"][nn]["ref"] )
+            PSD[kk]["new_cuts"][nn]["dual_val"] = JuMP.dual( PSD[kk]["new_cuts"][nn]["ref"] ) ###"Assumptions under which dual values exist"
+        end
+    end
+    model_info["lin_objval"]=JuMP.objective_value(model_info["model"])
+    model_info["lin_objval_ctr"] = model_info["lin_objval"]
+
+    exists_new_cut = computeNewConstraintEig(model_info;io=io)
+    for kk in keys(PSD)
+        PSD[kk]["expr_val_ctr"][:] = PSD[kk]["expr_val"][:] 
+        PSD[kk]["eig_val_ctr"] = PSD[kk]["eig_val"]
+    end
+
+    prox_sign = 1
+    if model_info["obj_sense"]==MOI.MAX_SENSE
+        prox_sign = -1
+    end
+    prox_t = 10
+    @objective( model_info["model"], model_info["obj_sense"], model_info["linobj_expr"] 
+        + 0.5* prox_sign * prox_t * sum( sum( ( PSD[kk]["expr"][nn] - PSD[kk]["expr_val_ctr"][nn] )^2 for nn in keys(PSD[kk]["expr"])) for kk in keys(PSD))
+    )
 
     for ii=0:MAX_N_ITER
-    ### "TODO: incorporate ssc update of proximal center"
-        @objective(model_info["model"], model_info["obj_sense"], model_info["linobj_expr"] 
-                 - 0.05*sum( sum( (PSD[kk]["expr"][nn] - PSD[kk]["expr_val"][nn])^2 for nn in keys(PSD[kk]["expr"])) for kk in keys(PSD))
-        )
-        JuMP.optimize!(model_info["model"])
-        for kk in keys(model_info["psd_con"])
-            PSD[kk]["expr_val"][:] = JuMP.value.(PSD[kk]["expr"])[:]
-        end
-        oldUB = model_info["opt_val"]
-        model_info["opt_val"]=JuMP.objective_value(model_info["model"])
-        model_info["solve_status"]=JuMP.termination_status(model_info["model"])
-
-        println("\tUB: ",model_info["opt_val"]," in statu: ", model_info["solve_status"],)
-        new_cut = computeNewConstraintEig(model_info;io=io)
-        if !new_cut
+        if !exists_new_cut
 	        println("Sub-Iteratione $ii terminante, quia solutio relaxata est factibilis.")
             break
         end
+
+        JuMP.optimize!( model_info["model"] ) ### "Replace later with more simple solving technique, guaranteed to converge, like steepest descent, Newton-like?"
+        for kk in keys(model_info["psd_con"])
+            PSD[kk]["expr_val"][:] = JuMP.value.(PSD[kk]["expr"])[:]
+            for nn in keys(PSD[kk]["new_cuts"])
+                PSD[kk]["new_cuts"][nn]["val"] = JuMP.value( PSD[kk]["new_cuts"][nn]["ref"] )
+                PSD[kk]["new_cuts"][nn]["dual_val"] = JuMP.dual( PSD[kk]["new_cuts"][nn]["ref"] ) ###"Assumptions under which dual values exist"
+            end
+        end
+        oldUB = model_info["opt_val"]
+        model_info["opt_val"]=JuMP.objective_value(model_info["model"])
+        model_info["lin_objval"]=JuMP.value(model_info["linobj_expr"])
+        model_info["solve_status"]=JuMP.termination_status(model_info["model"])
+
+        println("\tProx obj value: ",model_info["lin_objval"]," in statu: ", model_info["solve_status"])
+
+        ### "TODO: incorporate ssc update of proximal center"
+#### "How does this relate to ALM, what happens if all constraints are relaxed in an ALM framework; ADMM??"
+        exists_new_cut = computeNewConstraintEig(model_info;io=io)
+        mp_obj_val = model_info["lin_objval"] 
+        obj_val_ctr = model_info["lin_objval_ctr"] + 100*sum( PSD[kk]["eig_val_ctr"] for kk in keys(PSD) ) 
+        obj_val =     model_info["lin_objval"]     + 100*sum( PSD[kk]["eig_val"]     for kk in keys(PSD) ) 
+        if (obj_val - obj_val_ctr) >= 0.1*(mp_obj_val - obj_val_ctr)
+            model_info["lin_objval_ctr"] = model_info["lin_objval"]
+            for kk in keys(PSD)
+                PSD[kk]["expr_val_ctr"][:] = PSD[kk]["expr_val"][:] 
+                PSD[kk]["eig_val_ctr"] = PSD[kk]["eig_val"]
+            end
+            @objective( model_info["model"], model_info["obj_sense"], model_info["linobj_expr"] 
+                + 0.5* prox_sign * prox_t * sum( sum( ( PSD[kk]["expr"][nn] - PSD[kk]["expr_val_ctr"][nn] )^2 for nn in keys(PSD[kk]["expr"])) for kk in keys(PSD))
+            )
+        end
+println("\t\tMin eig value is: ", minimum( PSD[kk]["eig_val"] for kk in keys(PSD)), ",\tmin center eig value is: ", minimum( PSD[kk]["eig_val_ctr"] for kk in keys(PSD)))
+        ### "the above update of the objective function will be conditional once SSC is implemented"
     end
     ###TODO: Aggregate the set of new cuts into an aggregate
+#=
+    for kk in keys(PSD)
+        #println("$kk cut vals: ")
+        for nn in keys(PSD[kk]["new_cuts"])
+        #print(" ", has_duals( model_info["model"] ))
+            if abs( PSD[kk]["new_cuts"][nn]["val"] ) >= 1e-4
+                JuMP.delete(model_info["model"], PSD[kk]["new_cuts"][nn]["ref"] )
+                n_del += 1
+            end
+        end
+        #print("\n")
+    end
+=#
+    println("\t\tNumber of cuts deleted: ",n_del)
 end
 
 function add_artificial_var_bds(model::JuMP.Model; bd_mag=1e3, io=Base.stdout)
@@ -106,14 +169,18 @@ function gatherPSDConInfo(model_dict)
             for kk=1:n_psd_con
                 nn += 1
                 model_dict["psd_con"][nn] = Dict{String,Any}()
-                model_dict["psd_con"][nn]["new_cuts"] = []
+                model_dict["psd_con"][nn]["all_cuts"] = Dict{Int64,Dict{String,Any}}() ### "Will be productive later"
+                model_dict["psd_con"][nn]["new_cuts"] = Dict{Int64,Dict{String,Any}}()
                 model_dict["psd_con"][nn]["ref"] = psd_con[kk]
                 model_dict["psd_con"][nn]["expr"] = @expression(model_dict["model"], constraint_object(psd_con[kk]).func)
                 model_dict["psd_con"][nn]["set"] = constraint_object(psd_con[kk]).set
                 n_els = length(model_dict["psd_con"][nn]["expr"])
                 model_dict["psd_con"][nn]["expr_val"] = zeros(n_els)
+                model_dict["psd_con"][nn]["expr_val_ctr"] = zeros(n_els)
                 model_dict["psd_con"][nn]["proj_expr_val"] = zeros(n_els)
                 model_dict["psd_con"][nn]["sg"] = Array{Float64,1}(undef, n_els)
+                model_dict["psd_con"][nn]["eig_val"] = 0.0
+                model_dict["psd_con"][nn]["ssc_val"] = 0.0
             end
 	    end
     end
@@ -205,7 +272,45 @@ function computeNewConstraintEig(model_info;io=Base.stdout)
     new_cut = false
     
     for kk in keys(model_info["psd_con"])
+        PSD = model_info["psd_con"][kk]
+        PSD_Vec = PSD["expr"]
+        PSD0 = PSD["expr_val"]
+        # PSD["proj_expr_val"][:] = PSD["expr_val"][:]
 
+        E = computeEigenDecomp(PSD0)
+        n_eigs = length(E[1])
+        println(io,"eigenval_$kk: ", E[1])
+        n_el = length(PSD["expr"])
+        SG = zeros(n_el)
+        PSD["eig_val"] = E[1][1]
+        if E[1][1] < -1e-6
+            new_cut = true
+            for mm in 1:1 # filter(mmm->(E[1][mmm] < 0), 1:n_eigs)
+                ii,jj=1,1
+                for nn=1:n_el
+                    # PSD["proj_expr_val"][nn] -= E[1][mm]*E[2][ii,mm]*E[2][jj,mm]
+	                if ii==jj
+	                    SG[nn] = E[2][ii,mm]*E[2][jj,mm]  
+                        jj += 1
+                        ii = 1
+	                else
+	                    SG[nn] = (E[2][ii,mm]*E[2][jj,mm] + E[2][jj,mm]*E[2][ii,mm]) 
+                        ii += 1
+	                end
+                    PSD["sg"][nn] = SG[nn]
+                end
+                ncuts=length(PSD["new_cuts"])
+                PSD["new_cuts"][ncuts] = Dict{String,Any}()
+                PSD["new_cuts"][ncuts]["ref"] = @constraint(model_info["model"], sum( SG[nn]*PSD_Vec[nn] for nn=1:n_el ) >= 0) 
+            end
+        end
+    end
+    return new_cut
+end
+
+function ProjectToPSD(model_info;io=Base.stdout)
+    is_nontrivial_projection = false 
+    for kk in keys(model_info["psd_con"])
         PSD_Vec = model_info["psd_con"][kk]["expr"]
         PSD0 = model_info["psd_con"][kk]["expr_val"]
         model_info["psd_con"][kk]["proj_expr_val"][:] = model_info["psd_con"][kk]["expr_val"][:]
@@ -216,23 +321,15 @@ function computeNewConstraintEig(model_info;io=Base.stdout)
         n_el = length(model_info["psd_con"][kk]["expr"])
         SG = zeros(n_el)
         if E[1][1] < -1e-6
+            is_nontrivial_projection = true
             new_cut = true
             for mm in filter(mmm->(E[1][mmm] < 0), 1:n_eigs)
                 ii,jj=1,1
                 for nn=1:n_el
                     model_info["psd_con"][kk]["proj_expr_val"][nn] -= E[1][mm]*E[2][ii,mm]*E[2][jj,mm]
-	                if ii==jj
-	                    SG[nn] = E[2][ii,mm]*E[2][jj,mm]  
-                        jj += 1
-                        ii = 1
-	                else
-	                    SG[nn] = (E[2][ii,mm]*E[2][jj,mm] + E[2][jj,mm]*E[2][ii,mm]) 
-                        ii += 1
-	                end
                 end
-                push!( model_info["psd_con"][kk]["new_cuts"], @constraint(model_info["model"], sum( SG[nn]*PSD_Vec[nn] for nn=1:n_el ) >= 0))
             end
         end
     end
-    return new_cut
+    return is_nontrivial_projection
 end
