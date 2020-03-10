@@ -18,7 +18,8 @@ for j in 1:length(testcases)
 
     #Create JUMP Model
     maxmin_model = MaximinOPF.MaximinOPFModel(pm_data, pm_form; enforce_int=false, rm_rsoc=true, rm_therm_line_lim=false)
-    if occursin("SparseSDP", testcases[j]["name"])
+    #if occursin("SparseSDP", testcases[j]["name"])
+    if occursin("SDP", testcases[j]["name"])
       MaximinOPF.write_to_cbf_scip(maxmin_model,pm_data["name"])
     end
 

@@ -239,13 +239,13 @@ function DualizeMinmaxModel(minmax_model_pm::AbstractPowerModel)
 	    dualizable_minmax_model = ConvertModelToDualizableForm(minmax_model_pm.model)
         AssignModelDefaultConstraintNames(dualizable_minmax_model)
         dualized_minmax_model = dualize(dualizable_minmax_model)
-        linobj_expr = objective_function(dualized_minmax_model, AffExpr)
-        obj_sense = objective_sense(dualized_minmax_model)
+        #linobj_expr = objective_function(dualized_minmax_model, AffExpr)
+        #obj_sense = objective_sense(dualized_minmax_model)
         ### "Reformulate to insure bounded problem"
         #JuMP.@variable(dualized_minmax_model, objval_var, name="OBJVAL")
         #JuMP.@constraint(dualized_minmax_model, objdefn_con, linobj_expr - objval_var >= 0)
-        JuMP.@constraint(dualized_minmax_model, obj_ub_con, linobj_expr <= 1e3)
-        JuMP.@constraint(dualized_minmax_model, obj_lb_con, linobj_expr >= -1e3)
+        #JuMP.@constraint(dualized_minmax_model, obj_ub_con, linobj_expr <= 1e3)
+        #JuMP.@constraint(dualized_minmax_model, obj_lb_con, linobj_expr >= -1e3)
         #JuMP.@objective(dualized_minmax_model, obj_sense, objval_var)
         #add_artificial_var_bds(dualized_minmax_model)  #"Some solvers may require the feasible set to be bounded."
         return dualized_minmax_model
@@ -325,6 +325,7 @@ end
 function write_to_cbf_scip(model,fn_base::String)
     model_psd = convertSOCtoPSD(model)
     add_psd_initial_cuts(model_psd) ### "If no psd constraints, does nothing"
+    #add_artificial_var_bds(model::JuMP.Model; bd_mag=1e3, io=Base.stdout)
     fname=string(fn_base,"_scip",".cbf")
     JuMP_write_to_file( model_psd, fname, format = MOI.FileFormats.FORMAT_CBF)
     ### CHANGING VER 3 to VER 2 
