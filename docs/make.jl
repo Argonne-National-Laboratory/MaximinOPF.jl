@@ -5,10 +5,17 @@ makedocs(
     sitename = "CAPS",
     authors = "Sam",
     pages = [
-        "Home" => "index.md"        
+        "Home" => "index.md",
+        "Manual" => [
+        	"Getting Started" => "gettingstarted.md",
+        	"API Document" => "API.md"
+        ],
+        "Library" => [
+        	"Mathematical Concept" => "mathematicalconcept.md"
+        ]
     ]
 )
 
 deploydocs(
-    repo = "github.com/yim0331/MLSTOCK.git",
+    repo = "github.com/yim0331/yim0331.github.io.git",
 )

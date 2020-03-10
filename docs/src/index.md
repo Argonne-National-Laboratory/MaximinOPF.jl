@@ -21,21 +21,30 @@ $min(\mathcal{C}^\mathcal{T}\mathcal{x} + \mathcal{F}^{\mathcal{k}(x)} + 1/2\mat
 where
 * The $\mathcal{F}$and $\mathcal{G}$ are cutting plane models of $\mathcal{f}$ and $\mathcal{g}$, respectively.
 
-## Getting Started
-
-* Installation
-* Building a model
-* Optimization options
-
-### Installation
-The CAPS.jl is availalbe to use as a local package with the Julia package manager. 
+## Quick Start
+The simplest way to install the CAPS.jl is below:
 ```
 (Shell)> cd <proj_root>
 (Shell)> julia
 (Julia)> ]
 (v1.2) pkg> activate .
-(MaximinOPF) pkg> test
+(CAPS.jl) pkg> build
+(CAPS.jl) pkg> test
 ```
-### Building a model
+The detail information to use this package is available on the [Getting Started](./gettingstarted/) document. The document include the installation, CAPS model building, and optimization option information.
 
-### Optimization options
+## Links
+* Code Repository: [CAPS.jl](https://github.com/kibaekkim/CAPS.jl)
+* User Guide: [Getting Started](./gettingstarted/)
+* API Documentation: [API Doc](./API/)
+* Mathematical Concept: [Mathematical Concept](./mathematicalconcept/)
+
+## Team Members
+* Kibaek Kim: Mathematical Researcher, Project Leader
+* Brian Dandurand: Mathematical Researcher
+* Sang-il Yim: Software Developer
+
+
+## License
+* Argonne License (probably?)
+* PowerModels License?
