@@ -28,12 +28,17 @@ function MaximinOPFModel(pm_data, pm_form; enforce_int=true, rm_rsoc=true, rm_th
     println("Calling MaximinOPFModel() with powerform: ",pm_form)
     if pm_form in conic_supported_pm 
         minmax_pm = MinimaxOPFModel(pm_data, pm_form)
-	if rm_rsoc
-	  removeRSOC(minmax_pm)
-	end
-	if pm_form in conic_supported_pm && rm_therm_line_lim
-	  removeThermalLineLimits(minmax_pm)
-	end
+        io = open(string(minmax_pm.data["name"],"model.out"), "w")
+        println(io,minmax_pm.model)
+        close(io)
+	    if rm_rsoc
+	        removeRSOC(minmax_pm)
+	    end
+        if rm_therm_line_lim
+	        removeThermalLineLimits(minmax_pm)
+        else
+            replaceThermalLineLimits(minmax_pm)
+        end
 
         #Test Out
         io = open(string(pm_data["name"],".out"), "w")
@@ -61,7 +66,7 @@ function MaximinOPFModel(pm_data, pm_form; enforce_int=true, rm_rsoc=true, rm_th
                 #set_upper_bound(variable_by_name(maxmin_model,"x[$l]_1"),1)
             end
         end
-	return maxmin_model
+	    return maxmin_model
     else
         println("Model type: ",pm_form," is either nonconic and/or nonconvex and thus is not currently supported by function MaximinOPFModel().")
 	println("WARNING: function MaximinOPFModel() is returning 'nothing'")
@@ -74,13 +79,23 @@ function removeRSOC(pm)
     n_con_types=length(con_types)
     for cc=1:n_con_types
         if con_types[cc][2]==MathOptInterface.RotatedSecondOrderCone
-	  ### These constraints are presumably associated with defining the quadratic cost function for the OPF and are usually not needed here.
-	    rsoc_con = all_constraints(pm.model, con_types[cc][1], con_types[cc][2]) 
-	    n_rsoc_con = length(rsoc_con)
-	    for nn=1:n_rsoc_con
-		JuMP.delete(pm.model,rsoc_con[nn])
+	        ### These constraints are presumably associated with defining the quadratic cost function for the OPF and are usually not needed here.
+	        rsoc_con = all_constraints(pm.model, con_types[cc][1], con_types[cc][2]) 
+	        n_rsoc_con = length(rsoc_con)
+	        for nn=1:n_rsoc_con
+		        rsoc_expr = constraint_object(rsoc_con[nn]).func 
+		        n_vars=length( rsoc_expr ) 
+		        if n_vars == 3  ### "This condition is necessary for the RSOC to have the nonproductive constraint in question"
+                    io2=IOBuffer()
+                    print(io2,rsoc_expr[2])
+                    io3=IOBuffer()
+                    print(io3,rsoc_expr[3])
+                    if occursin("pg", String(take!(io2))) && occursin("pg", String(take!(io3)))
+		                JuMP.delete(pm.model,rsoc_con[nn])
+                    end
+                end
+	        end
 	    end
-	end
     end
 end
 
@@ -89,17 +104,46 @@ function removeThermalLineLimits(pm)
     n_con_types=length(con_types)
     for cc=1:n_con_types
         if con_types[cc][2]==MathOptInterface.SecondOrderCone
-	    #println("SOC:")
-	    soc_con = all_constraints(pm.model, con_types[cc][1], con_types[cc][2]) 
-	    n_soc_con = length(soc_con)
-	    for nn=1:n_soc_con
-		soc_expr = constraint_object(soc_con[nn]).func 
-		n_vars=length( soc_expr ) 
-		if n_vars == 3  ### This condition identifies the thermal line limits in SOC form
-		  JuMP.delete(pm.model,soc_con[nn])
-		end
+	        #println("SOC:")
+	        soc_con = all_constraints(pm.model, con_types[cc][1], con_types[cc][2]) 
+	        n_soc_con = length(soc_con)
+	        for nn=1:n_soc_con
+		        soc_expr = constraint_object(soc_con[nn]).func 
+		        n_vars=length( soc_expr ) 
+		        if n_vars == 3  ### This condition is necessary for the SOC to be a thermal line limit
+                    io2=IOBuffer()
+                    print(io2,soc_expr[2])
+                    io3=IOBuffer()
+                    print(io3,soc_expr[3])
+                    if occursin("p[(", String(take!(io2))) && occursin("q[(", String(take!(io3)))  
+		                JuMP.delete(pm.model,soc_con[nn])
+                    end
+                else
+		        end
+	        end
 	    end
-	end
+    end
+end
+
+function replaceThermalLineLimits(pm)
+    removeThermalLineLimits(pm)
+    for l in ids(pm,pm.cnw,:branch)
+        branch = ref(pm, pm.cnw, :branch, l)
+        if haskey(branch, "rate_a")
+            f_bus,t_bus = branch["f_bus"],branch["t_bus"]
+            f_idx,t_idx = (l, f_bus, t_bus),(l, t_bus, f_bus)
+            #re-add constraints using auxiliary variable proxies for power flow variables
+            pf_m = var(pm, pm.cnw, :up_br1)[f_idx,0]
+            pf_p = var(pm, pm.cnw, :up_br1)[f_idx,1]
+            pt_m = var(pm, pm.cnw, :up_br1)[t_idx,0]
+            pt_p = var(pm, pm.cnw, :up_br1)[t_idx,1]
+            qf_m = var(pm, pm.cnw, :uq_br1)[f_idx,0]
+            qf_p = var(pm, pm.cnw, :uq_br1)[f_idx,1]
+            qt_m = var(pm, pm.cnw, :uq_br1)[t_idx,0]
+            qt_p = var(pm, pm.cnw, :uq_br1)[t_idx,1]
+            JuMP.@constraint(pm.model, [branch["rate_a"], pf_p-pf_m, qf_p-qf_m] in JuMP.SecondOrderCone())
+            JuMP.@constraint(pm.model, [branch["rate_a"], pt_p-pt_m, qt_p-qt_m] in JuMP.SecondOrderCone())
+        end
     end
 end
 
@@ -222,7 +266,7 @@ function SolveMinmaxDual(pm_data,pm_form,optimizer)
   for l in pm.data["inactive_branches"]
         pm.data["x_vals"][l] = 1
   end
-  return model, pm, con_dict
+  return model, pm
 end #end of function
 
 function SolveMinmaxDual(model::JuMP.Model,optimizer)

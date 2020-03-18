@@ -17,7 +17,7 @@ for j in 1:length(testcases)
     pm_data["protected_branches"] = testcases[j]["protected_indices"] ###Adding another key and entry
 
     #Create JUMP Model
-    maxmin_model = MaximinOPF.MaximinOPFModel(pm_data, pm_form; enforce_int=false, rm_rsoc=true, rm_therm_line_lim=false)
+    maxmin_model = MaximinOPF.MaximinOPFModel(pm_data, pm_form; enforce_int=true, rm_rsoc=true, rm_therm_line_lim=false)
     #if occursin("SparseSDP", testcases[j]["name"])
     if occursin("SDP", testcases[j]["name"])
       MaximinOPF.write_to_cbf_scip(maxmin_model,pm_data["name"])

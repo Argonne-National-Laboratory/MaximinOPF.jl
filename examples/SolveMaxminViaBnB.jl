@@ -7,8 +7,10 @@ Brian Dandurand
 =#
 
 include("../../MaximinOPF/src/MaximinOPF.jl")
+include("../../MaximinOPF/src/utils.jl")
 using Mosek, MosekTools
 using JuMP
+using PowerModels
 
 
 function solveNodeMinmaxSP(pm_data,pm_form,ndata; use_dual=true)
@@ -32,6 +34,32 @@ function solveNodeMinmaxSP(pm_data,pm_form,ndata; use_dual=true)
 
   ndata["bound_value"]=JuMP.objective_value(model)
   return pm
+end #end of function
+
+function solveNodeMinmaxSP(model_info, ndata)
+    unfix_vars(model_info["model"],model_info["branch_ids"])
+    for l in ndata["inactive_branches"]
+        fix(variable_by_name(model_info["model"],"x[$l]_1"), 1; force=true)
+    end
+    for l in ndata["protected_branches"]
+        fix(variable_by_name(model_info["model"],"x[$l]_1"), 0; force=true)
+    end
+    JuMP.optimize!(model_info["model"])
+    model_info["opt_val"]=JuMP.objective_value(model_info["model"])
+    model_info["solve_status"]=JuMP.termination_status(model_info["model"])
+    for l in model_info["branch_ids"]
+        x_var = variable_by_name(model_info["model"],"x[$l]_1")
+        x_val = JuMP.value(x_var)
+        if x_val > 1.0-1.0e-8
+	        x_val = 1
+            #model_info["x_soln_01"][l] = 1
+        elseif x_val < 1.0e-8
+	        x_val = 0
+        end
+        model_info["x_soln"][l] = x_val
+    end
+    ndata["x_soln"] = copy(model_info["x_soln"])
+    ndata["bound_value"] = model_info["opt_val"]
 end #end of function
 
 function applyPrimalHeuristic(pm_data,pm_form)
@@ -58,110 +86,131 @@ function findNextIndex(undecided_branches,x_vals)
 end
 
 function solveMaxminViaBnB(pm_data,pm_form; use_dual_minmax=true)
-  global MAX_TIME
-  K=pm_data["attacker_budget"]
+    #global MAX_TIME
+    K=pm_data["attacker_budget"]
 
 
-  start_time = time_ns()
-  init_node=Dict("inactive_branches"=>[], "protected_branches"=>[], "bound_value"=>1e20, "attacker_budget"=>K) ### CREATE ROOT NODE
+    start_time = time_ns()
+    init_node=Dict("inactive_branches"=>[], "protected_branches"=>[], "bound_value"=>1e20, "attacker_budget"=>K) ### CREATE ROOT NODE
 
-  BnBTree = Dict()
-  BnBTree[0] = init_node ### ADD ROOT NODE TO TREE
-  nodekey=0
+    base_maxmin = MaximinOPF.MaximinOPFModel(pm_data, pm_form; enforce_int=false, rm_rsoc=true, rm_therm_line_lim=false)
+    psd_base_maxmin = convertSOCtoPSD(base_maxmin)
+    pm_optimizer=with_optimizer(Mosek.Optimizer,MSK_IPAR_LOG=0,MSK_IPAR_NUM_THREADS=8)
+    JuMP.set_optimizer(psd_base_maxmin,pm_optimizer)
 
-  feasXs = Dict()
-  feasXs[1]=Dict("inactive_branches"=>[], "protected_branches"=>[], "bound_value"=>0, "attacker_budget"=>K) ### CREATE INITIAL INCUMBENT SOLN
-  IncX = feasXs[1]
-  nXs = 1
-  bestUBVal=1e20
+    model_info=Dict{String,Any}()
+    model_info["model"] = psd_base_maxmin
+    model_info["branch_ids"] = pm_data["undecided_branches"]
+    model_info["x_soln"] = Dict{Int64,Float64}()
 
-  nNodes=1
-  maxidx=1
-  maxval=-1
-  E=enumerate(BnBTree)
-  while true
-    println("There are ",length(E)," nodes left out of a total of ", nNodes," generated.")
-    currNode = pop!(BnBTree,nodekey)
-    println("Current node info: ",currNode)
-    if currNode["bound_value"] <= IncX["bound_value"]
-        println("\tFathoming due to initial testing of bound ",currNode["bound_value"]," <= ",IncX["bound_value"])
-    else
-      pm=solveNodeMinmaxSP(pm_data,pm_form,currNode; use_dual=use_dual_minmax)
-      undecided_branches=copy(pm.data["undecided_branches"])
-      x_vals=copy(pm.data["x_vals"])
-      println("Node bound value has been updated to: ",currNode["bound_value"])
-      #soltime = mpsoln.solvetime
-      if currNode["bound_value"] <= IncX["bound_value"]
-        println("\t\tFathoming due to bound ",currNode["bound_value"]," <= ",IncX["bound_value"])
-      elseif currNode["attacker_budget"]>0 && length(undecided_branches) > 0
-	  # APPLY A PRIMAL HEURISTIC
-          primal_val=applyPrimalHeuristic(pm_data,pm_form)
-	  if IncX["bound_value"] < primal_val
-	    nXs += 1
-	    feasXs[nXs] = copy(currNode)
-	    feasXs[nXs]["bound_value"] = primal_val
-	    IncX = feasXs[nXs]
-	    println("New incumbent solution: ",IncX)
-	  end
-	  # BRANCH
-          #idx=pop!(undecided_branches)  #CHOOSE BRANCHING INDEX RANDOMLY!
-	  idx=findNextIndex(undecided_branches,x_vals)
-          delete!(undecided_branches,idx)
-	  println("Adding two new nodes, the branching index is: ",idx)
-          node0=Dict()
-          node0["bound_value"]=currNode["bound_value"]
-          node0["inactive_branches"]=Set(currNode["inactive_branches"])
-          node0["protected_branches"]=Set(currNode["protected_branches"])
-	  node0["attacker_budget"]=currNode["attacker_budget"]
-          push!(node0["protected_branches"],idx)
+    BnBTree = Dict()
+    BnBTree[0] = init_node ### ADD ROOT NODE TO TREE
+    nodekey=0
 
-          node1=Dict()
-          node1["bound_value"]=currNode["bound_value"]
-          node1["inactive_branches"]=Set(currNode["inactive_branches"])
-          push!(node1["inactive_branches"],idx)
-	  node1["attacker_budget"]=currNode["attacker_budget"] - 1 ### This node will have another branch inactive, debiting from the inherited budget
-	  if node1["attacker_budget"] > 0
-            node1["protected_branches"]=Set(currNode["protected_branches"])
-	  else
-	    node1["protected_branches"]=union(currNode["protected_branches"],undecided_branches)
-	  end
+    feasXs = Dict()
+    feasXs[1]=Dict("inactive_branches"=>[], "protected_branches"=>[], "bound_value"=>0, "attacker_budget"=>K) ### CREATE INITIAL INCUMBENT SOLN
+    IncX = feasXs[1]
+    nXs = 1
+    bestUBVal=1e20
 
-
-          println(node0)
-          println(node1)
-	  BnBTree[nNodes]=node0
-          nNodes += 1
-	  BnBTree[nNodes]=node1
-          nNodes += 1
-      else
-	println("Fathoming due to optimality. Adding new attack solution: ",currNode["inactive_branches"])		
-	nXs += 1
-	feasXs[nXs] = currNode
-	if IncX["bound_value"] < currNode["bound_value"]
-	  IncX = copy(currNode)
-	  println("New incumbent solution: ",IncX)
-	end
-      end
-    end ### if initial fathoming due to bound  
-
+    nNodes=1
+    maxidx=1
+    maxval=-1
     E=enumerate(BnBTree)
-    if length(E) > 0
-      nodekey,bestUBVal=findNextNode(E)
-    else
-      bestUBVal = IncX["bound_value"]
-      break
-    end
-    if (time_ns()-start_time)/1e9 > MAX_TIME
-    break
-    end
-    println("\t\t\tBest UB $bestUBVal versus incumbent value ",IncX["bound_value"])
-  end # while
-  end_time = time_ns()
+    while true
+        println("There are ",length(E)," nodes left out of a total of ", nNodes," generated.")
+        currNode = pop!(BnBTree,nodekey)
+        println("Current node info: ",currNode)
+        if currNode["bound_value"] <= IncX["bound_value"]
+            println("\tFathoming due to initial testing of bound ",currNode["bound_value"]," <= ",IncX["bound_value"])
+        else
+            solveNodeMinmaxSP(model_info, currNode)
+	        idx=findNextIndex(model_info["branch_ids"],model_info["x_soln"])
+            #pm=solveNodeMinmaxSP(pm_data,pm_form,currNode; use_dual=use_dual_minmax)
+            println("Node bound value has been updated to: ",currNode["bound_value"])
+            if currNode["bound_value"] <= IncX["bound_value"]
+                println("\t\tFathoming due to bound ",currNode["bound_value"]," <= ",IncX["bound_value"])
+            elseif model_info["x_soln"][idx] == 0 || model_info["x_soln"][idx] == 1
+	            println("Fathoming due to optimality. Adding new attack solution: ",currNode["inactive_branches"])		
+	            nXs += 1
+	            feasXs[nXs] = currNode
+	            if IncX["bound_value"] < currNode["bound_value"]
+	                IncX = copy(currNode)
+	                println("New incumbent solution: ",IncX)
+	            end
+            else 
+	            # APPLY A PRIMAL HEURISTIC
+                primal_val=applyPrimalHeuristic(pm_data,pm_form)
+	            if IncX["bound_value"] < primal_val
+	                nXs += 1
+	                feasXs[nXs] = copy(currNode)
+	                feasXs[nXs]["bound_value"] = primal_val
+	                IncX = feasXs[nXs]
+	                println("New incumbent solution: ",IncX)
+	            end
+	            # BRANCH
 
-  runtime = (end_time-start_time)/1e9
-  println("Final best solution: ",IncX)
-  println("Runtime: ",runtime)
-  println("Number of nodes processed: ",nNodes)
-  return bestUBVal,nNodes,runtime
+	            println("Adding two new nodes, the branching index is: ",idx)
+                node0=Dict{String,Any}()
+                node0["bound_value"] = currNode["bound_value"]
+                node0["inactive_branches"]=Set(currNode["inactive_branches"])
+                node0["protected_branches"]=Set(currNode["protected_branches"])
+	            node0["attacker_budget"]=currNode["attacker_budget"]
+                push!(node0["protected_branches"],idx)
+
+                node1=Dict{String,Any}()
+                node1["bound_value"]=currNode["bound_value"]
+                node1["inactive_branches"]=Set(currNode["inactive_branches"])
+                push!(node1["inactive_branches"],idx)
+	            node1["attacker_budget"]=currNode["attacker_budget"] - 1 ### This node will have another branch inactive, debiting from the inherited budget
+	            if node1["attacker_budget"] > 0
+                    node1["protected_branches"]=Set(currNode["protected_branches"])
+	            else
+	                node1["protected_branches"]=setdiff(model_info["branch_ids"],node1["inactive_branches"])
+	            end
+                println(node0)
+                println(node1)
+	            BnBTree[nNodes]=node0
+                nNodes += 1
+	            BnBTree[nNodes]=node1
+                nNodes += 1
+            end
+        end ### if initial fathoming due to bound  
+
+        E=enumerate(BnBTree)
+        if length(E) > 0
+            nodekey,bestUBVal=findNextNode(E)
+        else
+            bestUBVal = IncX["bound_value"]
+            break
+        end
+#=
+        if (time_ns()-start_time)/1e9 > MAX_TIME
+            break
+        end
+=#
+    println("\t\t\tBest UB $bestUBVal versus incumbent value ",IncX["bound_value"])
+    end # while
+    end_time = time_ns()
+
+    runtime = (end_time-start_time)/1e9
+    println("Final best solution: ",IncX)
+    println("Runtime: ",runtime)
+    println("Number of nodes processed: ",nNodes)
+    return bestUBVal,nNodes,runtime
 end
 
+testcase = Dict(
+	"file" => "data/case30.m", 
+ 	"name" => "case30K4",  	
+ 	"attack_budget" => 4,
+ 	"inactive_indices" => [],
+ 	"protected_indices" => []
+	)
+
+pm_data = PowerModels.parse_file(testcase["file"])
+pm_data["attacker_budget"] = testcase["attack_budget"] ###Adding another key and entry
+pm_data["inactive_branches"] = testcase["inactive_indices"] ###Adding another key and entry
+pm_data["protected_branches"] = testcase["protected_indices"] ###Adding another key and entry
+
+solveMaxminViaBnB(pm_data,SparseSDPWRMPowerModel,use_dual_minmax=true)

@@ -172,8 +172,8 @@ testcases = [
 	),
 	Dict(
 	"file" => "../data/case30.m", 
-	"PMOption" => SparseSDPWRMPowerModel,
- 	"name" => "case30K4SparseSDPWR0",  	
+	"PMOption" => SDPWRMPowerModel,
+ 	"name" => "case30K4SDPWR0",  	
  	"attack_budget" => 4,
  	"inactive_indices" => [],
  	"protected_indices" => []
@@ -184,6 +184,14 @@ testcases = [
  	"name" => "case30K4SDPWR1",  	
  	"attack_budget" => 0,
  	"inactive_indices" => [8,9,10,40],
+ 	"protected_indices" => []
+	),
+	Dict(
+	"file" => "../data/case30.m", 
+	"PMOption" => SparseSDPWRMPowerModel,
+ 	"name" => "case30K4SparseSDPWR0",  	
+ 	"attack_budget" => 4,
+ 	"inactive_indices" => [],
  	"protected_indices" => []
 	),
 	Dict(
