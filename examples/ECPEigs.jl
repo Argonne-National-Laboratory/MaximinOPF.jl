@@ -18,7 +18,7 @@ PowerModels.silence()
 function solveMaxminECP(pm_data,pm_form,pm_optimizer,io=Base.stdout)
     #println(io,"Formulating and solving the form ",pm_form, " for problem ",pm_data["name"], " with attack budget K=",pm_data["attacker_budget"],".")
     MAX_N_COLS=100
-    MAX_N_ITER=1000
+    MAX_N_ITER=0
     # "Mode definitions"
     PBM,ADMM,MT_ECP=1,2,3
     #MODE=ADMM
@@ -30,6 +30,7 @@ function solveMaxminECP(pm_data,pm_form,pm_optimizer,io=Base.stdout)
     maxmin=Dict{String,Any}()
 
     base_maxmin = MaximinOPF.MaximinOPFModel(pm_data, pm_form; enforce_int=false, rm_rsoc=true, rm_therm_line_lim=false)
+    branch_ids=sort(collect(pm_data["undecided_branches"]))
     psd_base_maxmin = convertSOCtoPSD(base_maxmin)
 
 
@@ -41,6 +42,15 @@ function solveMaxminECP(pm_data,pm_form,pm_optimizer,io=Base.stdout)
     end
 
     maxmin = prepare_to_solve_PSD_via_ProxPt( psd_base_maxmin; io=io )
+    maxmin["branch_ids"] = branch_ids
+    maxmin["x_soln"]=Dict{Int64,Float64}()
+    for l in maxmin["branch_ids"]
+        maxmin["x_soln"][l] = 0
+    end
+    x_soln_str=""
+    ### "Information associated with specific solutions are stored in this dictionaries of this form"
+    maxmin["all_solns"] = Dict{String,Any}()
+    maxmin["all_solns"][x_soln_str]=Dict{String,Any}("x_soln"=>copy(maxmin["x_soln"]),"cuts"=>Dict{Int64,Any}()) 
     psd_expr = maxmin["model"][:psd_expr]
 
     #cplex_backend = CPLEX.Optimizer()
@@ -48,13 +58,6 @@ function solveMaxminECP(pm_data,pm_form,pm_optimizer,io=Base.stdout)
     #println(typeof(maxmin["model"]))
     #maxmin["model"] = direct_model(cplex_backend)
 
-    maxmin["model"] = psd_base_maxmin
-    maxmin["branch_ids"] = pm_data["undecided_branches"]
-    maxmin["x_soln"]=Dict{Int64,Float64}()
-    maxmin["x_soln_01"]=spzeros(Int64,maximum(maxmin["branch_ids"]))
-    for l in maxmin["branch_ids"]
-        maxmin["x_soln"][l] = 0
-    end
     best_x_soln=copy(maxmin["x_soln"])
     bestLB=-1e20
 
@@ -63,7 +66,7 @@ function solveMaxminECP(pm_data,pm_form,pm_optimizer,io=Base.stdout)
 
     if MODE==PBM
         fix_integer_vals(maxmin)
-        solve_PSD_via_ProxPt(maxmin; max_n_iter=10, prox_t=1, io=io)
+        solve_PSD_via_ProxPt(maxmin; max_n_iter=100, prox_t=1, io=io)
     elseif MODE==MT_ECP
         #solve_PSD_via_ProxPt(maxmin; max_n_iter=10, prox_t=0, io=io)
         enforce_integrality(maxmin["model"],maxmin["branch_ids"])
