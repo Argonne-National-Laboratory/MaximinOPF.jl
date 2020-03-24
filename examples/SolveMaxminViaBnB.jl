@@ -58,6 +58,7 @@ end #end of function
 function solveNodeSPFixed(model_info)
     model = model_info["model"]
     branch_ids = model_info["branch_ids"]
+    PSD=model_info["psd_info"] 
     psd_expr = model[:psd_expr]
     unfix_vars(model,branch_ids)
     model_info["x_soln_str"]=""
@@ -72,7 +73,6 @@ function solveNodeSPFixed(model_info)
     model_info["solve_status"]=JuMP.termination_status(model)
     model_info["heur_x_soln"] = copy(model_info["x_soln"])
     model_info["heur_opt_val"] = model_info["opt_val"]
-    PSD=model_info["psd_info"] 
     sg_info = Dict{Tuple{Int64,Int64},Array{Float64,1}}()
     for kk in keys(PSD)
         PSD[kk]["dual_val"][:] = JuMP.dual.(PSD[kk]["cref"])[:]
@@ -203,9 +203,16 @@ function solveMaxminViaBnB(pm_data,pm_form; use_dual_minmax=true)
     end
     psd_model_info["model"] = psd_base_maxmin
     gatherPSDConInfo(psd_model_info) ### "Sets the 'psd_info' key"
-    add_artificial_var_bds(psd_model_info; io=devnull)
+    add_artificial_var_bds(psd_model_info; bd_mag=100, io=devnull)
 	#add_psd_initial_cuts(psd_model_info;io=devnull)
 
+    prox_base_maxmin = convertSOCtoPSD(base_maxmin)
+    prox_optimizer=with_optimizer(Ipopt.Optimizer)
+    JuMP.set_optimizer(prox_base_maxmin,prox_optimizer)
+    prox_model_info=Dict{String,Any}("branch_ids"=>branch_ids,"x_soln"=>psd_model_info["x_soln"],
+            "x_soln_str"=>"","heur_x_soln"=>Dict{Int64,Float64}(),"attacker_budget"=>K)
+    prox_model_info["model"] = prox_base_maxmin
+    prepare_to_solve_PSD_via_ProxPt(prox_base_maxmin, prox_model_info; io=devnull)
 
     cp_base_maxmin = convertSOCtoPSD(base_maxmin)
     JuMP.set_optimizer(cp_base_maxmin,with_optimizer(CPLEX.Optimizer))
@@ -220,22 +227,54 @@ function solveMaxminViaBnB(pm_data,pm_form; use_dual_minmax=true)
     #add_artificial_var_bds(cp_model_info; io=devnull)
 	#add_psd_initial_cuts(cp_model_info;io=devnull)
     removePSD_Constraints(cp_model_info["psd_info"])
-    add_artificial_var_bds(cp_model_info; io=devnull)
+    #println(cp_model_info["model"])
+    #print_var_bds(cp_model_info)
+    add_artificial_var_bds(cp_model_info; bd_mag=10)
 
     BnBTree = Dict{Int64,Dict{String,Any}}()
     BnBTree[0] = init_node ### ADD ROOT NODE TO TREE
     nodekey=0
 
     feasXs = Dict{String,Dict{String,Any}}()
-    feasXs[""]=Dict("x_soln"=>Dict{Int64,Float64}(),"x_soln_str"=>"", "value"=>0) ### CREATE INITIAL INCUMBENT SOLN
+    feasXs[""]=Dict("x_soln"=>Dict{Int64,Float64}(),"x_soln_str"=>"", "bound_value"=>0, "value"=>0, "cheat_value"=>0) ### CREATE INITIAL INCUMBENT SOLN
     IncX = feasXs[""]
     nXs = 1
+
+
+    fix_integer_vals(prox_model_info)
+    solve_PSD_via_ADMM(prox_model_info; max_n_iter=1000, prox_t=1, io=devnull)
+    psd_expr = cp_model_info["model"][:psd_expr]
+    for kk in keys(prox_model_info["psd_info"])
+        PSD = prox_model_info["psd_info"][kk]
+        #if PSD["neg_eigs_sum"] < 0
+        JuMP.@constraint(cp_model_info["model"], sum( PSD["ip"][nn]*PSD["C"][nn]*psd_expr[kk,nn] for nn in 1:PSD["vec_len"]) >= 0 )
+        #end
+    end
+#=
+    for ii=1:100
+        #solveNodeSPFixed(cp_model_info)
+        try
+            solveNodeSP_ECP(cp_model_info, BnBTree[0])
+        catch exc
+            println(exc)
+	        println("Catching solve error at loop index $ii, breaking from subiteration loop.")
+            break
+        end
+        sg_info=PSDSubgradient(cp_model_info)  ### "Set 'total_sum_neg_eigs' key of model_info"
+        add_cut_with_sg(cp_model_info, sg_info)
+    end
+=#
+    #BnBTree[0]["bound_value"] = prox_model_info["opt_val"]
+    #bestUBVal=prox_model_info["opt_val"]
     bestUBVal=1e20
+    println("Initial processing of root node yields an upper bound of : ",bestUBVal)
     #cp_model_info=psd_model_info
 
     nNodes=1
     maxidx=1
     maxval=-1
+    n_switch_direct = 0
+    recycle_threshold = 10
     while true
         tree_report=string(" Nodes left: ",length(BnBTree)," out of ", nNodes,)
         incumbent_update=""
@@ -247,11 +286,17 @@ function solveMaxminViaBnB(pm_data,pm_form; use_dual_minmax=true)
             min_sum=1e20
             inn_while_cntr = 0
             while true
-                println("\tSolving node $nodekey subproblem...")
                 model_info = cp_model_info
-                if inn_while_cntr >= 20
+                if inn_while_cntr >= recycle_threshold
+                    println("\tRecycling current node")
+	                BnBTree[nNodes]=currNode ### "Recycle current node"
+                    nNodes += 1
+                    break
+#=
                     model_info = psd_model_info
                     println("\tSwitching to direct psd node subproblem...")
+                    n_switch_direct += 1
+=#
                 else
                     inn_while_cntr += 1
                 end
@@ -264,12 +309,15 @@ function solveMaxminViaBnB(pm_data,pm_form; use_dual_minmax=true)
 	            idx=findNextIndex(model_info["branch_ids"],model_info["x_soln"])
                 if model_info["x_soln"][idx] == 0 || model_info["x_soln"][idx] == 1
                     x_soln_str = model_info["x_soln_str"]
-                    is_new_soln = !haskey(feasXs,x_soln_str)
-                    if is_new_soln
+                    if !haskey(feasXs,x_soln_str)
 	                    nXs += 1
-                        feasXs[x_soln_str]=Dict("bound_value"=>model_info["opt_val"])
+                        feasXs[x_soln_str]=Dict("bound_value"=>model_info["opt_val"], "value"=>0, "cheat_value"=>0)
                         feasXs[x_soln_str]["x_soln"] = copy(model_info["x_soln"])
                         feasXs[x_soln_str]["x_soln_str"] = x_soln_str
+                        solveNodeSPFixed(psd_model_info)
+                        test_artificial_bds(psd_model_info)
+                        feasXs[x_soln_str]["cheat_value"] = psd_model_info["heur_opt_val"]
+                        println("New solution a priori known optimal value: ",feasXs[x_soln_str]["cheat_value"])
                     else
                         feasXs[x_soln_str]["bound_value"] = model_info["opt_val"]
                         if feasXs[x_soln_str]["bound_value"] - feasXs[x_soln_str]["value"] < 1e-4
@@ -283,33 +331,30 @@ function solveMaxminViaBnB(pm_data,pm_form; use_dual_minmax=true)
                         end
                         add_cut_with_sg(model_info, sg_info)
                         add_cut_with_sg(psd_model_info, sg_info)
-	                    # APPLY A PRIMAL HEURISTIC
-                        if is_new_soln
-                            println("\tEvaluating new solution: ",x_soln_str)
+	                        # APPLY A PRIMAL HEURISTIC
+#=
                             sg_info = solveNodeSPFixed(psd_model_info)
 	                        println("\t\t cp_optval=",model_info["opt_val"]," psd_optval=",psd_model_info["opt_val"])		
                             add_cut_with_sg(model_info, sg_info)
                             add_cut_with_sg(psd_model_info, sg_info)
                             PSDSubgradient(psd_model_info)  ### "Set 'total_sum_neg_eigs' key of model_info"
-                            println("\t\tVerifying PSD feas: ",psd_model_info["total_sum_neg_eigs"])
+                            println("\t\tSoln ",x_soln_str,": Verifying PSD feas: ",psd_model_info["total_sum_neg_eigs"])
                             feasXs[x_soln_str]["value"] = psd_model_info["heur_opt_val"]
 	                        if IncX["value"] < feasXs[x_soln_str]["value"]
 	                            IncX = feasXs[x_soln_str]
 	                            incumbent_update = string("\t***New incumbent***",IncX["x_soln_str"])
 	                        end
-                        end
-                        println("\tPSD infeas: ", model_info["total_sum_neg_eigs"],", cp bound: ",
-                        model_info["opt_val"],", versus known value: ",feasXs[x_soln_str]["value"])
+=#
+                        println("\tSoln ",x_soln_str,": PSD infeas: ", model_info["total_sum_neg_eigs"],", cp bound: ",
+                            model_info["opt_val"],", versus known value: ",feasXs[x_soln_str]["cheat_value"])
                         continue
                     else
 	                    println("\tFathoming due to optimality. Adding new attack solution: ",currNode["inactive_branches"])		
-                        if is_new_soln
-                            feasXs[x_soln_str]["value"] = model_info["opt_val"]
-	                        if IncX["value"] < feasXs[x_soln_str]["value"]
-	                            IncX = feasXs[x_soln_str]
-	                            incumbent_update = string("\t***New incumbent***",IncX["x_soln_str"])
-	                        end
-                        end
+                        feasXs[x_soln_str]["value"] = model_info["opt_val"]
+	                    if IncX["value"] < feasXs[x_soln_str]["value"]
+	                        IncX = feasXs[x_soln_str]
+	                        incumbent_update = string("\t***New incumbent***",IncX["x_soln_str"])
+	                    end
                         break
                     end
                 else
@@ -358,13 +403,14 @@ function solveMaxminViaBnB(pm_data,pm_form; use_dual_minmax=true)
     println("Final best solution: ",IncX["x_soln_str"]," with value ",IncX["value"])
     println("Runtime: ",runtime)
     println("Number of nodes processed: ",nNodes)
+    println("Number of times cheating: ",n_switch_direct)
     return bestUBVal,nNodes,runtime
 end
 
 testcase = Dict(
-	"file" => "data/case30.m", 
- 	"name" => "case30K4",  	
- 	"attack_budget" => 4,
+	"file" => "data/case9.m", 
+ 	"name" => "case9K3",  	
+ 	"attack_budget" => 3,
  	"inactive_indices" => [],
  	"protected_indices" => []
 	)

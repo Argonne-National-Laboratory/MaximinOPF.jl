@@ -21,9 +21,9 @@ function solveMaxminECP(pm_data,pm_form,pm_optimizer,io=Base.stdout)
     MAX_N_ITER=0
     # "Mode definitions"
     PBM,ADMM,MT_ECP=1,2,3
-    #MODE=ADMM
+    MODE=ADMM
     #MODE=PBM
-    MODE=MT_ECP  ### " Multi-tree ECP approach" 
+    #MODE=MT_ECP  ### " Multi-tree ECP approach" 
 
     time_Start = time_ns()
 
@@ -68,14 +68,14 @@ function solveMaxminECP(pm_data,pm_form,pm_optimizer,io=Base.stdout)
         fix_integer_vals(maxmin)
         solve_PSD_via_ProxPt(maxmin; max_n_iter=100, prox_t=1, io=io)
     elseif MODE==MT_ECP
-        #solve_PSD_via_ProxPt(maxmin; max_n_iter=10, prox_t=0, io=io)
+        solve_PSD_via_ProxPt(maxmin; max_n_iter=100, prox_t=0, io=io)
         enforce_integrality(maxmin["model"],maxmin["branch_ids"])
     elseif MODE==ADMM
         fix_integer_vals(maxmin)
-        solve_PSD_via_ADMM(maxmin; max_n_iter=20, prox_t=1, io=io)
+        solve_PSD_via_ADMM(maxmin; max_n_iter=100, prox_t=1, io=io)
         total_sum_neg_eigs = 0
-        for kk in keys(maxmin["psd_con"])
-            PSD = maxmin["psd_con"][kk]
+        for kk in keys(maxmin["psd_info"])
+            PSD = maxmin["psd_info"][kk]
             total_sum_neg_eigs += PSD["neg_eigs_sum"]
             if PSD["neg_eigs_sum"] < 0
                 JuMP.@constraint(maxmin["model"], sum( PSD["ip"][nn]*PSD["C"][nn]*psd_expr[kk,nn] for nn in 1:PSD["vec_len"]) >= 0 )
@@ -136,21 +136,6 @@ function solveMaxminECP(pm_data,pm_form,pm_optimizer,io=Base.stdout)
     end
 end
 
-function relax_integrality(model_dict)
-    for l in model_dict["branch_ids"]
-	    if JuMP.is_fixed(variable_by_name(model_dict["model"],"x[$l]_1"))
-            unfix(variable_by_name(model_dict["model"],"x[$l]_1"))
-        end
-	    if JuMP.is_integer(variable_by_name(model_dict["model"],"x[$l]_1"))
-            JuMP.unset_integer(variable_by_name(model_dict["model"],"x[$l]_1"))
-            JuMP.set_lower_bound(variable_by_name(model_dict["model"],"x[$l]_1"),0)
-            JuMP.set_upper_bound(variable_by_name(model_dict["model"],"x[$l]_1"),1)
-	    else
-            JuMP.set_lower_bound(variable_by_name(model_dict["model"],"x[$l]_1"),0)
-            JuMP.set_upper_bound(variable_by_name(model_dict["model"],"x[$l]_1"),1)
-	    end
-    end
-end
 
 function unfix_enforce_integrality(model_dict)
     for l in model_dict["branch_ids"]
@@ -253,15 +238,6 @@ function resolveMP(maxmin;io=Base.stdout)
     #CPLEX.set_prob_type!(maxmin["model"], 8) ### "Change to fixed quadratic MIP"
 end
 
-function fix_integer_vals(model_info)
-    relax_integrality(model_info)
-    for l in model_info["branch_ids"]
-        if is_fixed(variable_by_name(model_info["model"],"x[$l]_1"))
-            unfix(variable_by_name(model_info["model"],"x[$l]_1"))
-        end
-        fix(variable_by_name(model_info["model"],"x[$l]_1"), model_info["x_soln"][l]; force=true)
-    end
-end
 
 function printX(x_soln::Dict{Int64,Float64},io=Base.stdout)
   for l in keys(x_soln)

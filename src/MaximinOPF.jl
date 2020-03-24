@@ -141,8 +141,10 @@ function replaceThermalLineLimits(pm)
             qf_p = var(pm, pm.cnw, :uq_br1)[f_idx,1]
             qt_m = var(pm, pm.cnw, :uq_br1)[t_idx,0]
             qt_p = var(pm, pm.cnw, :uq_br1)[t_idx,1]
-            JuMP.@constraint(pm.model, [branch["rate_a"], pf_p-pf_m, qf_p-qf_m] in JuMP.SecondOrderCone())
-            JuMP.@constraint(pm.model, [branch["rate_a"], pt_p-pt_m, qt_p-qt_m] in JuMP.SecondOrderCone())
+            cref_f=JuMP.@constraint(pm.model, [branch["rate_a"], pf_p-pf_m, qf_p-qf_m] in JuMP.SecondOrderCone())
+            JuMP.set_name(cref_f,string("fromSOC[",f_idx,"]"))
+            cref_t=JuMP.@constraint(pm.model, [branch["rate_a"], pt_p-pt_m, qt_p-qt_m] in JuMP.SecondOrderCone())
+            JuMP.set_name(cref_t,string("toSOC[",f_idx,"]"))
         end
     end
 end
@@ -317,20 +319,35 @@ function ConvertModelToDualizableForm(model::JuMP.Model)
 end
 
 function AssignModelDefaultConstraintNames(model::JuMP.Model)
+    all_vars = JuMP.all_variables(model)
+    n_vars = length(all_vars)
+    var_ids = collect(1:n_vars)
+    artificial_lb_var_ids=[]
+    artificial_ub_var_ids=[]
+    for vv in var_ids
+        var_name = JuMP.name(all_vars[vv])
+        if JuMP.has_upper_bound(all_vars[vv])
+  		    JuMP.set_name(UpperBoundRef(all_vars[vv]), string(var_name,"_UB"))
+        end
+        if JuMP.has_lower_bound(all_vars[vv])
+  		    JuMP.set_name(LowerBoundRef(all_vars[vv]), string(var_name,"_LB"))
+        end
+    end
+    
     type_str_map = Dict{DataType,String}(
-	VariableRef=>"Var", 
-	GenericAffExpr{Float64,VariableRef}=>"Expr", 
-        Array{GenericAffExpr{Float64,VariableRef},1}=>"VecExpr", 
-	MathOptInterface.EqualTo{Float64}=>"EQ",
-	MathOptInterface.GreaterThan{Float64}=>"GE",
-	MathOptInterface.LessThan{Float64}=>"LE",
-	MathOptInterface.SecondOrderCone=>"SOC",
-	MathOptInterface.RotatedSecondOrderCone=>"RSOC",
-	MathOptInterface.PositiveSemidefiniteConeTriangle=>"PSD",
-	MathOptInterface.PositiveSemidefiniteConeSquare=>"PSDSQ",
+	    VariableRef=>"Var", 
+	    GenericAffExpr{Float64,VariableRef}=>"Expr", 
+            Array{GenericAffExpr{Float64,VariableRef},1}=>"VecExpr", 
+	    MathOptInterface.EqualTo{Float64}=>"EQ",
+	    MathOptInterface.GreaterThan{Float64}=>"GE",
+	    MathOptInterface.LessThan{Float64}=>"LE",
+	    MathOptInterface.SecondOrderCone=>"SOC",
+	    MathOptInterface.RotatedSecondOrderCone=>"RSOC",
+	    MathOptInterface.PositiveSemidefiniteConeTriangle=>"PSD",
+	    MathOptInterface.PositiveSemidefiniteConeSquare=>"PSDSQ",
     )
-        con_types=list_of_constraint_types(model)
-        n_con_types=length(con_types)
+    con_types=list_of_constraint_types(model)
+    n_con_types=length(con_types)
 	con_dict = Dict{Tuple{DataType,DataType},Dict{Int64,String}}() 
 
 	for kk=1:n_con_types
@@ -369,6 +386,7 @@ end
 function write_to_cbf_scip(model,fn_base::String)
     model_psd = convertSOCtoPSD(model)
     add_psd_initial_cuts(model_psd) ### "If no psd constraints, does nothing"
+    add_artificial_var_bds(model::JuMP.Model; bd_mag=1e2)
     #add_artificial_var_bds(model::JuMP.Model; bd_mag=1e3, io=Base.stdout)
     fname=string(fn_base,"_scip",".cbf")
     JuMP_write_to_file( model_psd, fname, format = MOI.FileFormats.FORMAT_CBF)

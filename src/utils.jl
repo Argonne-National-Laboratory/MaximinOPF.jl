@@ -1,27 +1,33 @@
 using JuMP, MathOptInterface
 using PowerModels
 
-function add_artificial_var_bds(model::JuMP.Model; bd_mag=1e3, io=Base.stdout)
-    all_vars = JuMP.all_variables(model)
-    n_vars = length(all_vars)
-    var_ids = collect(1:n_vars)
-    artificial_lb_var_ids = []
-    artificial_ub_var_ids = []
-    for vv in var_ids
-        if !is_integer(all_vars[vv]) && !is_binary(all_vars[vv])
-            if !has_lower_bound(all_vars[vv]) 
-                set_lower_bound(all_vars[vv], -bd_mag)
-                push!(artificial_lb_var_ids,vv)
-                #println(io,"Artificial LB of ",-bd_mag," for variable ",all_vars[vv])
+function add_artificial_var_bds(model::JuMP.Model; bd_mag=1)
+    linobj_expr = objective_function(model, AffExpr)
+    for tt in keys(linobj_expr.terms)
+        if objective_sense(model)==MOI.MAX_SENSE
+            if linobj_expr.terms[tt] > 0
+                if !has_upper_bound(tt)
+                    set_upper_bound(tt,1)
+                end
+            elseif linobj_expr.terms[tt] < 0
+                if !has_lower_bound(tt)
+                    set_lower_bound(tt,-1)
+                end
             end
-            if !has_upper_bound(all_vars[vv])
-                set_upper_bound(all_vars[vv], bd_mag)
-                push!(artificial_ub_var_ids,vv)
-                #println(io,"Artificial UB of ", bd_mag," for variable ",all_vars[vv])
+        elseif objective_sense(model)==MOI.MIN_SENSE
+            if linobj_expr.terms[tt] > 0
+                if !has_lower_bound(tt)
+                    set_lower_bound(tt,-1)
+                end
+            elseif linobj_expr.terms[tt] < 0
+                if !has_upper_bound(tt)
+                    set_upper_bound(tt,1)
+                end
             end
+        else
+            println("Minimization sense is abnormal: ", objective_sense(model) )
         end
     end
-    return artificial_lb_var_ids, artificial_ub_var_ids
 end
 function gatherPSDConInfo(model_info)
     con_types=list_of_constraint_types(model_info["model"])
@@ -82,16 +88,16 @@ function gatherPSDConInfo(model_info)
     end
 end
 
-function add_psd_initial_cuts(model::JuMP.Model; io=Base.stdout)
+function add_psd_initial_cuts(model::JuMP.Model; bd_mag=1e2, io=Base.stdout)
     model_info = Dict{String,Any}()
     model_info["model"] = model
     gatherPSDConInfo(model_info)
     psd_expr = model_info["model"][:psd_expr]
     PSD=model_info["psd_con"]
     #JuMP.@constraint( model_info["model"], psd_expr_lbs[kk in keys(PSD), mm in 1:PSD[kk]["vec_len"]], psd_expr[kk,mm] >= -PSD[kk]["is_off_diag"][mm]*1e2 )
-    JuMP.@constraint( model_info["model"], psd_expr_lbs[kk in keys(PSD), mm in 1:PSD[kk]["vec_len"]], psd_expr[kk,mm] >= -1e2 )
-    JuMP.@constraint( model_info["model"], psd_expr_ubs[kk in keys(PSD), mm in 1:PSD[kk]["vec_len"]], psd_expr[kk,mm] <= 1e2 )
-    #JuMP.@constraint( model_info["model"], psd_expr_lbs[kk in keys(PSD), mm in filter(mmm->(!PSD[kk]["is_off_diag"][mmm]),1:PSD[kk]["vec_len"])], psd_expr[kk,mm] >= 0 )
+    #JuMP.@constraint( model_info["model"], psd_expr_lbs[kk in keys(PSD), mm in 1:PSD[kk]["vec_len"]], psd_expr[kk,mm] >= -1e2 )
+    #JuMP.@constraint( model_info["model"], psd_expr_ubs[kk in keys(PSD), mm in 1:PSD[kk]["vec_len"]], psd_expr[kk,mm] <= 1e2 )
+    JuMP.@constraint( model_info["model"], psd_expr_lbs[kk in keys(PSD), mm in filter(mmm->(PSD[kk]["is_off_diag"][mmm]==0),1:PSD[kk]["vec_len"])], psd_expr[kk,mm] >= 0 )
 
     #JuMP.@constraint(model_info["model"], sum( sum( PSD[kk]["ip"][mm]*psd_expr[kk,mm] for mm in 1:PSD[kk]["vec_len"]) for kk in keys(PSD) ) <= 1e2)
 end
@@ -117,5 +123,31 @@ function unfix_vars(model,branch_ids)
         end
         set_lower_bound(variable_by_name(model,"x[$l]_1"),0)
         set_upper_bound(variable_by_name(model,"x[$l]_1"),1)
+    end
+end
+
+function fix_integer_vals(model_info)
+    relax_integrality(model_info)
+    for l in model_info["branch_ids"]
+        if is_fixed(variable_by_name(model_info["model"],"x[$l]_1"))
+            unfix(variable_by_name(model_info["model"],"x[$l]_1"))
+        end
+        fix(variable_by_name(model_info["model"],"x[$l]_1"), model_info["x_soln"][l]; force=true)
+    end
+end
+
+function relax_integrality(model_dict)
+    for l in model_dict["branch_ids"]
+	    if JuMP.is_fixed(variable_by_name(model_dict["model"],"x[$l]_1"))
+            unfix(variable_by_name(model_dict["model"],"x[$l]_1"))
+        end
+	    if JuMP.is_integer(variable_by_name(model_dict["model"],"x[$l]_1"))
+            JuMP.unset_integer(variable_by_name(model_dict["model"],"x[$l]_1"))
+            JuMP.set_lower_bound(variable_by_name(model_dict["model"],"x[$l]_1"),0)
+            JuMP.set_upper_bound(variable_by_name(model_dict["model"],"x[$l]_1"),1)
+	    else
+            JuMP.set_lower_bound(variable_by_name(model_dict["model"],"x[$l]_1"),0)
+            JuMP.set_upper_bound(variable_by_name(model_dict["model"],"x[$l]_1"),1)
+	    end
     end
 end
