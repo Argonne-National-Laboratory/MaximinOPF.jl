@@ -10,9 +10,6 @@ makedocs(
         	"Getting Started" => "gettingstarted.md",
         	"API Document" => "API.md",
         	"Examples" => "example.md"
-        ],
-        "Library" => [
-        	"Mathematical Concept" => "mathematicalconcept.md"
         ]
     ]
 )
