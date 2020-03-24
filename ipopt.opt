@@ -1,0 +1,42 @@
+print_level 0
+
+jac_d_constant yes
+jac_c_constant yes
+hessian_constant yes
+
+max_iter 50000
+
+tol 1e-10
+constr_viol_tol 1e-10
+dual_inf_tol 1e-10
+compl_inf_tol 1e-10
+
+acceptable_tol 1e-6
+acceptable_constr_viol_tol 1e-6
+acceptable_dual_inf_tol 1e-6
+acceptable_compl_inf_tol 1e-6
+
+#mu_strategy monotone
+#nlp_scaling_method none
+
+#mu_strategy adaptive
+
+#linear_solver ma57
+#ma57_pivtol 1e-4
+#ma57_automatic_scaling yes
+
+#nlp_scaling_method gradient-based
+#nlp_scaling_method none 
+#hessian_constant yes
+#warm_start_init_point yes
+#nlp_scaling_max_gradient 1
+#nlp_scaling_min_value 1e-16
+
+
+#hessian_approximation	limited-memory
+
+#limited_memory_max_history 12
+#limited_memory_max_skipping 1
+
+#recalc_y yes
+#recalc_y_feas_tol 1e-6
