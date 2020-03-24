@@ -1,37 +1,20 @@
+
 # CAPS.jl
 
 ## Overview
-CAPS.jl is a Julia/JuMP package for modeling N-k Contingency Analysis in Power Systems. This package creates a maximin optimization model that maximizes the minimum system infeasibility by modeling an attacker and a defender of the power system operator. For a given budget K, the attacker finds a set of critical assets that maximizes the total system infeasibility to the system, whereas the defender minimizes the damange from the attack. The formulations supported for the underlying power system include the SDP and SOCP relaxations and DC approximation of the optimal power flow.
+CAPS.jl is a Julia/JuMP package for modeling N-k Contingency Analysis in Power Systems (CAPS), which creates a maxmin model where an attacker seeks to maximize system infeasibility subject to 1) a given attack budget of K network assets (typically lines and transformers) and 2) the assumed optimal defense response of the power system operator. The power flow system is modeled according to various formulations based on relaxations or approxiations of the equations governing line/transformer power flow, which include the SDP and SOCP relaxations, and the DC or other linear approximation of the power flow equations.
 
-The proximal bundle methods implemented here solve problems of the following form: 
-
-$min(\mathcal{C}^\mathcal{T}\mathcal{x} + \mathcal{f}(x)) s.t. \mathcal{A}_\mathcal{x} <= \mathcal{b}, \mathcal{g}(x) <= 0$
-
-where
-
-* The $\mathcal{C}^\mathcal{T}\mathcal{x}$constitute the known linear terms of the objective function
-* The $\mathcal{f}(x)$is a convex function that may be nonlinear, nonsmooth, and with unknown a priori closed-form
-* The $\mathcal{A}_\mathcal{x} <= \mathcal{b}$are the a priori-known affine constraints
-* The $\mathcal{g}(x) <= 0$is a convex constraint defined by a possibly nonlinear, nonsmooth function g(x) that is not of a priori-known closed form.
-
-We assume for the sake of nontriviality that f and g are nonsmooth, and cannot be represented as the maximum value of a finite number of differentiable functions. The solution approach exchanges the solution of the above problem with iterations $\mathcal{k}$ of the following proximal point approximation centered about $\mathcal{x}^\mathcal{k}$
-
-$min(\mathcal{C}^\mathcal{T}\mathcal{x} + \mathcal{F}^{\mathcal{k}(x)} + 1/2\mathcal{t}^\mathcal{k} * \mathopen||\mathcal{x}-\mathcal{x}^\mathcal{k}\mathclose||^2) s.t. \mathcal{A}_\mathcal{x} <= \mathcal{b}, $\mathcal{G}^{\mathcal{k}(x)} <= 0$
-
-where
-* The $\mathcal{F}$and $\mathcal{G}$ are cutting plane models of $\mathcal{f}$ and $\mathcal{g}$, respectively.
-
-## Quick Start
+## Installation
 The simplest way to install the CAPS.jl is below:
 ```
 (Shell)> cd <proj_root>
 (Shell)> julia
 (Julia)> ]
-(v1.2) pkg> activate .
+(v1.3) pkg> activate .
 (CAPS.jl) pkg> build
 (CAPS.jl) pkg> test
 ```
-The detail information to use this package is available on the [Getting Started](./gettingstarted/) document. The document include the installation, CAPS model building, and optimization option information.
+Detailed information on installation, model building, optimization support and other options is available at [Getting Started](./gettingstarted/). 
 
 ## Links
 * Code Repository: [CAPS.jl](https://github.com/kibaekkim/CAPS.jl)
@@ -41,7 +24,7 @@ The detail information to use this package is available on the [Getting Started]
 
 ## Team Members
 * Kibaek Kim: Mathematical Researcher, Project Leader
-* Brian Dandurand: Mathematical Researcher
+* Brian Dandurand: Postdoctoral Appointee, Mathematics and Computer Science Division, ANL
 * Sang-il Yim: Software Developer
 
 

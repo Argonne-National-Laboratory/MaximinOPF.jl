@@ -1,7 +1,7 @@
 # CAPS.jl
 
 ## Overview
-CAPS.jl is a Julia/JuMP package for modeling N-k Contingency Analysis in Power Systems. This package creates a maximin optimization model that maximizes the minimum system infeasibility by modeling an attacker and a defender of the power system operator. For a given budget K, the attacker finds a set of critical assets that maximizes the total system infeasibility to the system, whereas the defender minimizes the damange from the attack. The formulations supported for the underlying power system include the SDP and SOCP relaxations and DC approximation of the optimal power flow.
+CAPS.jl is a Julia/JuMP package for modeling N-k Contingency Analysis in Power Systems (CAPS), which creates a maxmin model where an attacker seeks to maximize system infeasibility subject to 1) a given attack budget of K network assets (typically lines and transformers) and 2) the assumed optimal defense response of the power system operator. The power flow system is modeled according to various formulations based on relaxations or approxiations of the equations governing line/transformer power flow, which include the SDP and SOCP relaxations, and the DC or other linear approximation of the power flow equations.
 
 ## Quick Start
 The simplest way to install the CAPS.jl is below:
@@ -9,7 +9,7 @@ The simplest way to install the CAPS.jl is below:
 (Shell)> cd <proj_root>
 (Shell)> julia
 (Julia)> ]
-(v1.2) pkg> activate .
+(v1.3) pkg> activate .
 (CAPS.jl) pkg> build
 (CAPS.jl) pkg> test
 ```
