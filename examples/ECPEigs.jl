@@ -18,7 +18,7 @@ PowerModels.silence()
 function solveMaxminECP(pm_data,pm_form,pm_optimizer,io=Base.stdout)
     #println(io,"Formulating and solving the form ",pm_form, " for problem ",pm_data["name"], " with attack budget K=",pm_data["attacker_budget"],".")
     MAX_N_COLS=100
-    MAX_N_ITER=0
+    MAX_N_ITER=40
     # "Mode definitions"
     PBM,ADMM,MT_ECP=1,2,3
     MODE=ADMM
@@ -52,6 +52,7 @@ function solveMaxminECP(pm_data,pm_form,pm_optimizer,io=Base.stdout)
     maxmin["all_solns"] = Dict{String,Any}()
     maxmin["all_solns"][x_soln_str]=Dict{String,Any}("x_soln"=>copy(maxmin["x_soln"]),"cuts"=>Dict{Int64,Any}()) 
     psd_expr = maxmin["model"][:psd_expr]
+    PSD = maxmin["psd_info"]
 
     #cplex_backend = CPLEX.Optimizer()
     #MOI.copy_to(cplex_backend,backend(psd_base_maxmin)) 
@@ -71,15 +72,14 @@ function solveMaxminECP(pm_data,pm_form,pm_optimizer,io=Base.stdout)
         solve_PSD_via_ProxPt(maxmin; max_n_iter=100, prox_t=0, io=io)
         enforce_integrality(maxmin["model"],maxmin["branch_ids"])
     elseif MODE==ADMM
-        fix_integer_vals(maxmin)
-        solve_PSD_via_ADMM(maxmin; max_n_iter=100, prox_t=1, io=io)
+        #fix_integer_vals(maxmin)
+        solve_PSD_via_ADMM(maxmin; max_n_iter=1000, prox_t=0.01, io=io)
         total_sum_neg_eigs = 0
         for kk in keys(maxmin["psd_info"])
-            PSD = maxmin["psd_info"][kk]
-            total_sum_neg_eigs += PSD["neg_eigs_sum"]
-            if PSD["neg_eigs_sum"] < 0
-                JuMP.@constraint(maxmin["model"], sum( PSD["ip"][nn]*PSD["C"][nn]*psd_expr[kk,nn] for nn in 1:PSD["vec_len"]) >= 0 )
-                #JuMP.@constraint(maxmin["model"], sum( PSD["ip"][nn]*PSD["sg"][nn]*psd_expr[kk,nn] for nn in 1:PSD["vec_len"]) >= 0 )
+            total_sum_neg_eigs += PSD[kk]["neg_eigs_sum"]
+            if PSD[kk]["neg_eigs_sum"] < 0
+                JuMP.@constraint(maxmin["model"], sum( PSD[kk]["ip"][nn]*PSD[kk]["C"][nn]*psd_expr[kk,nn] for nn in 1:PSD[kk]["vec_len"]) <= 0 )
+                #JuMP.@constraint(maxmin["model"], sum( PSD[kk]["ip"][nn]*PSD[kk]["sg"][nn]*psd_expr[kk,nn] for nn in 1:PSD[kk]["vec_len"]) >= 0 )
             end
         end
     end
@@ -93,11 +93,10 @@ function solveMaxminECP(pm_data,pm_form,pm_optimizer,io=Base.stdout)
             printX(maxmin["x_soln"])
             PSDSubgradient(maxmin; io=Base.stdout)
             total_sum_neg_eigs = 0
-            for kk in keys(maxmin["psd_con"])
-                PSD = maxmin["psd_con"][kk]
-                if PSD["neg_eigs_sum"] < 0
-                    total_sum_neg_eigs += PSD["neg_eigs_sum"]
-                    JuMP.@constraint(maxmin["model"], sum( PSD["ip"][nn]*PSD["sg"][nn]*psd_expr[kk,nn] for nn in 1:PSD["vec_len"]) >= 0 )
+            for kk in keys(PSD)
+                if PSD[kk]["neg_eigs_sum"] < 0
+                    total_sum_neg_eigs += PSD[kk]["neg_eigs_sum"]
+                    JuMP.@constraint(maxmin["model"], sum( PSD[kk]["ip"][nn]*PSD[kk]["sg"][nn]*psd_expr[kk,nn] for nn in 1:PSD[kk]["vec_len"]) >= 0 )
                 end
             end
         else 
@@ -109,21 +108,19 @@ function solveMaxminECP(pm_data,pm_form,pm_optimizer,io=Base.stdout)
             if MODE==PBM 
                 solve_PSD_via_ProxPt(maxmin; max_n_iter=10, prox_t=1, io=io)
                 total_sum_neg_eigs = 0
-                for kk in keys(maxmin["psd_con"])
-                    PSD = maxmin["psd_con"][kk]
-                    if PSD["neg_eigs_sum"] < 0
-                        total_sum_neg_eigs += PSD["neg_eigs_sum"]
+                for kk in keys(PSD)
+                    if PSD[kk]["neg_eigs_sum"] < 0
+                        total_sum_neg_eigs += PSD[kk]["neg_eigs_sum"]
                     end
                 end
             elseif MODE==ADMM
-                solve_PSD_via_ADMM(maxmin; max_n_iter=20,prox_t=1, io=io)
+                solve_PSD_via_ADMM(maxmin; max_n_iter=100,prox_t=0.01, io=io)
                 total_sum_neg_eigs = 0
-                for kk in keys(maxmin["psd_con"])
-                    PSD = maxmin["psd_con"][kk]
-                    total_sum_neg_eigs += PSD["neg_eigs_sum"]
-                    if PSD["neg_eigs_sum"] < 0
-                        JuMP.@constraint(maxmin["model"], sum( PSD["ip"][nn]*PSD["C"][nn]*psd_expr[kk,nn] for nn in 1:PSD["vec_len"]) >= 0 )
-                        JuMP.@constraint(maxmin["model"], sum( PSD["ip"][nn]*PSD["sg"][nn]*psd_expr[kk,nn] for nn in 1:PSD["vec_len"]) >= 0 )
+                for kk in keys(PSD)
+                    total_sum_neg_eigs += PSD[kk]["neg_eigs_sum"]
+                    if PSD[kk]["neg_eigs_sum"] < 0
+                        JuMP.@constraint(maxmin["model"], sum( PSD[kk]["ip"][nn]*PSD[kk]["C"][nn]*psd_expr[kk,nn] for nn in 1:PSD[kk]["vec_len"]) <= 0 )
+                        #JuMP.@constraint(maxmin["model"], sum( PSD[kk]["ip"][nn]*PSD[kk]["sg"][nn]*psd_expr[kk,nn] for nn in 1:PSD[kk]["vec_len"]) >= 0 )
                     end
                 end
             end
@@ -173,7 +170,7 @@ end
 function resolveMP_ECP(maxmin;io=Base.stdout)
     psd_expr = maxmin["model"][:psd_expr]
     JuMP.optimize!(maxmin["model"])
-    PSD = maxmin["psd_con"]
+    PSD = maxmin["psd_info"]
     for kk in keys(PSD)
         for nn=1:PSD[kk]["vec_len"]
             PSD[kk]["expr_val"][nn] = JuMP.value.(psd_expr[kk,nn])
@@ -210,10 +207,10 @@ function resolveMP(maxmin;io=Base.stdout)
     #JuMP.optimize!(maxmin["model"])
     JuMP.optimize!(mp_mip)
 #=
-    for kk in keys(maxmin["psd_con"])
-        n_el = maxmin["psd_con"][kk]["vec_len"]
+    for kk in keys(maxmin["psd_info"])
+        n_el = maxmin["psd_info"][kk]["vec_len"]
         for nn=1:n_el
-            maxmin["psd_con"][kk]["expr_val"][nn] = JuMP.value(constraint_ref_with_index(mp_mip, ref_index[psd_expr_bd[kk,nn].index]))
+            maxmin["psd_info"][kk]["expr_val"][nn] = JuMP.value(constraint_ref_with_index(mp_mip, ref_index[psd_expr_bd[kk,nn].index]))
         end
     end
 =#
@@ -256,9 +253,9 @@ end
 
 
 testcase = Dict(
-	"file" => "data/case9.m", 
- 	"name" => "case9K3",  	
- 	"attack_budget" => 3,
+	"file" => "data/case30.m", 
+ 	"name" => "case30K4",  	
+ 	"attack_budget" => 4,
  	"inactive_indices" => [],
  	"protected_indices" => []
 	)

@@ -220,7 +220,7 @@ function gatherPSDConInfo(model::JuMP.Model)
             PSD[kk]["expr_val"] = zeros(vec_len)
             PSD[kk]["dual_val"] = zeros(vec_len)
             PSD[kk]["expr_val_ctr"] = zeros(vec_len)
-            PSD[kk]["old_proj_expr_val"] = zeros(vec_len)
+            PSD[kk]["old_expr_val_ctr"] = zeros(vec_len)
             PSD[kk]["proj_expr_val"] = zeros(vec_len)
             PSD[kk]["C"] = zeros(vec_len) ### Dual solution
             PSD[kk]["prim_res"] = zeros(vec_len)
@@ -266,13 +266,17 @@ function gatherPSDConInfo(model::JuMP.Model)
     return PSD
 end
 
-function add_psd_initial_cuts(model_info; bdmag=1e2, io=Base.stdout)
+function add_psd_initial_cuts(model_info; bdmag=1e3, io=Base.stdout)
     model=model_info["model"]
     psd_expr = model[:psd_expr]
     PSD = model_info["psd_info"]
-    JuMP.@constraint( model, psd_lbs[kk in keys(PSD), mm in 1:PSD[kk]["vec_len"]], psd_expr[kk,mm] >= -bdmag*PSD[kk]["is_off_diag"][mm] )
-    JuMP.@constraint( model, psd_ubs[kk in keys(PSD), mm in 1:PSD[kk]["vec_len"]], sum( psd_expr[kk,mm] for mm in 1:PSD[kk]["vec_len"]) <= bdmag )
+    #JuMP.@constraint( model, psd_lbs[kk in keys(PSD), mm in 1:PSD[kk]["vec_len"]], psd_expr[kk,mm] >= -bdmag*PSD[kk]["is_off_diag"][mm] )
 
+    JuMP.@constraint( model, psd_diag_lbs[kk in keys(PSD), mm in PSD[kk]["diag_els"]], psd_expr[kk,mm] >= 0.0 )
+    JuMP.@constraint( model, psd_diag_ubs[kk in keys(PSD), mm in PSD[kk]["diag_els"]], psd_expr[kk,mm] <= bdmag )
+    JuMP.@constraint( model, psd_ub[kk in keys(PSD), mm in 1:PSD[kk]["vec_len"]], sum( psd_expr[kk,mm] for mm in 1:PSD[kk]["vec_len"]) <= bdmag )
+    JuMP.@constraint( model, psd_lb[kk in keys(PSD), mm in 1:PSD[kk]["vec_len"]], sum( psd_expr[kk,mm] for mm in 1:PSD[kk]["vec_len"]) >= -bdmag )
+    #JuMP.@constraint( model, psd_diag_ubs[kk in keys(PSD), mm in PSD[kk]["diag_els"]], psd_expr[kk,mm] <= bdmag )
 #=
     JuMP.@constraint( psd_info["cp_model"], psd_diag_lbs[kk in keys(PSD), mm in PSD[kk]["diag_els"]], psd_expr[kk,mm] >= 0.0 )
     JuMP.@constraint( psd_info["cp_model"], psd_diag_ubs[kk in keys(PSD), mm in PSD[kk]["diag_els"]], psd_expr[kk,mm] <= bdmag )
@@ -291,28 +295,31 @@ function removePSD_Constraints(PSD)
         delete(PSD[kk]["model"],PSD[kk]["cref"])
     end
 end
+
  # "This function should be implemented to be recallable," 
  ### "so that a user can call this function multiple times to get ever more accurate solution information."
  ### "Return aggregated cuts for the PSD constraints, and a Dictionary of new constraints"
 function solve_PSD_via_ADMM(model_info::Dict{String,Any}; max_n_iter=100, prox_t=1, io=Base.stdout)
     model = model_info["model"] 
+    model_info["prox_t"] = prox_t
     psd_expr = model[:psd_expr]
     prox_sign = model_info["prox_sign"] 
     PSD=model_info["psd_info"]
 
     for kk in keys(PSD)
         PSD[kk]["prox_t"] = prox_t
+        PSD[kk]["expr_val_ctr"][:] .= 0
         PSD[kk]["proj_expr_val"][:] .= 0
         PSD[kk]["C"][:] .= 0
     end
     for ii=0:max_n_iter
         for kk in keys(PSD)
-            PSD[kk]["quad_terms"] = sum( PSD[kk]["ip"][nn]*( psd_expr[kk,nn] - PSD[kk]["proj_expr_val"][nn] )^2 for nn in 1:PSD[kk]["vec_len"]) 
-            PSD[kk]["Lagr_terms"] = sum( PSD[kk]["ip"][nn]*PSD[kk]["C"][nn]*( psd_expr[kk,nn] - PSD[kk]["proj_expr_val"][nn] )  for nn in 1:PSD[kk]["vec_len"]) 
+            PSD[kk]["quad_terms"] = sum( PSD[kk]["ip"][nn]*( psd_expr[kk,nn] - PSD[kk]["expr_val_ctr"][nn] )^2 for nn in 1:PSD[kk]["vec_len"]) 
+            PSD[kk]["Lagr_terms"] = sum( PSD[kk]["ip"][nn]*PSD[kk]["C"][nn]*( psd_expr[kk,nn] - PSD[kk]["expr_val_ctr"][nn] )  for nn in 1:PSD[kk]["vec_len"]) 
         end
         @objective( model, model_info["obj_sense"], model[:linobj_expr]  
-            - prox_sign * sum( PSD[kk]["Lagr_terms"] for kk in keys(PSD))
-            + 0.5* prox_sign * sum( PSD[kk]["prox_t"] * PSD[kk]["quad_terms"] for kk in keys(PSD) )
+            + prox_sign * sum( PSD[kk]["Lagr_terms"] for kk in keys(PSD))
+            + 0.5* prox_sign * prox_t*sum( PSD[kk]["quad_terms"] for kk in keys(PSD) )
         )
         try
             JuMP.optimize!( model) 
@@ -335,23 +342,25 @@ function solve_PSD_via_ADMM(model_info::Dict{String,Any}; max_n_iter=100, prox_t
         PSDProjections(model_info;io=io)
         prim_res = trunc(sqrt(sum( PSD[kk]["prim_res_norm"]^2 for kk in keys(PSD)));digits=4)
         dual_res = trunc(sqrt(sum( PSD[kk]["dual_res_norm"]^2 for kk in keys(PSD)));digits=4)
-        println("\tsub-Iter $ii prox obj value: ",model_info["prox_val"]," in statu: ", model_info["solve_status"]," p_res=",prim_res," d_res=",dual_res )
+        if mod(ii,10)==0 || ii==1
+            println("\tsub-Iter $ii prox obj value: ",model_info["prox_val"]," in statu: ", 
+                model_info["solve_status"]," p_res=",prim_res," d_res=",dual_res, " prox_t=",prox_t )
+        end
         if sqrt(pd_res_val) < 1e-4
 	        println("Sub-Iteratione $ii terminante, quia solutio relaxata est factibilis.")
             break
         else
-#=
-            if mod(ii,100)==40
-                for kk in keys(model_info["psd_con"])
-                    if PSD[kk]["prim_res_norm"] > 10*PSD[kk]["dual_res_norm"]
-                        PSD[kk]["prox_t"] *= 2
-                    elseif PSD[kk]["dual_res_norm"] > 10*PSD[kk]["prim_res_norm"]
-                        PSD[kk]["prox_t"] /= 2
-                    end
-                    PSD[kk]["prox_t"] = min( max(model_info["prox_t_min"],PSD[kk]["prox_t"]), model_info["prox_t_max"])
+            scale_fac = 1.618
+            if mod(ii,20)==1 && ii>40
+                if prim_res > 10*dual_res
+                    prox_t *= scale_fac
+                    model_info["prox_t"] = prox_t
+                elseif dual_res > 10*prim_res
+                    prox_t /= scale_fac
                 end
+                prox_t = min( max(model_info["prox_t_min"],prox_t), model_info["prox_t_max"])
             end
-=#
+            model_info["prox_t"] = prox_t
         end
     end
     
@@ -518,28 +527,39 @@ function PSDProjections(model_info; io=Base.stdout)
     model = model_info["model"]
     psd_expr = model[:psd_expr]
     prox_sign = model_info["prox_sign"]
+    prox_t = model_info["prox_t"]
     PSD = model_info["psd_info"]
     for kk in keys(PSD)
-        PSD[kk]["old_proj_expr_val"][:] = PSD[kk]["proj_expr_val"][:]
-        PSD[kk]["proj_expr_val"][:] = PSD[kk]["expr_val"][:] - (1.0/PSD[kk]["prox_t"])*PSD[kk]["C"][:]
-        computePSDMat(PSD[kk], PSD[kk]["proj_expr_val"])
+        PSD[kk]["old_expr_val_ctr"][:] = PSD[kk]["expr_val_ctr"][:]
+        PSD[kk]["expr_val_ctr"][:] = PSD[kk]["expr_val"][:] + (1.0/prox_t)*PSD[kk]["C"][:]
+        computePSDMat(PSD[kk], PSD[kk]["expr_val_ctr"])
         E = eigen(PSD[kk]["psd_mat"])
         eig_vals,eig_vecs = E
 
         n_eigs = length(eig_vals)
         neg_eigs = filter(mmm->(eig_vals[mmm] < -1e-8), 1:n_eigs)
+        PSD[kk]["neg_eigs_sum"] = 0
         if length(neg_eigs) > 0
             PSD[kk]["neg_eigs_sum"] = sum( eig_vals[mm] for mm in neg_eigs )
             model_info["total_sum_neg_eigs"] += PSD[kk]["neg_eigs_sum"]
         end
         println(io,"eigenval_$kk: ", eig_vals)
         PSD[kk]["min_eigval"],min_eigval_idx = findmin(eig_vals)
-        for nn=1:PSD[kk]["vec_len"]
-            ii,jj=PSD[kk]["ii"][nn],PSD[kk]["jj"][nn]
-            PSD[kk]["proj_expr_val"][nn] -= sum( eig_vals[mm]*eig_vecs[ii,mm]*eig_vecs[jj,mm] for mm in neg_eigs)
-            PSD[kk]["C"][nn] -= PSD[kk]["prox_t"]*(PSD[kk]["expr_val"][nn]-PSD[kk]["proj_expr_val"][nn])
-            PSD[kk]["prim_res"][nn] = PSD[kk]["expr_val"][nn] - PSD[kk]["proj_expr_val"][nn]
-            PSD[kk]["dual_res"][nn] = PSD[kk]["prox_t"]*(PSD[kk]["proj_expr_val"][nn] - PSD[kk]["old_proj_expr_val"][nn])
+        if length(neg_eigs) > 0
+            for nn=1:PSD[kk]["vec_len"]
+                ii,jj=PSD[kk]["ii"][nn],PSD[kk]["jj"][nn]
+                orth_proj = sum( eig_vals[mm]*eig_vecs[ii,mm]*eig_vecs[jj,mm] for mm in neg_eigs)
+                PSD[kk]["expr_val_ctr"][nn] = PSD[kk]["expr_val"][nn] + (1.0/prox_t)*PSD[kk]["C"][nn] - orth_proj
+                #PSD[kk]["C"][nn] += prox_t*(PSD[kk]["expr_val"][nn]-PSD[kk]["expr_val_ctr"][nn])
+                PSD[kk]["C"][nn] = prox_t*orth_proj
+                PSD[kk]["prim_res"][nn] = PSD[kk]["expr_val"][nn] - PSD[kk]["expr_val_ctr"][nn]
+                PSD[kk]["dual_res"][nn] = prox_t*(PSD[kk]["expr_val_ctr"][nn] - PSD[kk]["old_expr_val_ctr"][nn])
+            end
+        else
+            for nn=1:PSD[kk]["vec_len"]
+                PSD[kk]["prim_res"][nn] = PSD[kk]["expr_val"][nn] - PSD[kk]["expr_val_ctr"][nn]
+                PSD[kk]["dual_res"][nn] = prox_t*(PSD[kk]["expr_val_ctr"][nn] - PSD[kk]["old_expr_val_ctr"][nn])
+            end
         end
         PSD[kk]["prim_res_norm"] = sqrt(sum( PSD[kk]["prim_res"][nn]^2 for nn=1:PSD[kk]["vec_len"]))
         PSD[kk]["dual_res_norm"] = sqrt(sum( PSD[kk]["dual_res"][nn]^2 for nn=1:PSD[kk]["vec_len"]))

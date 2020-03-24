@@ -203,7 +203,7 @@ function solveMaxminViaBnB(pm_data,pm_form; use_dual_minmax=true)
     end
     psd_model_info["model"] = psd_base_maxmin
     gatherPSDConInfo(psd_model_info) ### "Sets the 'psd_info' key"
-    add_artificial_var_bds(psd_model_info; bd_mag=100, io=devnull)
+    add_artificial_var_bds(psd_model_info; bd_mag=1e4, io=devnull)
 	#add_psd_initial_cuts(psd_model_info;io=devnull)
 
     prox_base_maxmin = convertSOCtoPSD(base_maxmin)
@@ -225,11 +225,11 @@ function solveMaxminViaBnB(pm_data,pm_form; use_dual_minmax=true)
     ### "Sets `model_info[\"cp_model\"] = cp_base_maxmin` and also the 'psd_info' entry"
     gatherPSDConInfo(cp_model_info) ### "Sets the 'psd_info' entry of model_info"
     #add_artificial_var_bds(cp_model_info; io=devnull)
-	#add_psd_initial_cuts(cp_model_info;io=devnull)
     removePSD_Constraints(cp_model_info["psd_info"])
     #println(cp_model_info["model"])
     #print_var_bds(cp_model_info)
-    add_artificial_var_bds(cp_model_info; bd_mag=10)
+    add_artificial_var_bds(cp_model_info; bd_mag=1e4)
+	add_psd_initial_cuts(cp_model_info;io=devnull)
 
     BnBTree = Dict{Int64,Dict{String,Any}}()
     BnBTree[0] = init_node ### ADD ROOT NODE TO TREE
