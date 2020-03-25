@@ -302,6 +302,8 @@ end
 function solve_PSD_via_ADMM(model_info::Dict{String,Any}; max_n_iter=100, prox_t=1, io=Base.stdout)
     model = model_info["model"] 
     model_info["prox_t"] = prox_t
+    model_info["prox_t_min"] = prox_t
+    model_info["prox_t_max"] = 64*model_info["prox_t_min"]
     psd_expr = model[:psd_expr]
     prox_sign = model_info["prox_sign"] 
     PSD=model_info["psd_info"]
@@ -350,8 +352,19 @@ function solve_PSD_via_ADMM(model_info::Dict{String,Any}; max_n_iter=100, prox_t
 	        println("Sub-Iteratione $ii terminante, quia solutio relaxata est factibilis.")
             break
         else
-            scale_fac = 1.618
-            if mod(ii,20)==1 && ii>40
+#=
+            if ii <= round(0.4*max_n_iter)
+                model_info["prox_t"] = 0.01 
+                prox_t = model_info["prox_t"]
+            elseif ii <= round(0.6*max_n_iter)
+                model_info["prox_t"] = 0.1 
+                prox_t = model_info["prox_t"]
+            else
+                model_info["prox_t"] = 1 
+                prox_t = model_info["prox_t"]
+            end
+            scale_fac = 2
+            if mod(ii,10)==0 
                 if prim_res > 10*dual_res
                     prox_t *= scale_fac
                     model_info["prox_t"] = prox_t
@@ -361,6 +374,7 @@ function solve_PSD_via_ADMM(model_info::Dict{String,Any}; max_n_iter=100, prox_t
                 prox_t = min( max(model_info["prox_t_min"],prox_t), model_info["prox_t_max"])
             end
             model_info["prox_t"] = prox_t
+=#
         end
     end
     

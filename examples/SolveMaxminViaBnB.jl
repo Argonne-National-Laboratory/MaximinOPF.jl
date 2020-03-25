@@ -55,7 +55,7 @@ function solveNodeMinmaxSP(model_info, ndata)
     end
 end #end of function
 
-function solveNodeSPFixed(model_info)
+function solveNodeSPFixed(model_info; compute_psd_dual=true)
     model = model_info["model"]
     branch_ids = model_info["branch_ids"]
     PSD=model_info["psd_info"] 
@@ -74,14 +74,17 @@ function solveNodeSPFixed(model_info)
     model_info["heur_x_soln"] = copy(model_info["x_soln"])
     model_info["heur_opt_val"] = model_info["opt_val"]
     sg_info = Dict{Tuple{Int64,Int64},Array{Float64,1}}()
-    for kk in keys(PSD)
-        PSD[kk]["dual_val"][:] = JuMP.dual.(PSD[kk]["cref"])[:]
-        sg_info[kk] = zeros(PSD[kk]["vec_len"])
-        for nn=1:PSD[kk]["vec_len"]
-            PSD[kk]["expr_val"][nn] = JuMP.value(psd_expr[kk,nn])
-            sg_info[kk][nn] = PSD[kk]["dual_val"][nn]
+    if compute_psd_dual
+        for kk in keys(PSD)
+            PSD[kk]["dual_val"][:] = JuMP.dual.(PSD[kk]["cref"])[:]
+            sg_info[kk] = zeros(PSD[kk]["vec_len"])
+            for nn=1:PSD[kk]["vec_len"]
+                PSD[kk]["expr_val"][nn] = JuMP.value(psd_expr[kk,nn])
+                sg_info[kk][nn] = PSD[kk]["dual_val"][nn]
+            end
         end
     end
+    unfix_vars(model,branch_ids)
     return sg_info
 end #end of function
 
@@ -96,7 +99,7 @@ function add_cut_with_sg(model_info::Dict{String,Any}, sg_info)
     end
 end
 
-function solveNodeSP_ECP(model_info, ndata; io=devnull)
+function solveNodeSP_ECP(model_info, ndata; compute_psd_dual=false, io=devnull)
     model = model_info["model"]
     branch_ids = model_info["branch_ids"]
     PSD = model_info["psd_info"]
@@ -111,9 +114,17 @@ function solveNodeSP_ECP(model_info, ndata; io=devnull)
 
     psd_expr = model[:psd_expr]
     JuMP.optimize!(model)
+    sg_info = Dict{Tuple{Int64,Int64},Array{Float64,1}}()
     for kk in keys(PSD)
         for nn=1:PSD[kk]["vec_len"]
             PSD[kk]["expr_val"][nn] = JuMP.value(psd_expr[kk,nn])
+        end
+        if compute_psd_dual
+            PSD[kk]["dual_val"][:] = JuMP.dual.(PSD[kk]["cref"])[:]
+            sg_info[kk] = zeros(PSD[kk]["vec_len"])
+            for nn=1:PSD[kk]["vec_len"]
+                sg_info[kk][nn] = PSD[kk]["dual_val"][nn]
+            end
         end
     end
     model_info["opt_val"]=JuMP.objective_value(model)
@@ -133,6 +144,7 @@ function solveNodeSP_ECP(model_info, ndata; io=devnull)
     end
     ndata["x_soln"] = copy(model_info["x_soln"])
     ndata["bound_value"] = model_info["opt_val"]
+    return sg_info
 end
 
 function applyPrimalHeuristic(model_info)
@@ -203,7 +215,7 @@ function solveMaxminViaBnB(pm_data,pm_form; use_dual_minmax=true)
     end
     psd_model_info["model"] = psd_base_maxmin
     gatherPSDConInfo(psd_model_info) ### "Sets the 'psd_info' key"
-    add_artificial_var_bds(psd_model_info; bd_mag=1e4, io=devnull)
+    add_artificial_var_bds(psd_model_info; bd_mag=1e1, io=devnull)
 	#add_psd_initial_cuts(psd_model_info;io=devnull)
 
     prox_base_maxmin = convertSOCtoPSD(base_maxmin)
@@ -228,7 +240,7 @@ function solveMaxminViaBnB(pm_data,pm_form; use_dual_minmax=true)
     removePSD_Constraints(cp_model_info["psd_info"])
     #println(cp_model_info["model"])
     #print_var_bds(cp_model_info)
-    add_artificial_var_bds(cp_model_info; bd_mag=1e4)
+    add_artificial_var_bds(cp_model_info; bd_mag=1e1)
 	add_psd_initial_cuts(cp_model_info;io=devnull)
 
     BnBTree = Dict{Int64,Dict{String,Any}}()
@@ -239,8 +251,19 @@ function solveMaxminViaBnB(pm_data,pm_form; use_dual_minmax=true)
     feasXs[""]=Dict("x_soln"=>Dict{Int64,Float64}(),"x_soln_str"=>"", "bound_value"=>0, "value"=>0, "cheat_value"=>0) ### CREATE INITIAL INCUMBENT SOLN
     IncX = feasXs[""]
     nXs = 1
+#=
+    for ii=1:40
+        solveNodeSPFixed(cp_model_info; compute_psd_dual=false )
+        sg_info=PSDSubgradient(cp_model_info)  ### "Set 'total_sum_neg_eigs' key of model_info"
+        add_cut_with_sg(cp_model_info, sg_info)
+        add_cut_with_sg(psd_model_info, sg_info)
+    end
+    sg_info=solveNodeSPFixed(psd_model_info)
+    add_cut_with_sg(cp_model_info, sg_info)
+    add_cut_with_sg(psd_model_info, sg_info)
+=#
 
-
+#=
     fix_integer_vals(prox_model_info)
     solve_PSD_via_ADMM(prox_model_info; max_n_iter=1000, prox_t=1, io=devnull)
     psd_expr = cp_model_info["model"][:psd_expr]
@@ -250,7 +273,6 @@ function solveMaxminViaBnB(pm_data,pm_form; use_dual_minmax=true)
         JuMP.@constraint(cp_model_info["model"], sum( PSD["ip"][nn]*PSD["C"][nn]*psd_expr[kk,nn] for nn in 1:PSD["vec_len"]) >= 0 )
         #end
     end
-#=
     for ii=1:100
         #solveNodeSPFixed(cp_model_info)
         try
@@ -275,6 +297,7 @@ function solveMaxminViaBnB(pm_data,pm_form; use_dual_minmax=true)
     maxval=-1
     n_switch_direct = 0
     recycle_threshold = 10
+    cheat_threshold = 1
     while true
         tree_report=string(" Nodes left: ",length(BnBTree)," out of ", nNodes,)
         incumbent_update=""
@@ -286,21 +309,28 @@ function solveMaxminViaBnB(pm_data,pm_form; use_dual_minmax=true)
             min_sum=1e20
             inn_while_cntr = 0
             while true
-                model_info = cp_model_info
+#=
                 if inn_while_cntr >= recycle_threshold
                     println("\tRecycling current node")
 	                BnBTree[nNodes]=currNode ### "Recycle current node"
                     nNodes += 1
                     break
-#=
+=#
+                direct_mode=false
+                model_info = cp_model_info
+                solveNodeSP_ECP(cp_model_info, currNode)
+                cp_sg_info=PSDSubgradient(cp_model_info)  ### "Set 'total_sum_neg_eigs' key of cp_model_info"
+                sg_info = cp_sg_info
+                if inn_while_cntr >= cheat_threshold && cp_model_info["total_sum_neg_eigs"] < -1e-4 
+                    direct_mode=true
                     model_info = psd_model_info
                     println("\tSwitching to direct psd node subproblem...")
                     n_switch_direct += 1
-=#
-                else
+                    sg_info=solveNodeSP_ECP(psd_model_info, currNode; compute_psd_dual=true)
+                    model_info["total_sum_neg_eigs"] = 0 
+                else    
                     inn_while_cntr += 1
                 end
-                solveNodeSP_ECP(model_info, currNode)
                 currNode["bound_value"] = model_info["opt_val"]
                 if currNode["bound_value"] <= IncX["value"]
                     println("\tFathoming due to bound ",currNode["bound_value"]," <= ",IncX["value"])
@@ -324,29 +354,10 @@ function solveMaxminViaBnB(pm_data,pm_form; use_dual_minmax=true)
                             break
                         end
                     end
-                    sg_info=PSDSubgradient(model_info)  ### "Set 'total_sum_neg_eigs' key of model_info"
-                    if model_info["total_sum_neg_eigs"] < -1e-4 
-                        if abs(model_info["total_sum_neg_eigs"]) < min_sum
-                            min_sum = abs(model_info["total_sum_neg_eigs"])
-                        end
-                        add_cut_with_sg(model_info, sg_info)
-                        add_cut_with_sg(psd_model_info, sg_info)
-	                        # APPLY A PRIMAL HEURISTIC
-#=
-                            sg_info = solveNodeSPFixed(psd_model_info)
-	                        println("\t\t cp_optval=",model_info["opt_val"]," psd_optval=",psd_model_info["opt_val"])		
-                            add_cut_with_sg(model_info, sg_info)
-                            add_cut_with_sg(psd_model_info, sg_info)
-                            PSDSubgradient(psd_model_info)  ### "Set 'total_sum_neg_eigs' key of model_info"
-                            println("\t\tSoln ",x_soln_str,": Verifying PSD feas: ",psd_model_info["total_sum_neg_eigs"])
-                            feasXs[x_soln_str]["value"] = psd_model_info["heur_opt_val"]
-	                        if IncX["value"] < feasXs[x_soln_str]["value"]
-	                            IncX = feasXs[x_soln_str]
-	                            incumbent_update = string("\t***New incumbent***",IncX["x_soln_str"])
-	                        end
-=#
-                        println("\tSoln ",x_soln_str,": PSD infeas: ", model_info["total_sum_neg_eigs"],", cp bound: ",
-                            model_info["opt_val"],", versus known value: ",feasXs[x_soln_str]["cheat_value"])
+                    add_cut_with_sg(cp_model_info, sg_info)
+                    if cp_model_info["total_sum_neg_eigs"] < -1e-4 && !direct_mode
+                        println("\tSoln ",x_soln_str,": PSD infeas: ", cp_model_info["total_sum_neg_eigs"],", cp bound: ",
+                            cp_model_info["opt_val"],", versus known value: ",feasXs[x_soln_str]["cheat_value"])
                         continue
                     else
 	                    println("\tFathoming due to optimality. Adding new attack solution: ",currNode["inactive_branches"])		
@@ -408,9 +419,9 @@ function solveMaxminViaBnB(pm_data,pm_form; use_dual_minmax=true)
 end
 
 testcase = Dict(
-	"file" => "data/case9.m", 
- 	"name" => "case9K3",  	
- 	"attack_budget" => 3,
+	"file" => "data/case30.m", 
+ 	"name" => "case30K4",  	
+ 	"attack_budget" => 4,
  	"inactive_indices" => [],
  	"protected_indices" => []
 	)

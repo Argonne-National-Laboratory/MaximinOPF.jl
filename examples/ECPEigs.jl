@@ -72,8 +72,8 @@ function solveMaxminECP(pm_data,pm_form,pm_optimizer,io=Base.stdout)
         solve_PSD_via_ProxPt(maxmin; max_n_iter=100, prox_t=0, io=io)
         enforce_integrality(maxmin["model"],maxmin["branch_ids"])
     elseif MODE==ADMM
-        #fix_integer_vals(maxmin)
-        solve_PSD_via_ADMM(maxmin; max_n_iter=1000, prox_t=0.01, io=io)
+        fix_integer_vals(maxmin)
+        solve_PSD_via_ADMM(maxmin; max_n_iter=3000, prox_t=0.05, io=io)
         total_sum_neg_eigs = 0
         for kk in keys(maxmin["psd_info"])
             total_sum_neg_eigs += PSD[kk]["neg_eigs_sum"]
@@ -114,14 +114,14 @@ function solveMaxminECP(pm_data,pm_form,pm_optimizer,io=Base.stdout)
                     end
                 end
             elseif MODE==ADMM
-                solve_PSD_via_ADMM(maxmin; max_n_iter=100,prox_t=0.01, io=io)
+                solve_PSD_via_ADMM(maxmin; max_n_iter=3000,prox_t=0.05, io=io)
                 total_sum_neg_eigs = 0
                 for kk in keys(PSD)
                     total_sum_neg_eigs += PSD[kk]["neg_eigs_sum"]
-                    if PSD[kk]["neg_eigs_sum"] < 0
-                        JuMP.@constraint(maxmin["model"], sum( PSD[kk]["ip"][nn]*PSD[kk]["C"][nn]*psd_expr[kk,nn] for nn in 1:PSD[kk]["vec_len"]) <= 0 )
+                    #if PSD[kk]["neg_eigs_sum"] < 0
+                    JuMP.@constraint(maxmin["model"], sum( PSD[kk]["ip"][nn]*PSD[kk]["C"][nn]*psd_expr[kk,nn] for nn in 1:PSD[kk]["vec_len"]) <= 0 )
                         #JuMP.@constraint(maxmin["model"], sum( PSD[kk]["ip"][nn]*PSD[kk]["sg"][nn]*psd_expr[kk,nn] for nn in 1:PSD[kk]["vec_len"]) >= 0 )
-                    end
+                    #end
                 end
             end
         end
@@ -184,7 +184,6 @@ function resolveMP_ECP(maxmin;io=Base.stdout)
         x_val = JuMP.value(x_var)
         if x_val > 1.0-1.0e-8
 	        x_val = 1
-            maxmin["x_soln_01"][l] = 1
         elseif x_val < 1.0e-8
 	        x_val = 0
         end
@@ -217,14 +216,11 @@ function resolveMP(maxmin;io=Base.stdout)
 
     maxmin["opt_val"]=JuMP.objective_value(mp_mip)
     maxmin["solve_status"]=JuMP.termination_status(mp_mip)
-    maxmin["x_soln_01"]=spzeros(Int64,maximum(maxmin["branch_ids"]))
-    maxmin["x_soln"]=Dict{Int64,Float64}()
     for l in maxmin["branch_ids"]
         x_var = variable_by_name(mp_mip,"x[$l]_1")
         x_val = JuMP.value(x_var)
         if x_val > 1.0-1.0e-8
 	        x_val = 1
-            maxmin["x_soln_01"][l] = 1
         elseif x_val < 1.0e-8
 	        x_val = 0
         end
