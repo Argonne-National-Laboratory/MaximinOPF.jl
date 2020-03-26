@@ -184,6 +184,13 @@ function applyPrimalHeuristic(model_info)
     return model_info["heur_opt_val"]
 end
 
+function deleteNodesByBound(BnBTree,bdval)
+    for bb in keys(BnBTree)
+        if BnBTree[bb]["bound_value"] <= bdval
+            delete!(BnBTree,bb)
+        end
+    end
+end
 
 function findNextNode(BnBTree::Dict{Int64,Dict{String,Any}})
   nodekey=-1
@@ -205,7 +212,7 @@ function printNode(node::Dict{String,Any}; pretext="",posttext="")
     println(pretext,"Node ",node["node_key"]," has bound ",node["bound_value"],": inactive=",node["inactive_branches"]," protected: ",node["protected_branches"],posttext)
 end
 
-function solveMaxminViaBnB(pm_data,pm_form; use_dual_minmax=true)
+function solveMaxminViaECPBnB(pm_data,pm_form; use_dual_minmax=true)
     #global MAX_TIME
     K=pm_data["attacker_budget"]
     art_bd=10
@@ -229,6 +236,20 @@ function solveMaxminViaBnB(pm_data,pm_form; use_dual_minmax=true)
     psd_model_info["model"] = psd_base_maxmin
     gatherPSDConInfo(psd_model_info) ### "Sets the 'psd_info' key"
 
+
+    cp_base_maxmin = convertSOCtoPSD(base_maxmin)
+    JuMP.set_optimizer(cp_base_maxmin,with_optimizer(CPLEX.Optimizer))
+    JuMP.set_parameter(cp_base_maxmin,"CPXPARAM_ScreenOutput",0)
+    JuMP.set_parameter(cp_base_maxmin,"CPXPARAM_Simplex_Tolerances_Optimality",1e-8)
+
+    cp_model_info=Dict{String,Any}("branch_ids"=>branch_ids,"x_soln"=>psd_model_info["x_soln"],
+            "x_soln_str"=>"","heur_x_soln"=>Dict{Int64,Float64}(),"attacker_budget"=>K)
+    cp_model_info["model"] = cp_base_maxmin
+    ### "Sets `model_info[\"cp_model\"] = cp_base_maxmin` and also the 'psd_info' entry"
+    gatherPSDConInfo(cp_model_info) ### "Sets the 'psd_info' entry of model_info"
+    removePSD_Constraints(cp_model_info["psd_info"])
+    println(cp_model_info["model"])
+
     BnBTree = Dict{Int64,Dict{String,Any}}()
     BnBTree[0] = init_node ### ADD ROOT NODE TO TREE
     nodekey=0
@@ -237,6 +258,15 @@ function solveMaxminViaBnB(pm_data,pm_form; use_dual_minmax=true)
     feasXs[""]=Dict("x_soln"=>Dict{Int64,Float64}(),"x_soln_str"=>"", "bound_value"=>0, "value"=>0) ### CREATE INITIAL INCUMBENT SOLN
     IncX = feasXs[""]
     nXs = 1
+    solveNodeSP_ECP(psd_model_info, BnBTree[0]; compute_psd_dual=true)
+    #bound_obj(psd_model_info; bd_mag=psd_model_info["opt_val"])
+    bound_obj(cp_model_info; bd_mag=psd_model_info["opt_val"])
+
+    solveNodeSPFixed(psd_model_info; compute_psd_dual=true)
+    #add_cuts(psd_model_info, psd_model_info["psd_info"]; cut_type="dual_val")
+    add_cuts(cp_model_info, psd_model_info["psd_info"]; cut_type="dual_val")
+	#add_psd_initial_cuts(psd_model_info;io=devnull)
+	add_psd_initial_cuts(cp_model_info;io=devnull)
 
     bestUBVal=1e20
     println("Initial processing of root node yields an upper bound of : ",bestUBVal)
@@ -244,41 +274,61 @@ function solveMaxminViaBnB(pm_data,pm_form; use_dual_minmax=true)
     nNodes=1
     maxidx=1
     maxval=-1
-
+    n_sdp_solves = 2
+    n_extra_cuts = 0
     while true
+        tree_report=string(" Nodes left: ",length(BnBTree)," out of ", nNodes,)
         incumbent_update=""
         currNode = pop!(BnBTree,nodekey)
         if currNode["bound_value"] <= IncX["value"]
             println("\nFathoming node $nodekey due to bound ",currNode["bound_value"]," <= ",IncX["value"])
         else
-            printNode(currNode;pretext="\n",posttext="")
+            printNode(currNode;pretext="\n",posttext=tree_report)
             inn_while_cntr = 0
             while true
-                solveNodeSP_ECP(psd_model_info, currNode; compute_psd_dual=false)
+                solveNodeSP_ECP(cp_model_info, currNode; compute_psd_dual=false)
+                println("\tECP opt val: ",cp_model_info["opt_val"], " with status: ", cp_model_info["solve_status"])
+                for nn=1:n_extra_cuts
+                    PSDProjections(cp_model_info)
+                    add_cuts(cp_model_info, cp_model_info["psd_info"];cut_type="orth_expr_val")
+                    #add_cuts(psd_model_info, cp_model_info["psd_info"];cut_type="orth_expr_val")
+                    solveNodeSP_ECP(cp_model_info, currNode; compute_psd_dual=false)
+                    println("\tECP opt val: ",cp_model_info["opt_val"], " with status: ", cp_model_info["solve_status"])
+                end
 
-                currNode["bound_value"] = min(psd_model_info["opt_val"],currNode["bound_value"])
+                            
+
+                currNode["bound_value"] = min(cp_model_info["opt_val"],currNode["bound_value"])
                 if currNode["bound_value"] <= IncX["value"]
                     println("\tFathoming due to bound ",currNode["bound_value"]," <= ",IncX["value"])
                     break
                 end
-	            idx=findNextIndex(psd_model_info["branch_ids"],psd_model_info["x_soln"])
-                if psd_model_info["x_soln"][idx] == 0 || psd_model_info["x_soln"][idx] == 1
-                    x_soln_str = psd_model_info["x_soln_str"]
+	            idx=findNextIndex(cp_model_info["branch_ids"],cp_model_info["x_soln"])
+                if cp_model_info["x_soln"][idx] == 0 || cp_model_info["x_soln"][idx] == 1
+                    x_soln_str = cp_model_info["x_soln_str"]
                     if !haskey(feasXs,x_soln_str)
 	                    nXs += 1
-                        feasXs[x_soln_str]=Dict("bound_value"=>psd_model_info["opt_val"], "value"=>psd_model_info["opt_val"])
-                        feasXs[x_soln_str]["x_soln"] = copy(psd_model_info["x_soln"])
+                        feasXs[x_soln_str]=Dict("bound_value"=>cp_model_info["opt_val"], "value"=>0)
+                        feasXs[x_soln_str]["x_soln"] = copy(cp_model_info["x_soln"])
                         feasXs[x_soln_str]["x_soln_str"] = x_soln_str
+                        solveNodeSPFixed(psd_model_info; compute_psd_dual=true)
+                        n_sdp_solves += 1
+                        add_cuts(cp_model_info, psd_model_info["psd_info"]; cut_type="dual_val")
+                        #add_cuts(psd_model_info, psd_model_info["psd_info"]; cut_type="dual_val")
+                        feasXs[x_soln_str]["value"] = psd_model_info["opt_val"]
                         println("New solution has known optimal value: ",feasXs[x_soln_str]["value"])
+                        continue
+                    else
+                        println("\tSoln: ",x_soln_str, ": cp_val ",cp_model_info["opt_val"], " vs psd_val: ",psd_model_info["opt_val"])
+	                    println("\tFathoming due to optimality. Adding new attack solution: ",currNode["inactive_branches"])		
+                        feasXs[x_soln_str]["value"] = cp_model_info["opt_val"]
+	                    if IncX["value"] < feasXs[x_soln_str]["value"]
+	                        IncX = feasXs[x_soln_str]
+	                        incumbent_update = string("\t***New incumbent***",IncX["x_soln_str"])
+                            deleteNodesByBound(BnBTree,IncX["value"])
+	                    end
+                        break
                     end
-	                println("\tFathoming due to optimality. Adding new attack solution: ",currNode["inactive_branches"])		
-                    feasXs[x_soln_str]["value"] = psd_model_info["opt_val"]
-	                if IncX["value"] < feasXs[x_soln_str]["value"]
-	                    IncX = feasXs[x_soln_str]
-	                    incumbent_update = string("\t***New incumbent***",IncX["x_soln_str"])
-                        deleteNodesByBound(BnBTree,IncX["value"])
-	                end
-                    break
                 else
 	                # "BRANCH"
                     bd_val=currNode["bound_value"]
@@ -327,6 +377,7 @@ function solveMaxminViaBnB(pm_data,pm_form; use_dual_minmax=true)
     println("Final best solution: ",IncX["x_soln_str"]," with value ",IncX["value"])
     println("Runtime: ",runtime)
     println("Number of nodes processed: ",nNodes)
+    println("Number of feasibility problem solves: ",n_sdp_solves)
     return bestUBVal,nNodes,runtime
 end
 
@@ -343,5 +394,5 @@ pm_data["attacker_budget"] = testcase["attack_budget"] ###Adding another key and
 pm_data["inactive_branches"] = testcase["inactive_indices"] ###Adding another key and entry
 pm_data["protected_branches"] = testcase["protected_indices"] ###Adding another key and entry
 
-solveMaxminViaBnB(pm_data,SparseSDPWRMPowerModel,use_dual_minmax=true)
-#solveMaxminViaBnB(pm_data,SDPWRMPowerModel,use_dual_minmax=true)
+solveMaxminViaECPBnB(pm_data,SparseSDPWRMPowerModel,use_dual_minmax=true)
+#solveMaxminViaECPBnB(pm_data,SDPWRMPowerModel,use_dual_minmax=true)
