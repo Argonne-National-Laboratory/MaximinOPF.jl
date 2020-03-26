@@ -49,6 +49,21 @@ function prepare_to_solve_PSD_via_ProxPt(model::JuMP.Model, model_info::Dict{Str
     return model_info
 end
 
+function bound_obj(model_info::Dict{String,Any}; bd_mag=1e3)
+    model=model_info["model"]
+    obj_sense = objective_sense(model)
+    obj_expr=@expression(model, objective_function(model, AffExpr))
+    @variable(model, objvar)
+    if obj_sense==MOI.MAX_SENSE
+        @constraint(model, obj_expr <= bd_mag)
+        @constraint(model, objvar - obj_expr <= 0)
+    elseif obj_sense==MOI.MIN_SENSE
+        @constraint(model, obj_expr >= -bd_mag)
+        @constraint(model, objvar - obj_expr >= 0)
+    end
+    @objective(model, obj_sense, objvar)
+end
+
 #=
 function add_artificial_var_bds(model::JuMP.Model; bd_mag=1e3, io=Base.stdout)
     all_vars = JuMP.all_variables(model)
@@ -128,37 +143,12 @@ function add_artificial_var_bds(model_info; bd_mag=10, io=devnull)
         end
 =#
         bd_val=bd_mag
-        if objective_sense(model_info["model"])==MOI.MAX_SENSE
-            if linobj_expr.terms[tt] > 0
-                if !has_upper_bound(tt)
-                    set_upper_bound(tt,bd_val)
-                    println(io,linobj_expr.terms[tt]," * ",tt,"  New UB: ",bd_val)
-                    push!(list_art_ub_refs,tt)
-                end
-            elseif linobj_expr.terms[tt] < 0
-                if !has_lower_bound(tt)
-                    set_lower_bound(tt,-bd_val)
-                    println(io,linobj_expr.terms[tt]," * ",tt,"  New LB: ",-bd_val)
-                    push!(list_art_lb_refs,tt)
-                end
-            end
-        elseif objective_sense(model_info["model"])==MOI.MIN_SENSE
-            if linobj_expr.terms[tt] > 0
-                if !has_lower_bound(tt)
-                    set_lower_bound(tt,-bd_val)
-                    println(io,linobj_expr.terms[tt]," * ",tt,"  New LB: ",-bd_val)
-                    push!(list_art_lb_refs,tt)
-                end
-            elseif linobj_expr.terms[tt] < 0
-                if !has_upper_bound(tt)
-                    set_upper_bound(tt,bd_val)
-                    println(io,linobj_expr.terms[tt]," * ",tt,"  New UB: ",bd_val)
-                    push!(list_art_ub_refs,tt)
-                end
-            end
-        else
-            println("Minimization sense is abnormal: ", objective_sense(model_info["model"]) )
-        end
+        set_upper_bound(tt,bd_val)
+        push!(list_art_ub_refs,tt)
+        println(io,linobj_expr.terms[tt]," * ",tt,"  New UB: ",bd_val)
+        set_lower_bound(tt,-bd_val)
+        push!(list_art_lb_refs,tt)
+        println(io,linobj_expr.terms[tt]," * ",tt,"  New LB: ",-bd_val)
     end
     model_info["list_art_ub_refs"]=list_art_ub_refs
     model_info["list_art_lb_refs"]=list_art_lb_refs
@@ -222,6 +212,8 @@ function gatherPSDConInfo(model::JuMP.Model)
             PSD[kk]["expr_val_ctr"] = zeros(vec_len)
             PSD[kk]["old_expr_val_ctr"] = zeros(vec_len)
             PSD[kk]["proj_expr_val"] = zeros(vec_len)
+            PSD[kk]["orth_expr_val"] = zeros(vec_len)
+            PSD[kk]["orth_norm"] = 0.0
             PSD[kk]["C"] = zeros(vec_len) ### Dual solution
             PSD[kk]["prim_res"] = zeros(vec_len)
             PSD[kk]["prim_res_norm"] = 0.0
@@ -270,12 +262,13 @@ function add_psd_initial_cuts(model_info; bdmag=1e3, io=Base.stdout)
     model=model_info["model"]
     psd_expr = model[:psd_expr]
     PSD = model_info["psd_info"]
-    #JuMP.@constraint( model, psd_lbs[kk in keys(PSD), mm in 1:PSD[kk]["vec_len"]], psd_expr[kk,mm] >= -bdmag*PSD[kk]["is_off_diag"][mm] )
+    JuMP.@constraint( model, psd_lbs[kk in keys(PSD), mm in 1:PSD[kk]["vec_len"]], psd_expr[kk,mm] >= -bdmag*PSD[kk]["is_off_diag"][mm] )
+    JuMP.@constraint( model, psd_ubs[kk in keys(PSD), mm in 1:PSD[kk]["vec_len"]], psd_expr[kk,mm] <= bdmag )
 
-    JuMP.@constraint( model, psd_diag_lbs[kk in keys(PSD), mm in PSD[kk]["diag_els"]], psd_expr[kk,mm] >= 0.0 )
-    JuMP.@constraint( model, psd_diag_ubs[kk in keys(PSD), mm in PSD[kk]["diag_els"]], psd_expr[kk,mm] <= bdmag )
-    JuMP.@constraint( model, psd_ub[kk in keys(PSD), mm in 1:PSD[kk]["vec_len"]], sum( psd_expr[kk,mm] for mm in 1:PSD[kk]["vec_len"]) <= bdmag )
-    JuMP.@constraint( model, psd_lb[kk in keys(PSD), mm in 1:PSD[kk]["vec_len"]], sum( psd_expr[kk,mm] for mm in 1:PSD[kk]["vec_len"]) >= -bdmag )
+    #JuMP.@constraint( model, psd_diag_lbs[kk in keys(PSD), mm in PSD[kk]["diag_els"]], psd_expr[kk,mm] >= 0.0 )
+    #JuMP.@constraint( model, psd_diag_ubs[kk in keys(PSD), mm in PSD[kk]["diag_els"]], psd_expr[kk,mm] <= bdmag )
+    #JuMP.@constraint( model, psd_ub[kk in keys(PSD), mm in 1:PSD[kk]["vec_len"]], sum( psd_expr[kk,mm] for mm in 1:PSD[kk]["vec_len"]) <= bdmag )
+    #JuMP.@constraint( model, psd_lb[kk in keys(PSD), mm in 1:PSD[kk]["vec_len"]], sum( psd_expr[kk,mm] for mm in 1:PSD[kk]["vec_len"]) >= -bdmag )
     #JuMP.@constraint( model, psd_diag_ubs[kk in keys(PSD), mm in PSD[kk]["diag_els"]], psd_expr[kk,mm] <= bdmag )
 #=
     JuMP.@constraint( psd_info["cp_model"], psd_diag_lbs[kk in keys(PSD), mm in PSD[kk]["diag_els"]], psd_expr[kk,mm] >= 0.0 )
@@ -341,7 +334,7 @@ function solve_PSD_via_ADMM(model_info::Dict{String,Any}; max_n_iter=100, prox_t
         model_info["prox_val"]=JuMP.objective_value(model)
         model_info["solve_status"]=JuMP.termination_status(model)
 
-        PSDProjections(model_info;io=io)
+        ADMMProjections(model_info;io=io)
         prim_res = trunc(sqrt(sum( PSD[kk]["prim_res_norm"]^2 for kk in keys(PSD)));digits=4)
         dual_res = trunc(sqrt(sum( PSD[kk]["dual_res_norm"]^2 for kk in keys(PSD)));digits=4)
         if mod(ii,10)==0 || ii==1
@@ -536,7 +529,45 @@ function PSDSubgradient(model_info; io=Base.stdout)
     return sg_info
 end
 
-function PSDProjections(model_info; io=Base.stdout)
+function PSDProjections(model_info)
+    model_info["total_sum_neg_eigs"] = 0
+    model_info["orth_norm"] = 0
+    model = model_info["model"]
+    psd_expr = model[:psd_expr]
+    PSD = model_info["psd_info"]
+    for kk in keys(PSD)
+        computePSDMat(PSD[kk], PSD[kk]["expr_val"])
+        E = eigen(PSD[kk]["psd_mat"])
+        eig_vals,eig_vecs = E
+        n_eigs = length(eig_vals)
+        neg_eigs = filter(mmm->(eig_vals[mmm] < -1e-8), 1:n_eigs)
+        PSD[kk]["neg_eigs_sum"] = 0
+        if length(neg_eigs) > 0
+            PSD[kk]["neg_eigs_sum"] = sum( eig_vals[mm] for mm in neg_eigs )
+            model_info["total_sum_neg_eigs"] += PSD[kk]["neg_eigs_sum"]
+        end
+        PSD[kk]["min_eigval"],min_idx = findmin(eig_vals)
+        for nn=1:PSD[kk]["vec_len"]
+            ii,jj=PSD[kk]["ii"][nn],PSD[kk]["jj"][nn]
+	        PSD[kk]["sg"][nn] = eig_vecs[ii,min_idx]*eig_vecs[jj,min_idx]  
+        end
+        PSD[kk]["proj_expr_val"][:] = PSD[kk]["expr_val"][:]
+        PSD[kk]["orth_expr_val"][:] .= 0.0
+        PSD[kk]["orth_norm"] = 0.0
+        if length(neg_eigs) > 0
+            for nn=1:PSD[kk]["vec_len"]
+                ii,jj=PSD[kk]["ii"][nn],PSD[kk]["jj"][nn]
+                PSD[kk]["orth_expr_val"][nn] = sum( eig_vals[mm]*eig_vecs[ii,mm]*eig_vecs[jj,mm] for mm in neg_eigs)
+            end
+            PSD[kk]["proj_expr_val"][:] = PSD[kk]["expr_val"][:] - PSD[kk]["orth_expr_val"][:]
+            PSD[kk]["orth_norm"] = norm(PSD[kk]["orth_expr_val"][:])
+            model_info["orth_norm"] += PSD[kk]["orth_norm"]^2
+        end
+    end
+    model_info["orth_norm"] = sqrt(model_info["orth_norm"])
+end
+
+function ADMMProjections(model_info; io=Base.stdout)
     model_info["total_sum_neg_eigs"] = 0
     model = model_info["model"]
     psd_expr = model[:psd_expr]
