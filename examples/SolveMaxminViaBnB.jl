@@ -8,7 +8,7 @@ Brian Dandurand
 
 include("../../MaximinOPF/src/MaximinOPF.jl")
 include("../../MaximinOPF/src/utils.jl")
-include("ProxSDP.jl")
+include("psd_utils.jl")
 using JuMP, MathOptInterface
 using Mosek, MosekTools
 using CPLEX
@@ -321,9 +321,10 @@ function solveMaxminViaBnB(pm_data,pm_form; use_dual_minmax=true)
             break
         end
     end # while
-    end_time = time_ns()
 
+    end_time = time_ns()
     runtime = (end_time-start_time)/1e9
+
     println("Final best solution: ",IncX["x_soln_str"]," with value ",IncX["value"])
     println("Runtime: ",runtime)
     println("Number of nodes processed: ",nNodes)

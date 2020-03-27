@@ -8,7 +8,7 @@ Brian Dandurand
 
 include("../../MaximinOPF/src/MaximinOPF.jl")
 include("../../MaximinOPF/src/utils.jl")
-include("ProxSDP.jl")
+include("psd_utils.jl")
 using JuMP, MathOptInterface
 using Mosek, MosekTools
 using CPLEX
@@ -16,12 +16,10 @@ using JuMP
 using PowerModels
 PowerModels.silence()
 
-
-function solveNodeMinmaxSP(model_info, ndata)
+function solveNodeSP_ECP(model_info, ndata; compute_projection=false, compute_psd_dual=false, io=devnull)
     model = model_info["model"]
     branch_ids = model_info["branch_ids"]
-    psd_expr = model[:psd_expr]
-    PSD=model_info["psd_info"] 
+    PSD = model_info["psd_info"]
 
     unfix_vars(model,branch_ids)
     for l in ndata["inactive_branches"]
@@ -30,9 +28,23 @@ function solveNodeMinmaxSP(model_info, ndata)
     for l in ndata["protected_branches"]
         fix(variable_by_name(model,"x[$l]_1"), 0; force=true)
     end
+
+    psd_expr = model[:psd_expr]
     JuMP.optimize!(model)
+    for kk in keys(PSD)
+        for nn=1:PSD[kk]["vec_len"]
+            PSD[kk]["expr_val"][nn] = JuMP.value(psd_expr[kk,nn])
+        end
+        if compute_psd_dual
+            PSD[kk]["dual_val"][:] = JuMP.dual.(PSD[kk]["cref"])[:]
+        end
+    end
+    if compute_projection
+        PSDProjections(model_info)
+    end
     model_info["opt_val"]=JuMP.objective_value(model)
     model_info["solve_status"]=JuMP.termination_status(model)
+
     model_info["x_soln_str"]=""
     for l in branch_ids
         x_var = variable_by_name(model,"x[$l]_1")
@@ -47,15 +59,9 @@ function solveNodeMinmaxSP(model_info, ndata)
     end
     ndata["x_soln"] = copy(model_info["x_soln"])
     ndata["bound_value"] = model_info["opt_val"]
-    for kk in keys(PSD)
-        PSD[kk]["dual_val"][:] = JuMP.dual.(PSD[kk]["cref"])[:]
-        for nn=1:PSD[kk]["vec_len"]
-            PSD[kk]["expr_val"][nn] = JuMP.value(psd_expr[kk,nn])
-        end
-    end
-end #end of function
+end
 
-function solveNodeSPFixed(model_info; compute_psd_dual=true)
+function solveNodeSPFixed(model_info; compute_projection=true, compute_psd_dual=false, io=devnull)
     model = model_info["model"]
     branch_ids = model_info["branch_ids"]
     PSD=model_info["psd_info"] 
@@ -73,21 +79,21 @@ function solveNodeSPFixed(model_info; compute_psd_dual=true)
     model_info["solve_status"]=JuMP.termination_status(model)
     model_info["heur_x_soln"] = copy(model_info["x_soln"])
     model_info["heur_opt_val"] = model_info["opt_val"]
-    sg_info = Dict{Tuple{Int64,Int64},Array{Float64,1}}()
-    if compute_psd_dual
-        for kk in keys(PSD)
+    for kk in keys(PSD)
+        for nn=1:PSD[kk]["vec_len"]
+            PSD[kk]["expr_val"][nn] = JuMP.value(psd_expr[kk,nn])
+        end
+        if compute_psd_dual
             PSD[kk]["dual_val"][:] = JuMP.dual.(PSD[kk]["cref"])[:]
-            sg_info[kk] = zeros(PSD[kk]["vec_len"])
-            for nn=1:PSD[kk]["vec_len"]
-                PSD[kk]["expr_val"][nn] = JuMP.value(psd_expr[kk,nn])
-                sg_info[kk][nn] = PSD[kk]["dual_val"][nn]
-            end
         end
     end
+    if compute_projection
+        PSDProjections(model_info)
+    end
     unfix_vars(model,branch_ids)
-    return sg_info
 end #end of function
 
+### "Precondition: Make sure that the relevant data structure, be it 'sg', 'dual_val', or 'orth_expr_val' has been computed"
 function add_cuts(model_info::Dict{String,Any}, PSD::Dict{Tuple{Int64,Int64},Dict{String,Any}}; cut_type::String="sg", tol=1e-5)
     model = model_info["model"]
     psd_expr = model[:psd_expr]
@@ -111,53 +117,6 @@ function add_cuts(model_info::Dict{String,Any}, PSD::Dict{Tuple{Int64,Int64},Dic
     end
 end
 
-function solveNodeSP_ECP(model_info, ndata; compute_psd_dual=false, io=devnull)
-    model = model_info["model"]
-    branch_ids = model_info["branch_ids"]
-    PSD = model_info["psd_info"]
-
-    unfix_vars(model,branch_ids)
-    for l in ndata["inactive_branches"]
-        fix(variable_by_name(model,"x[$l]_1"), 1; force=true)
-    end
-    for l in ndata["protected_branches"]
-        fix(variable_by_name(model,"x[$l]_1"), 0; force=true)
-    end
-
-    psd_expr = model[:psd_expr]
-    JuMP.optimize!(model)
-    sg_info = Dict{Tuple{Int64,Int64},Array{Float64,1}}()
-    for kk in keys(PSD)
-        for nn=1:PSD[kk]["vec_len"]
-            PSD[kk]["expr_val"][nn] = JuMP.value(psd_expr[kk,nn])
-        end
-        if compute_psd_dual
-            PSD[kk]["dual_val"][:] = JuMP.dual.(PSD[kk]["cref"])[:]
-            sg_info[kk] = zeros(PSD[kk]["vec_len"])
-            for nn=1:PSD[kk]["vec_len"]
-                sg_info[kk][nn] = PSD[kk]["dual_val"][nn]
-            end
-        end
-    end
-    model_info["opt_val"]=JuMP.objective_value(model)
-    model_info["solve_status"]=JuMP.termination_status(model)
-
-    model_info["x_soln_str"]=""
-    for l in branch_ids
-        x_var = variable_by_name(model,"x[$l]_1")
-        x_val = JuMP.value(x_var)
-        if x_val > 1.0-1.0e-8
-	        x_val = 1
-            model_info["x_soln_str"] = string(model_info["x_soln_str"]," $l")
-        elseif x_val < 1.0e-8
-	        x_val = 0
-        end
-        model_info["x_soln"][l] = x_val
-    end
-    ndata["x_soln"] = copy(model_info["x_soln"])
-    ndata["bound_value"] = model_info["opt_val"]
-    return sg_info
-end
 
 function applyPrimalHeuristic(model_info)
     model = model_info["model"]
@@ -258,13 +217,18 @@ function solveMaxminViaECPBnB(pm_data,pm_form; use_dual_minmax=true)
     feasXs[""]=Dict("x_soln"=>Dict{Int64,Float64}(),"x_soln_str"=>"", "bound_value"=>0, "value"=>0) ### CREATE INITIAL INCUMBENT SOLN
     IncX = feasXs[""]
     nXs = 1
-    solveNodeSP_ECP(psd_model_info, BnBTree[0]; compute_psd_dual=true)
+    solveNodeSP_ECP(psd_model_info, BnBTree[0]; compute_projection=false, compute_psd_dual=true)
     #bound_obj(psd_model_info; bd_mag=psd_model_info["opt_val"])
     bound_obj(cp_model_info; bd_mag=psd_model_info["opt_val"])
 
-    solveNodeSPFixed(psd_model_info; compute_psd_dual=true)
+    solveNodeSPFixed(psd_model_info; compute_projection=false, compute_psd_dual=true)
     #add_cuts(psd_model_info, psd_model_info["psd_info"]; cut_type="dual_val")
     add_cuts(cp_model_info, psd_model_info["psd_info"]; cut_type="dual_val")
+    for kk in keys(psd_model_info["psd_info"])
+        computePSDMat(psd_model_info["psd_info"][kk], psd_model_info["psd_info"][kk]["dual_val"] )
+        E = eigen(psd_model_info["psd_info"][kk]["psd_mat"])
+        println(E)
+    end
 	#add_psd_initial_cuts(psd_model_info;io=devnull)
 	add_psd_initial_cuts(cp_model_info;io=devnull)
 
@@ -286,14 +250,14 @@ function solveMaxminViaECPBnB(pm_data,pm_form; use_dual_minmax=true)
             printNode(currNode;pretext="\n",posttext=tree_report)
             inn_while_cntr = 0
             while true
-                solveNodeSP_ECP(cp_model_info, currNode; compute_psd_dual=false)
-                println("\tECP opt val: ",cp_model_info["opt_val"], " with status: ", cp_model_info["solve_status"])
+                solveNodeSP_ECP(cp_model_info, currNode; compute_projection=false, compute_psd_dual=false)
+                println("\tNew node bound: ",cp_model_info["opt_val"], " with status: ", cp_model_info["solve_status"])
                 for nn=1:n_extra_cuts
                     PSDProjections(cp_model_info)
                     add_cuts(cp_model_info, cp_model_info["psd_info"];cut_type="orth_expr_val")
                     #add_cuts(psd_model_info, cp_model_info["psd_info"];cut_type="orth_expr_val")
                     solveNodeSP_ECP(cp_model_info, currNode; compute_psd_dual=false)
-                    println("\tECP opt val: ",cp_model_info["opt_val"], " with status: ", cp_model_info["solve_status"])
+                    println("\tNew node bound: ",cp_model_info["opt_val"], " with status: ", cp_model_info["solve_status"])
                 end
 
                             
@@ -311,7 +275,7 @@ function solveMaxminViaECPBnB(pm_data,pm_form; use_dual_minmax=true)
                         feasXs[x_soln_str]=Dict("bound_value"=>cp_model_info["opt_val"], "value"=>0)
                         feasXs[x_soln_str]["x_soln"] = copy(cp_model_info["x_soln"])
                         feasXs[x_soln_str]["x_soln_str"] = x_soln_str
-                        solveNodeSPFixed(psd_model_info; compute_psd_dual=true)
+                        solveNodeSPFixed(psd_model_info; compute_projection=false, compute_psd_dual=true)
                         n_sdp_solves += 1
                         add_cuts(cp_model_info, psd_model_info["psd_info"]; cut_type="dual_val")
                         #add_cuts(psd_model_info, psd_model_info["psd_info"]; cut_type="dual_val")
@@ -350,7 +314,6 @@ function solveMaxminViaECPBnB(pm_data,pm_form; use_dual_minmax=true)
                     break
                 end
             end ### "while loop"
-            println("\tNew node bound value: ",currNode["bound_value"])
         end ### "if initial fathoming due to bound"
 
         if length(BnBTree) > 0
@@ -382,9 +345,9 @@ function solveMaxminViaECPBnB(pm_data,pm_form; use_dual_minmax=true)
 end
 
 testcase = Dict(
-	"file" => "data/case30.m", 
- 	"name" => "case30K4",  	
- 	"attack_budget" => 4,
+	"file" => "data/case9.m", 
+ 	"name" => "case9K3",  	
+ 	"attack_budget" => 3,
  	"inactive_indices" => [],
  	"protected_indices" => []
 	)
