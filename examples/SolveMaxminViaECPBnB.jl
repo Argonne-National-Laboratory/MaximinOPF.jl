@@ -189,7 +189,7 @@ function solveMaxminViaECPBnB(pm_data,pm_form; use_dual_minmax=true)
     start_time = time_ns()
     init_node=Dict("inactive_branches"=>[], "protected_branches"=>[], "bound_value"=>1e20, "attacker_budget"=>K, "node_key"=>0) ### CREATE ROOT NODE
 
-    base_maxmin = MaximinOPF.MaximinOPFModel(pm_data, pm_form; enforce_int=false, rm_rsoc=true, rm_therm_line_lim=false)
+    base_maxmin = MaximinOPF.MaximinOPFModel(pm_data, pm_form; enforce_int=false, rm_rsoc=true, rm_therm_line_lim=true)
     branch_ids=sort(collect(pm_data["undecided_branches"]))
     println("Branch_ids: ",branch_ids)
 
@@ -249,7 +249,7 @@ function solveMaxminViaECPBnB(pm_data,pm_form; use_dual_minmax=true)
         incumbent_update=""
         currNode = pop!(BnBTree,nodekey)
         if currNode["bound_value"] <= IncX["value"]
-            println("\nFathoming node $nodekey due to bound ",round(currNode["bound_value"];digits=5)," <= ",round(IncX["value"];digits=5))
+            println("\nFathoming node $nodekey due to initial bound ",round(currNode["bound_value"];digits=5)," <= ",round(IncX["value"];digits=5))
             tree_report=string(" Nodes left: ",length(BnBTree)," out of ", nNodes,)
             println("\tBound gap: [",round(IncX["value"];digits=5),", ",round(bestUBVal;round=5),"]",incumbent_update,",\t",tree_report)
             continue
@@ -257,8 +257,6 @@ function solveMaxminViaECPBnB(pm_data,pm_form; use_dual_minmax=true)
         printNode(currNode;pretext="\n",posttext="")
         while true
             solveNodeSP_ECP(cp_model_info, currNode; compute_projection=false, compute_psd_dual=false)
-            println("\tNew node bound: ",round(cp_model_info["opt_val"];digits=5), 
-                " with status: ", cp_model_info["solve_status"])
             for nn=1:n_extra_cuts
                 PSDProjections(cp_model_info)
                 add_cuts(cp_model_info, cp_model_info["psd_info"];cut_type="orth_expr_val")
@@ -269,9 +267,11 @@ function solveMaxminViaECPBnB(pm_data,pm_form; use_dual_minmax=true)
 
             currNode["bound_value"] = min(cp_model_info["opt_val"],currNode["bound_value"])
             if currNode["bound_value"] <= IncX["value"]
-                println("\tFathoming due to bound ",round(currNode["bound_value"];digits=5)," <= ",round(IncX["value"];digits=5))
+                println("\tFathoming node $nodekey due to updated bound ",round(currNode["bound_value"];digits=5)," <= ",round(IncX["value"];digits=5))
                 break
             end
+            println("\tNew node bound: ",round(cp_model_info["opt_val"];digits=5), 
+                " with status: ", cp_model_info["solve_status"])
             idx=findNextIndex(cp_model_info["branch_ids"],cp_model_info["x_soln"])
             if cp_model_info["x_soln"][idx] == 0 || cp_model_info["x_soln"][idx] == 1
                 x_soln_str = cp_model_info["x_soln_str"]
@@ -340,9 +340,9 @@ function solveMaxminViaECPBnB(pm_data,pm_form; use_dual_minmax=true)
 end
 
 testcase = Dict(
-	"file" => "data/case9.m", 
- 	"name" => "case9K3",  	
- 	"attack_budget" => 3,
+	"file" => "data/case30.m", 
+ 	"name" => "case30K4",  	
+ 	"attack_budget" => 4,
  	"inactive_indices" => [],
  	"protected_indices" => []
 	)
