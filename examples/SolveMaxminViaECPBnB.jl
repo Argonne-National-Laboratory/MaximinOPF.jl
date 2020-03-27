@@ -166,20 +166,25 @@ function findNextIndex(undecided_branches,x_vals)
 end
 
 function printNode(node::Dict{String,Any}; pretext="",posttext="")
-    println(pretext,"Node ",node["node_key"]," has bound ",node["bound_value"],": inactive=",node["inactive_branches"]," protected: ",node["protected_branches"],posttext)
+    println(pretext,"Node ",node["node_key"]," has bound ",round(node["bound_value"];digits=5),
+        ": inactive=",node["inactive_branches"]," protected: ",node["protected_branches"],posttext)
 end
 
 function getMaxShedding(pm_data)
-    for kk in keys(pm_data)
-        println(kk,"=>",pm_data[kk])
+    maxShed=0.0
+    for ll in keys(pm_data["load"])
+        maxShed += abs(pm_data["load"][ll]["pd"]) + abs(pm_data["load"][ll]["qd"])
     end
-    return 0
+    for gg in keys(pm_data["gen"])
+        maxShed += max(pm_data["gen"][gg]["pmin"],0) + max(pm_data["gen"][gg]["qmin"],0)
+    end
+    return maxShed 
 end
 
 function solveMaxminViaECPBnB(pm_data,pm_form; use_dual_minmax=true)
     #global MAX_TIME
     K=pm_data["attacker_budget"]
-    art_bd=getMaxShedding(pm_data)
+    art_bd=ceil(getMaxShedding(pm_data);digits=6)
 
     start_time = time_ns()
     init_node=Dict("inactive_branches"=>[], "protected_branches"=>[], "bound_value"=>1e20, "attacker_budget"=>K, "node_key"=>0) ### CREATE ROOT NODE
@@ -228,12 +233,12 @@ function solveMaxminViaECPBnB(pm_data,pm_form; use_dual_minmax=true)
     feasXs[""]["value"] = psd_model_info["opt_val"]
 
     
-    bound_obj(cp_model_info; bd_mag=4.6)
-    println("Artifical bound on the objective function: ",4.6)
+    bound_obj(cp_model_info; bd_mag=art_bd)
+    println("Artifical bound on the objective function: ",art_bd)
 	add_psd_initial_cuts(cp_model_info;io=devnull)
 
     bestUBVal=1e20
-    println("Initial processing of root node yields an upper bound of : ",bestUBVal)
+    println("Initial processing of root node yields an upper bound of : ",round(bestUBVal;digits=5))
 
     nNodes=1
     maxidx=1
@@ -244,26 +249,27 @@ function solveMaxminViaECPBnB(pm_data,pm_form; use_dual_minmax=true)
         incumbent_update=""
         currNode = pop!(BnBTree,nodekey)
         if currNode["bound_value"] <= IncX["value"]
-            println("\nFathoming node $nodekey due to bound ",currNode["bound_value"]," <= ",IncX["value"])
+            println("\nFathoming node $nodekey due to bound ",round(currNode["bound_value"];digits=5)," <= ",round(IncX["value"];digits=5))
             tree_report=string(" Nodes left: ",length(BnBTree)," out of ", nNodes,)
-            println("\tBound gap: [",IncX["value"],", ",bestUBVal,"]",incumbent_update,",\t",tree_report)
+            println("\tBound gap: [",round(IncX["value"];digits=5),", ",round(bestUBVal;round=5),"]",incumbent_update,",\t",tree_report)
             continue
         end
         printNode(currNode;pretext="\n",posttext="")
         while true
             solveNodeSP_ECP(cp_model_info, currNode; compute_projection=false, compute_psd_dual=false)
-            println("\tNew node bound: ",cp_model_info["opt_val"], " with status: ", cp_model_info["solve_status"])
+            println("\tNew node bound: ",round(cp_model_info["opt_val"];digits=5), 
+                " with status: ", cp_model_info["solve_status"])
             for nn=1:n_extra_cuts
                 PSDProjections(cp_model_info)
                 add_cuts(cp_model_info, cp_model_info["psd_info"];cut_type="orth_expr_val")
                 #add_cuts(psd_model_info, cp_model_info["psd_info"];cut_type="orth_expr_val")
                 solveNodeSP_ECP(cp_model_info, currNode; compute_psd_dual=false)
-                println("\tNew node bound: ",cp_model_info["opt_val"], " with status: ", cp_model_info["solve_status"])
+                println("\tNew node bound: ",round(cp_model_info["opt_val"];digits=5), " with status: ", cp_model_info["solve_status"])
             end
 
             currNode["bound_value"] = min(cp_model_info["opt_val"],currNode["bound_value"])
             if currNode["bound_value"] <= IncX["value"]
-                println("\tFathoming due to bound ",currNode["bound_value"]," <= ",IncX["value"])
+                println("\tFathoming due to bound ",round(currNode["bound_value"];digits=5)," <= ",round(IncX["value"];digits=5))
                 break
             end
             idx=findNextIndex(cp_model_info["branch_ids"],cp_model_info["x_soln"])
@@ -279,14 +285,14 @@ function solveMaxminViaECPBnB(pm_data,pm_form; use_dual_minmax=true)
                     add_cuts(cp_model_info, psd_model_info["psd_info"]; cut_type="dual_val")
                     #add_cuts(psd_model_info, psd_model_info["psd_info"]; cut_type="dual_val")
                     feasXs[x_soln_str]["value"] = psd_model_info["opt_val"]
-                    println("\tNew solution has known optimal value: ",feasXs[x_soln_str]["value"])
+                    println("\tNew solution has known optimal value: ",round(feasXs[x_soln_str]["value"];digits=5))
                     continue
                 else
                     println("\tSoln: ",x_soln_str, ": cp_val ",cp_model_info["opt_val"], " vs psd_val: ",feasXs[x_soln_str]["value"])
 	                println("\tFathoming due to optimality. Adding new attack solution: ",currNode["inactive_branches"])		
 	                if IncX["value"] < feasXs[x_soln_str]["value"]
 	                    IncX = feasXs[x_soln_str]
-	                    incumbent_update = string("\t***New incumbent***",IncX["x_soln_str"])
+	                    incumbent_update = string("\t***New incumbent***",IncX["x_soln_str"]," with value ",round(IncX["value"];digits=5))
                         deleteNodesByBound(BnBTree,IncX["value"])
 	                end
                     break
@@ -319,13 +325,14 @@ function solveMaxminViaECPBnB(pm_data,pm_form; use_dual_minmax=true)
         end
 =#
         tree_report=string(" Nodes left: ",length(BnBTree)," out of ", nNodes,)
-        println("\tBound gap: [",IncX["value"],", ",bestUBVal,"]",incumbent_update,",\t",tree_report)
+        println("\tBound gap: [",round(IncX["value"];digits=5),", ",round(bestUBVal;digits=5),
+            "]",incumbent_update,",\t",tree_report)
     end # "while BnB tree not empty"
     bestUBVal = IncX["value"]
     end_time = time_ns()
 
     runtime = (end_time-start_time)/1e9
-    println("Final best solution: ",IncX["x_soln_str"]," with value ",IncX["value"])
+    println("Final best solution: ",IncX["x_soln_str"]," with value ",round(IncX["value"];digits=5))
     println("Runtime: ",runtime)
     println("Number of nodes processed: ",nNodes)
     println("Number of feasibility problem solves: ",n_sdp_solves)
