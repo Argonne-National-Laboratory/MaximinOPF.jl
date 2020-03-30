@@ -286,15 +286,15 @@ function solveMaxminViaECPBnB(pm_data,pm_form; use_dual_minmax=true)
                     #add_cuts(psd_model_info, psd_model_info["psd_info"]; cut_type="dual_val")
                     feasXs[x_soln_str]["value"] = psd_model_info["opt_val"]
                     println("\tNew solution has known optimal value: ",round(feasXs[x_soln_str]["value"];digits=5))
-                    continue
-                else
-                    println("\tSoln: ",x_soln_str, ": cp_val ",cp_model_info["opt_val"], " vs psd_val: ",feasXs[x_soln_str]["value"])
-	                println("\tFathoming due to optimality. Adding new attack solution: ",currNode["inactive_branches"])		
 	                if IncX["value"] < feasXs[x_soln_str]["value"]
 	                    IncX = feasXs[x_soln_str]
 	                    incumbent_update = string("\t***New incumbent***",IncX["x_soln_str"]," with value ",round(IncX["value"];digits=5))
                         deleteNodesByBound(BnBTree,IncX["value"])
 	                end
+                    continue
+                else
+                    println("\tSoln: ",x_soln_str, ": cp_val ",cp_model_info["opt_val"], " vs psd_val: ",feasXs[x_soln_str]["value"])
+	                println("\tFathoming due to optimality. ")
                     break
                 end
             else

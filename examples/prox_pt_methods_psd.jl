@@ -91,8 +91,10 @@ function solve_PSD_via_ADMM(model_info::Dict{String,Any}; max_n_iter=100, prox_t
                 model_info["prox_t"] = 1 
                 prox_t = model_info["prox_t"]
             end
+=#
+
             scale_fac = 2
-            if mod(ii,10)==0 
+            if mod(ii,40)==0 && ii > 1
                 if prim_res > 10*dual_res
                     prox_t *= scale_fac
                     model_info["prox_t"] = prox_t
@@ -102,7 +104,6 @@ function solve_PSD_via_ADMM(model_info::Dict{String,Any}; max_n_iter=100, prox_t
                 prox_t = min( max(model_info["prox_t_min"],prox_t), model_info["prox_t_max"])
             end
             model_info["prox_t"] = prox_t
-=#
         end
     end
     

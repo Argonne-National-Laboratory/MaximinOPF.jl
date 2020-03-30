@@ -40,7 +40,7 @@ function prepare_psd_model_reformulation(model::JuMP.Model, model_info::Dict{Str
     end
 
     gatherPSDConInfo(model_info) ### "Sets the 'psd_info' entry of model_info"
-    add_artificial_var_bds(model_info; bd_mag=1, io=devnull)
+    #add_artificial_var_bds(model_info; bd_mag=1, io=devnull)
 	#add_psd_initial_cuts(model_info;io=io)
     removePSD_Constraints(model_info["psd_info"])
     
