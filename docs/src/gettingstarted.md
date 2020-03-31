@@ -13,7 +13,7 @@ CAPS.jl is availalbe to use as a local package with the Julia package manager.
 (Shell)> cd <proj_root>
 (Shell)> julia
 (Julia)> ]
-(v1.2) pkg> activate .
+(v1.3) pkg> activate .
 (MaximinOPF) pkg> test
 ... testing ...
 Testing MaximinOPF tests passed
