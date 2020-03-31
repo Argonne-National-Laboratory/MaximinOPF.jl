@@ -27,7 +27,7 @@ PowerModels.silence()
  # "This function should be implemented to be recallable," 
  ### "so that a user can call this function multiple times to get ever more accurate solution information."
  ### "Return aggregated cuts for the PSD constraints, and a Dictionary of new constraints"
-function solve_PSD_via_ADMM(model_info::Dict{String,Any}; max_n_iter=100, prox_t=1, io=Base.stdout)
+function solve_PSD_via_ADMM(model_info::Dict{String,Any}; max_n_iter=100, prox_t=1, rescale=true, io=Base.stdout)
     model = model_info["model"] 
     model_info["prox_t"] = prox_t
     model_info["prox_t_min"] = prox_t
@@ -79,22 +79,25 @@ function solve_PSD_via_ADMM(model_info::Dict{String,Any}; max_n_iter=100, prox_t
         if sqrt(pd_res_val) < 1e-4
 	        println("Sub-Iteratione $ii terminante, quia solutio relaxata est factibilis.")
             break
-        else
+        elseif rescale
 #=
-            if ii <= round(0.4*max_n_iter)
+            if ii <= round(0.1*max_n_iter)
                 model_info["prox_t"] = 0.01 
                 prox_t = model_info["prox_t"]
-            elseif ii <= round(0.6*max_n_iter)
-                model_info["prox_t"] = 0.1 
-                prox_t = model_info["prox_t"]
+            elseif ii <= round(0.4*max_n_iter)
+                if prim_res > 10*dual_res
+                    model_info["prox_t"] = 0.1 
+                    prox_t = model_info["prox_t"]
+                end
             else
-                model_info["prox_t"] = 1 
-                prox_t = model_info["prox_t"]
+                if prim_res > 10*dual_res
+                    model_info["prox_t"] = 1 
+                    prox_t = model_info["prox_t"]
+                end
             end
 =#
-
-            scale_fac = 2
-            if mod(ii,40)==0 && ii > 1
+            scale_fac = 4
+            if ii==40 || ii==200 || ii==500 
                 if prim_res > 10*dual_res
                     prox_t *= scale_fac
                     model_info["prox_t"] = prox_t

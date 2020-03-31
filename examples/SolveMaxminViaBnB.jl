@@ -205,6 +205,14 @@ function printNode(node::Dict{String,Any}; pretext="",posttext="")
     println(pretext,"Node ",node["node_key"]," has bound ",node["bound_value"],": inactive=",node["inactive_branches"]," protected: ",node["protected_branches"],posttext)
 end
 
+function deleteNodesByBound(BnBTree,bdval)
+    for bb in keys(BnBTree)
+        if BnBTree[bb]["bound_value"] <= bdval
+            delete!(BnBTree,bb)
+        end
+    end
+end
+
 function solveMaxminViaBnB(pm_data,pm_form; use_dual_minmax=true)
     #global MAX_TIME
     K=pm_data["attacker_budget"]
@@ -332,8 +340,8 @@ function solveMaxminViaBnB(pm_data,pm_form; use_dual_minmax=true)
 end
 
 testcase = Dict(
-	"file" => "data/case30.m", 
- 	"name" => "case30K4",  	
+	"file" => "data/case300.m", 
+ 	"name" => "case300K4",  	
  	"attack_budget" => 4,
  	"inactive_indices" => [],
  	"protected_indices" => []

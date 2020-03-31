@@ -405,7 +405,7 @@ function ADMMProjections(model_info; io=Base.stdout)
                 #PSD[kk]["C"][nn] += prox_t*(PSD[kk]["expr_val"][nn]-PSD[kk]["expr_val_ctr"][nn])
                 PSD[kk]["C"][nn] = prox_t*orth_proj
                 PSD[kk]["prim_res"][nn] = PSD[kk]["expr_val"][nn] - PSD[kk]["expr_val_ctr"][nn]
-                PSD[kk]["dual_res"][nn] = prox_t*(PSD[kk]["expr_val_ctr"][nn] - PSD[kk]["old_expr_val_ctr"][nn])
+                PSD[kk]["dual_res"][nn] = (PSD[kk]["expr_val_ctr"][nn] - PSD[kk]["old_expr_val_ctr"][nn])
             end
         else
             for nn=1:PSD[kk]["vec_len"]
