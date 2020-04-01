@@ -71,14 +71,14 @@ function replaceThermalLineLimits(pm)
             f_bus,t_bus = branch["f_bus"],branch["t_bus"]
             f_idx,t_idx = (l, f_bus, t_bus),(l, t_bus, f_bus)
             #re-add constraints using auxiliary variable proxies for power flow variables
-            pf_m = var(pm, pm.cnw, :up_br1)[f_idx,0]
-            pf_p = var(pm, pm.cnw, :up_br1)[f_idx,1]
-            pt_m = var(pm, pm.cnw, :up_br1)[t_idx,0]
-            pt_p = var(pm, pm.cnw, :up_br1)[t_idx,1]
-            qf_m = var(pm, pm.cnw, :uq_br1)[f_idx,0]
-            qf_p = var(pm, pm.cnw, :uq_br1)[f_idx,1]
-            qt_m = var(pm, pm.cnw, :uq_br1)[t_idx,0]
-            qt_p = var(pm, pm.cnw, :uq_br1)[t_idx,1]
+            pf_m = var(pm, pm.cnw, :pt_br)[f_idx,0]
+            pf_p = var(pm, pm.cnw, :pt_br)[f_idx,1]
+            pt_m = var(pm, pm.cnw, :pt_br)[t_idx,0]
+            pt_p = var(pm, pm.cnw, :pt_br)[t_idx,1]
+            qf_m = var(pm, pm.cnw, :qt_br)[f_idx,0]
+            qf_p = var(pm, pm.cnw, :qt_br)[f_idx,1]
+            qt_m = var(pm, pm.cnw, :qt_br)[t_idx,0]
+            qt_p = var(pm, pm.cnw, :qt_br)[t_idx,1]
             cref_f=JuMP.@constraint(pm.model, [branch["rate_a"], pf_p-pf_m, qf_p-qf_m] in JuMP.SecondOrderCone())
             JuMP.set_name(cref_f,string("th_l_lim_f[",f_idx,"]"))
             cref_t=JuMP.@constraint(pm.model, [branch["rate_a"], pt_p-pt_m, qt_p-qt_m] in JuMP.SecondOrderCone())
