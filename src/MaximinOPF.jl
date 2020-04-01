@@ -28,32 +28,27 @@ nonconvex_pm=[ACPPowerModel, ACRPowerModel, ACTPowerModel]
 not_supported_pm=[IVRPowerModel]
 
 
-function MaximinOPFModel(pm_data, pm_form; enforce_int=true, rm_rsoc=true, rm_therm_line_lim=false)
-    println("Calling MaximinOPFModel() with pm_form: ",pm_form)
+function MaximinOPFModel(pm_data, pm_form; enforce_int=true, io=devnull, rm_rsoc=true, rm_therm_line_lim=false)
+    println(io,"Calling MaximinOPFModel() with pm_form: ",pm_form)
+    minmax_pm = MinimaxOPFModel(pm_data, pm_form)
+	if rm_rsoc
+	    removeRSOC(minmax_pm)
+	end
+    if rm_therm_line_lim
+	    removeThermalLineLimits(minmax_pm)
+    else
+        replaceThermalLineLimits(minmax_pm)
+    end
+
+    #Test Out
+    println(io,"name: ", pm_data["name"])
+    println(io,"attacker_budget: ", pm_data["attacker_budget"])
+    println(io,"inactive_branches: ", pm_data["inactive_branches"])
+    println(io,"protected_branches: ", pm_data["protected_branches"])
+    println(io, "Model:")
+    println(io, minmax_pm.model)
+
     if pm_form in conic_supported_pm 
-        minmax_pm = MinimaxOPFModel(pm_data, pm_form)
-        io = open(string(minmax_pm.data["name"],"model.out"), "w")
-        println(io,minmax_pm.model)
-        close(io)
-	    if rm_rsoc
-	        removeRSOC(minmax_pm)
-	    end
-        if rm_therm_line_lim
-	        removeThermalLineLimits(minmax_pm)
-        else
-            replaceThermalLineLimits(minmax_pm)
-        end
-
-        #Test Out
-        io = open(string(pm_data["name"],".out"), "w")
-        println(io,"name: ", pm_data["name"])
-        println(io,"attacker_budget: ", pm_data["attacker_budget"])
-        println(io,"inactive_branches: ", pm_data["inactive_branches"])
-        println(io,"protected_branches: ", pm_data["protected_branches"])
-        println(io, "Model:")
-        println(io, minmax_pm.model)
-        close(io)
-
         maxmin_model = DualizeMinmaxModel(minmax_pm)
         if enforce_int
             for l in minmax_pm.data["undecided_branches"]
@@ -70,9 +65,9 @@ function MaximinOPFModel(pm_data, pm_form; enforce_int=true, rm_rsoc=true, rm_th
         end
 	    return maxmin_model
     else
-        println(Base.stderr,"Model type: ",pm_form," is either nonconic and/or nonconvex and thus is not currently supported by function MaximinOPFModel().")
-	    println(Base.stderr,"WARNING: function MaximinOPFModel() is returning 'nothing'")
-	    return nothing
+        println(Base.stderr,"WARNING: Model type ",pm_form," is either nonconic and/or nonconvex and thus is not currently supported by function MaximinOPFModel().")
+	    println(Base.stderr,"\tWARNING: function MaximinOPFModel() is returning the MINMAX model and NOT the MAXMIN model.")
+	    return minmax_pm.model
     end
 end
 
