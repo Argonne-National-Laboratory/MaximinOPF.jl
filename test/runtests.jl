@@ -3,7 +3,7 @@ using PowerModels
 using Mosek
 using MosekTools
 using JuMP
-using SCIP
+#using SCIP
 
 include("testcases.jl")
 PowerModels.silence()

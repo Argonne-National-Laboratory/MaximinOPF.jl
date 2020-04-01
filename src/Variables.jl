@@ -1,6 +1,6 @@
 using JuMP
 
-function variable_bus_slacks(pm::AbstractPowerModel; nw::Int=pm.cnw, cnd::Int=pm.ccnd)
+function variable_bus_slacks(pm::AbstractPowerModel; nw::Int=pm.cnw)
     up_bus = var(pm, nw, cnd)[:up_bus] = JuMP.@variable(pm.model,
         [i in ids(pm, nw, :bus)], base_name="$(nw)_$(cnd)_up_bus",
     lower_bound = 0,
@@ -13,7 +13,7 @@ function variable_bus_slacks(pm::AbstractPowerModel; nw::Int=pm.cnw, cnd::Int=pm
     )
 end
 
-function variable_branch_flow_slacks(pm::AbstractPowerModel; nw::Int=pm.cnw, cnd::Int=pm.ccnd)
+function variable_branch_flow_slacks(pm::AbstractPowerModel; nw::Int=pm.cnw)
     u1_arcs = filter(a->!(a[1] in pm.data["inactive_branches"]),ref(pm,nw,:arcs)) #Exclude inactive arcs
     up_br1 = var(pm, nw, cnd)[:up_br1] = JuMP.@variable(pm.model,
             [(l,i,j) in u1_arcs,k=0:1], base_name="$(nw)_$(cnd)_up_br",
@@ -39,7 +39,7 @@ function variable_branch_flow_slacks(pm::AbstractPowerModel; nw::Int=pm.cnw, cnd
     )
 end
 
-function variable_ordering_auxiliary(pm::AbstractPowerModel; nw::Int=pm.cnw, cnd::Int=pm.ccnd)
+function variable_ordering_auxiliary(pm::AbstractPowerModel; nw::Int=pm.cnw)
     undecided_branches = filter(l->!(l in pm.data["protected_branches"] || l in pm.data["inactive_branches"]), ids(pm,nw,:branch))
     u_ord_aux = var(pm, nw, cnd)[:u_ord_aux] = JuMP.@variable(pm.model,
         [b in undecided_branches], base_name="$(nw)_$(cnd)_u_ord_aux",
@@ -49,30 +49,3 @@ function variable_ordering_auxiliary(pm::AbstractPowerModel; nw::Int=pm.cnw, cnd
     u_K = var(pm,nw,cnd)[:u_K] = JuMP.@variable(pm.model, base_name="$(nw)_$(cnd)_u_K",lower_bound=0,start=0)
 end
 
-# Remove bound variables that are not used in MaxminOPF from PowerModel
-function remove_infinity_bnds(pm::AbstractPowerModel; nw::Int=pm.cnw, cnd::Int=pm.ccnd)
-    p = var(pm, nw, cnd, :p)
-    q = var(pm, nw, cnd, :q)
-    for l in ref(pm,nw, :arcs)
-        if has_lower_bound(p[l])
-            if lower_bound(p[l])==-Inf 
-                delete_lower_bound(p[l])
-            end      
-        end
-        if has_lower_bound(q[l])
-            if lower_bound(q[l])==-Inf 
-                delete_lower_bound(q[l])
-            end      
-        end
-        if has_upper_bound(p[l])
-            if upper_bound(p[l])==Inf 
-                delete_upper_bound(p[l])
-            end      
-        end
-        if has_upper_bound(q[l])
-            if upper_bound(q[l])==Inf 
-                delete_upper_bound(q[l])
-            end      
-        end
-    end
-end
