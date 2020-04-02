@@ -22,10 +22,10 @@ The detail information to use this package is available on the [Getting Started]
 * Mathematical Concept: [Mathematical Concept](./mathematicalconcept/)
 
 ## Team Members
-* Kibaek Kim: Mathematical Researcher, Project Leader
-* Brian Dandurand: Mathematical Researcher
-* Sang-il Yim: Software Developer
+* Kibaek Kim: PI, Argonne National Laboratory, USA
+* Brian Dandurand: Argonne National Laboratory, USA
+* Michel Schanen: Argonne National Laboratory, USA
+* Sang-il Yim: Argonne National Laboratory, USA
 
-## License
-* Argonne License (probably?)
-* PowerModels License?
+## Acknowledgement
+This material is based upon work supported by the U.S. Department of Energy, Office of Electricity Delivery and Energy Reliability, Advanced Grid Research and Development, under contract number DE-AC02-06CH11357.

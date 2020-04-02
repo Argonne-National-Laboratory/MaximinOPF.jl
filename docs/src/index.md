@@ -23,11 +23,13 @@ Detailed information on installation, model building, optimization support and o
 * Mathematical Concept: [Mathematical Concept](./mathematicalconcept/)
 
 ## Team Members
-* Kibaek Kim: Mathematical Researcher, Project Leader
-* Brian Dandurand: Postdoctoral Appointee, Mathematics and Computer Science Division, ANL
-* Sang-il Yim: Software Developer
+* Kibaek Kim: PI, Argonne National Laboratory, USA
+* Brian Dandurand: Argonne National Laboratory, USA
+* Michel Schanen: Argonne National Laboratory, USA
+* Sang-il Yim: Argonne National Laboratory, USA
 
+## Acknowledgement
+This material is based upon work supported by the U.S. Department of Energy, Office of Electricity Delivery and Energy Reliability, Advanced Grid Research and Development, under contract number DE-AC02-06CH11357.
 
 ## License
-* Argonne License (probably?)
-* PowerModels License?
+* In preparation
