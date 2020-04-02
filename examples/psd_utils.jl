@@ -215,11 +215,13 @@ function gatherPSDConInfo(model::JuMP.Model)
             PSD[kk]["orth_expr_val"] = zeros(vec_len)
             PSD[kk]["orth_norm"] = 0.0
             PSD[kk]["C"] = zeros(vec_len) ### Dual solution
+            PSD[kk]["C_norm"] = 0
             PSD[kk]["prim_res"] = zeros(vec_len)
             PSD[kk]["prim_res_norm"] = 0.0
             PSD[kk]["dual_res"] = zeros(vec_len)
             PSD[kk]["dual_res_norm"] = 0.0
             PSD[kk]["prox_t"] = 1
+            PSD[kk]["scale_factor"] = 1.0
             PSD[kk]["sg"] = zeros(vec_len)
             PSD[kk]["ij_pairs"] = Array{Tuple{Int64,Int64},1}(undef, vec_len)
             PSD[kk]["ii"] = zeros(Int64,vec_len)
@@ -379,11 +381,11 @@ function ADMMProjections(model_info; io=Base.stdout)
     model = model_info["model"]
     psd_expr = model[:psd_expr]
     prox_sign = model_info["prox_sign"]
-    prox_t = model_info["prox_t"]
     PSD = model_info["psd_info"]
     for kk in keys(PSD)
+        rho_kk = PSD[kk]["scale_factor"]
         PSD[kk]["old_expr_val_ctr"][:] = PSD[kk]["expr_val_ctr"][:]
-        PSD[kk]["expr_val_ctr"][:] = PSD[kk]["expr_val"][:] + (1.0/prox_t)*PSD[kk]["C"][:]
+        PSD[kk]["expr_val_ctr"][:] = PSD[kk]["expr_val"][:] + PSD[kk]["C"][:]
         computePSDMat(PSD[kk], PSD[kk]["expr_val_ctr"])
         E = eigen(PSD[kk]["psd_mat"])
         eig_vals,eig_vecs = E
@@ -401,19 +403,20 @@ function ADMMProjections(model_info; io=Base.stdout)
             for nn=1:PSD[kk]["vec_len"]
                 ii,jj=PSD[kk]["ii"][nn],PSD[kk]["jj"][nn]
                 orth_proj = sum( eig_vals[mm]*eig_vecs[ii,mm]*eig_vecs[jj,mm] for mm in neg_eigs)
-                PSD[kk]["expr_val_ctr"][nn] = PSD[kk]["expr_val"][nn] + (1.0/prox_t)*PSD[kk]["C"][nn] - orth_proj
-                #PSD[kk]["C"][nn] += prox_t*(PSD[kk]["expr_val"][nn]-PSD[kk]["expr_val_ctr"][nn])
-                PSD[kk]["C"][nn] = prox_t*orth_proj
-                PSD[kk]["prim_res"][nn] = PSD[kk]["expr_val"][nn] - PSD[kk]["expr_val_ctr"][nn]
-                PSD[kk]["dual_res"][nn] = (PSD[kk]["expr_val_ctr"][nn] - PSD[kk]["old_expr_val_ctr"][nn])
+                PSD[kk]["expr_val_ctr"][nn] = PSD[kk]["expr_val"][nn] + PSD[kk]["C"][nn] - orth_proj
             end
         else
-            for nn=1:PSD[kk]["vec_len"]
-                PSD[kk]["prim_res"][nn] = PSD[kk]["expr_val"][nn] - PSD[kk]["expr_val_ctr"][nn]
-                PSD[kk]["dual_res"][nn] = prox_t*(PSD[kk]["expr_val_ctr"][nn] - PSD[kk]["old_expr_val_ctr"][nn])
-            end
+            PSD[kk]["expr_val_ctr"][:] = PSD[kk]["expr_val"][:] + PSD[kk]["C"][:]
         end
-        PSD[kk]["prim_res_norm"] = sqrt(sum( PSD[kk]["prim_res"][nn]^2 for nn=1:PSD[kk]["vec_len"]))
-        PSD[kk]["dual_res_norm"] = sqrt(sum( PSD[kk]["dual_res"][nn]^2 for nn=1:PSD[kk]["vec_len"]))
+        PSD[kk]["prim_res"][:] = PSD[kk]["expr_val"][:] - PSD[kk]["expr_val_ctr"][:]
+        PSD[kk]["dual_res"][:] = (PSD[kk]["expr_val_ctr"][:] - PSD[kk]["old_expr_val_ctr"][:])
+        PSD[kk]["C"][:] = PSD[kk]["C"][:] + PSD[kk]["expr_val"][:] - PSD[kk]["expr_val_ctr"][:]
+        PSD[kk]["C_norm"] = 0.0
+        for nn=1:PSD[kk]["vec_len"]
+            PSD[kk]["C_norm"] += PSD[kk]["ip"][nn]*PSD[kk]["C"][nn]*PSD[kk]["C"][nn]
+        end
+        PSD[kk]["C_norm"] = sqrt(PSD[kk]["C_norm"])
+        PSD[kk]["prim_res_norm"] = sqrt(sum( PSD[kk]["ip"][nn]*PSD[kk]["prim_res"][nn]^2 for nn=1:PSD[kk]["vec_len"]))
+        PSD[kk]["dual_res_norm"] = sqrt(sum( PSD[kk]["ip"][nn]*PSD[kk]["dual_res"][nn]^2 for nn=1:PSD[kk]["vec_len"]))
     end
 end

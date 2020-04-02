@@ -27,7 +27,7 @@ PowerModels.silence()
  # "This function should be implemented to be recallable," 
  ### "so that a user can call this function multiple times to get ever more accurate solution information."
  ### "Return aggregated cuts for the PSD constraints, and a Dictionary of new constraints"
-function solve_PSD_via_ADMM(model_info::Dict{String,Any}; max_n_iter=100, prox_t=1, rescale=true, io=Base.stdout)
+function solve_PSD_via_ADMM(model_info::Dict{String,Any}; max_n_iter=100, prox_t=1, rescale=true, display_freq::Int64=100,io=Base.stdout)
     model = model_info["model"] 
     model_info["prox_t"] = prox_t
     model_info["prox_t_min"] = prox_t
@@ -44,11 +44,10 @@ function solve_PSD_via_ADMM(model_info::Dict{String,Any}; max_n_iter=100, prox_t
     end
     for ii=0:max_n_iter
         for kk in keys(PSD)
-            PSD[kk]["quad_terms"] = sum( PSD[kk]["ip"][nn]*( psd_expr[kk,nn] - PSD[kk]["expr_val_ctr"][nn] )^2 for nn in 1:PSD[kk]["vec_len"]) 
-            PSD[kk]["Lagr_terms"] = sum( PSD[kk]["ip"][nn]*PSD[kk]["C"][nn]*( psd_expr[kk,nn] - PSD[kk]["expr_val_ctr"][nn] )  for nn in 1:PSD[kk]["vec_len"]) 
+            rho_kk = PSD[kk]["scale_factor"]
+            PSD[kk]["quad_terms"] = rho_kk*sum( PSD[kk]["ip"][nn]*( psd_expr[kk,nn] - PSD[kk]["expr_val_ctr"][nn] + PSD[kk]["C"][nn]  )^2 for nn in 1:PSD[kk]["vec_len"]) 
         end
         @objective( model, model_info["obj_sense"], model[:linobj_expr]  
-            + prox_sign * sum( PSD[kk]["Lagr_terms"] for kk in keys(PSD))
             + 0.5* prox_sign * prox_t*sum( PSD[kk]["quad_terms"] for kk in keys(PSD) )
         )
         try
@@ -58,58 +57,72 @@ function solve_PSD_via_ADMM(model_info::Dict{String,Any}; max_n_iter=100, prox_t
 	        println("Catching solve error, breaking from subiteration loop.")
             break
         end
-        pd_res_val = 0.0
         for kk in keys(PSD)
+            rho_kk = PSD[kk]["scale_factor"]
             for nn=1:PSD[kk]["vec_len"]
                 PSD[kk]["expr_val"][nn] = JuMP.value(psd_expr[kk,nn])
             end
             PSD[kk]["quad_term_vals"] = JuMP.value(PSD[kk]["quad_terms"])
-            pd_res_val += PSD[kk]["quad_term_vals"] 
         end
-        model_info["prox_val"]=JuMP.objective_value(model)
+        #model_info["prox_val"]=JuMP.objective_value(model)
         model_info["solve_status"]=JuMP.termination_status(model)
 
         ADMMProjections(model_info;io=io)
+        for kk in keys(PSD)
+            PSD[kk]["Lagr_term_vals"] = sum( PSD[kk]["ip"][nn]*PSD[kk]["C"][nn]*PSD[kk]["prim_res"][nn] for nn in 1:PSD[kk]["vec_len"]) 
+        end
+        model_info["prox_val"]=JuMP.value(model[:linobj_expr]) + prox_sign*prox_t*sum(PSD[kk]["Lagr_term_vals"] + 0.5*PSD[kk]["prim_res_norm"]^2 for kk in keys(PSD))
         prim_res = trunc(sqrt(sum( PSD[kk]["prim_res_norm"]^2 for kk in keys(PSD)));digits=4)
-        dual_res = trunc(sqrt(sum( PSD[kk]["dual_res_norm"]^2 for kk in keys(PSD)));digits=4)
-        if mod(ii,10)==0 || ii==1
-            println("\tsub-Iter $ii prox obj value: ",model_info["prox_val"]," in statu: ", 
+        dual_res = prox_t*trunc(sqrt(sum( PSD[kk]["dual_res_norm"]^2 for kk in keys(PSD)));digits=4)
+        if mod(ii,display_freq)==0 || ii==1
+            println("\tsub-Iter $ii prox obj value: ",model_info["prox_val"], " in statu: ", 
                 model_info["solve_status"]," p_res=",prim_res," d_res=",dual_res, " prox_t=",prox_t )
         end
-        if sqrt(pd_res_val) < 1e-4
+        if prim_res < 1e-4 && dual_res < 1e-3
 	        println("Sub-Iteratione $ii terminante, quia solutio relaxata est factibilis.")
             break
-        elseif rescale
+        elseif rescale && ii < min(1000,0.5*max_n_iter)
+            scale_fac = 2
+            if prim_res > 10*dual_res
+                if model_info["prox_t"] < 10
+                    model_info["prox_t"] *= scale_fac
+                    for kk in keys(PSD)
+                        PSD[kk]["C"][:] /= scale_fac
+                    end
+                    prox_t=model_info["prox_t"]
+                end
+            elseif dual_res > 10*prim_res
+                if model_info["prox_t"] > 1e-3
+                    model_info["prox_t"] /= scale_fac
+                    for kk in keys(PSD)
+                        PSD[kk]["C"][:] /= scale_fac
+                    end
+                    prox_t=model_info["prox_t"]
+                end
+            end
+            
 #=
-            if ii <= round(0.1*max_n_iter)
-                model_info["prox_t"] = 0.01 
-                prox_t = model_info["prox_t"]
-            elseif ii <= round(0.4*max_n_iter)
-                if prim_res > 10*dual_res
-                    model_info["prox_t"] = 0.1 
-                    prox_t = model_info["prox_t"]
-                end
-            else
-                if prim_res > 10*dual_res
-                    model_info["prox_t"] = 1 
-                    prox_t = model_info["prox_t"]
-                end
+            if ii==500  
+                scale_fac = 1+0.99^(ii/100)
+                for kk in keys(PSD)
+                    if PSD[kk]["prim_res_norm"] > 10*PSD[kk]["dual_res_norm"]
+                        if PSD[kk]["scale_factor"] < 32
+                            PSD[kk]["scale_factor"] *= scale_fac
+                            PSD[kk]["C"][:] /= scale_fac
+                        end
+                    elseif PSD[kk]["dual_res_norm"] > 10*PSD[kk]["prim_res_norm"]
+                        if PSD[kk]["scale_factor"] > (1.0/32.0)
+                            PSD[kk]["scale_factor"] /= scale_fac
+                            PSD[kk]["C"][:] *= scale_fac
+                        end
+                    end
+                    #print(" ",PSD[kk]["scale_factor"])
+                end    
+                #print("\n\n")
             end
 =#
-            scale_fac = 4
-            if ii==40 || ii==200 || ii==500 
-                if prim_res > 10*dual_res
-                    prox_t *= scale_fac
-                    model_info["prox_t"] = prox_t
-                elseif dual_res > 10*prim_res
-                    prox_t /= scale_fac
-                end
-                prox_t = min( max(model_info["prox_t_min"],prox_t), model_info["prox_t_max"])
-            end
-            model_info["prox_t"] = prox_t
         end
     end
-    
 end
 
 function solveProxPtSP(model_info)
