@@ -6,8 +6,8 @@
 
 
 ## Installation
-CAPS.jl is availalbe to use as a local package with the Julia package manager. 
-* [Download the repository](https://github.com/kibaekkim/CAPS.jl/archive/master.zip)
+MaximinOPF.jl is availalbe to use as a local package with the Julia package manager. 
+* [Download the repository](https://github.com/Argonne-National-Laboratory/MaximinOPF.jl/archive/master.zip)
 * Install and test pacakge
 ```
 (Shell)> cd <proj_root>
@@ -23,7 +23,7 @@ Testing MaximinOPF tests passed
 ## Using a Package
 
 ### Module Importing
-CAPS.jl contains MaximinOPF module to build a JuMP model. The module provides two key [APIs](../API/) to solve the [mathematical problems](../mathematicalconcept/). The package uses [PowerModels.jl](https://github.com/lanl-ansi/PowerModels.jl/tree/master/docs) to parse the standard power system input files and to define the mathematical form of the model. 
+MaximinOPF.jl contains MaximinOPF module to build a JuMP model. The module provides two key [APIs](../API/) to solve the [mathematical problems](../mathematicalconcept/). The package uses [PowerModels.jl](https://github.com/lanl-ansi/PowerModels.jl/tree/master/docs) to parse the standard power system input files and to define the mathematical form of the model. 
 
 ```julia
 using MaximinOPF
@@ -67,5 +67,5 @@ println("Time taken to solve is: ", result, " with status ",status,".")
 
 
 ## Mathematical Options
-The CAPS.jl uses [PowerModels.jl](https://github.com/lanl-ansi/PowerModels.jl/tree/master/docs) to build power system variables and constraints in different form of the optimization problem.
+The MaximinOPF.jl uses [PowerModels.jl](https://github.com/lanl-ansi/PowerModels.jl/tree/master/docs) to build power system variables and constraints in different form of the optimization problem.
 * TODO: Description of available PowerModel Options

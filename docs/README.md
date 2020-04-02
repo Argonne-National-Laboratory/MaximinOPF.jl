@@ -1,4 +1,4 @@
-# Building the Documentation for CAPS.jl
+# Building the Documentation for MaximinOPF.jl
 
 ## Installation
 We rely on [Documenter.jl](https://github.com/JuliaDocs/Documenter.jl). To install it, run the following command in a julia session:
