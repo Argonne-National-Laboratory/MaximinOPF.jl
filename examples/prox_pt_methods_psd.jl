@@ -73,31 +73,31 @@ function solve_PSD_via_ADMM(model_info::Dict{String,Any}; max_n_iter=100, prox_t
         end
         model_info["prox_val"]=JuMP.value(model[:linobj_expr]) + prox_sign*prox_t*sum(PSD[kk]["Lagr_term_vals"] + 0.5*PSD[kk]["prim_res_norm"]^2 for kk in keys(PSD))
         prim_res = trunc(sqrt(sum( PSD[kk]["prim_res_norm"]^2 for kk in keys(PSD)));digits=4)
-        dual_res = prox_t*trunc(sqrt(sum( PSD[kk]["dual_res_norm"]^2 for kk in keys(PSD)));digits=4)
+        dual_res = trunc(prox_t*sqrt(sum( PSD[kk]["dual_res_norm"]^2 for kk in keys(PSD)));digits=4)
         if mod(ii,display_freq)==0 || ii==1
             println("\tsub-Iter $ii prox obj value: ",model_info["prox_val"], " in statu: ", 
                 model_info["solve_status"]," p_res=",prim_res," d_res=",dual_res, " prox_t=",prox_t )
         end
-        if prim_res < 1e-4 && dual_res < 1e-3
+        if prim_res < 1e-4 && dual_res < 1e-4
 	        println("Sub-Iteratione $ii terminante, quia solutio relaxata est factibilis.")
             break
-        elseif rescale && ii < min(1000,0.5*max_n_iter)
-            scale_fac = 2
+        elseif rescale && mod(ii,200) == 0 
+            scale_fac = 1.10
             if prim_res > 10*dual_res
-                if model_info["prox_t"] < 10
+                if model_info["prox_t"] < 1e3
                     model_info["prox_t"] *= scale_fac
                     for kk in keys(PSD)
                         PSD[kk]["C"][:] /= scale_fac
                     end
-                    prox_t=model_info["prox_t"]
+                    prox_t=round(model_info["prox_t"];digits=5)
                 end
             elseif dual_res > 10*prim_res
                 if model_info["prox_t"] > 1e-3
                     model_info["prox_t"] /= scale_fac
                     for kk in keys(PSD)
-                        PSD[kk]["C"][:] /= scale_fac
+                        PSD[kk]["C"][:] *= scale_fac
                     end
-                    prox_t=model_info["prox_t"]
+                    prox_t=round(model_info["prox_t"];digits=5)
                 end
             end
             
