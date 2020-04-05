@@ -1,28 +1,26 @@
 using JuMP
 
 function variable_branch_flow_slacks(pm::AbstractPowerModel; nw::Int=pm.cnw)
-    #u1_arcs = filter(a->!(a[1] in pm.data["inactive_branches"]),ref(pm,nw,:arcs)) #Exclude inactive arcs
-    u1_arcs = ref(pm,nw,:arcs)
-    up_br1 = var(pm, nw)[:up_br1] = JuMP.@variable(pm.model,
-            [(l,i,j) in u1_arcs,k=0:1], base_name="$(nw)_up_br1",
+    ### "line flow discrepancies (d), with separated positive and negative components"
+    pd_br = var(pm, nw)[:pd_br] = JuMP.@variable(pm.model,
+            [(l,i,j) in ref(pm,nw,:arcs),k=0:1], base_name="$(nw)_pd_br",
             lower_bound = 0,
             start = 0
     )
-    uq_br1 = var(pm, nw)[:uq_br1] = JuMP.@variable(pm.model,
-            [(l,i,j) in u1_arcs,k=0:1], base_name="$(nw)_uq_br1",
+    qd_br = var(pm, nw)[:qd_br] = JuMP.@variable(pm.model,
+            [(l,i,j) in ref(pm,nw,:arcs),k=0:1], base_name="$(nw)_qd_br",
             lower_bound = 0,
             start = 0
     )
 
-    #u0_arcs = filter(a->!(a[1] in pm.data["protected_branches"]),ref(pm,nw,:arcs)) #Exclude protected arcs
-    u0_arcs = ref(pm,nw,:arcs)
-    up_br0 = var(pm, nw)[:up_br0] = JuMP.@variable(pm.model,
-            [(l,i,j) in u0_arcs,k=0:1], base_name="$(nw)_up_br0",
+    ### "line flow targets (t), with separated positive and negative components"
+    pt_br = var(pm, nw)[:pt_br] = JuMP.@variable(pm.model,
+            [(l,i,j) in ref(pm,nw,:arcs),k=0:1], base_name="$(nw)_pt_br",
             lower_bound = 0,
             start = 0
     )
-    uq_br0 = var(pm, nw)[:uq_br0] = JuMP.@variable(pm.model,
-            [(l,i,j) in u0_arcs,k=0:1], base_name="$(nw)_uq_br0",
+    qt_br = var(pm, nw)[:qt_br] = JuMP.@variable(pm.model,
+            [(l,i,j) in ref(pm,nw,:arcs),k=0:1], base_name="$(nw)_qt_br",
             lower_bound = 0,
             start = 0
     )

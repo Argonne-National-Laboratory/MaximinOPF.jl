@@ -8,7 +8,6 @@ Brian Dandurand
 
 include("../../MaximinOPF/src/MaximinOPF.jl")
 include("../../MaximinOPF/src/utils.jl")
-include("psd_utils.jl")
 using JuMP, MathOptInterface
 using Mosek, MosekTools
 using CPLEX
@@ -17,104 +16,9 @@ using PowerModels
 PowerModels.silence()
 
 
-function solveNodeMinmaxSP(model_info, ndata)
+function solveNodeSP(model_info, ndata; compute_psd_dual=false, io=devnull)
     model = model_info["model"]
     branch_ids = model_info["branch_ids"]
-    psd_expr = model[:psd_expr]
-    PSD=model_info["psd_info"] 
-
-    unfix_vars(model,branch_ids)
-    for l in ndata["inactive_branches"]
-        fix(variable_by_name(model,"x[$l]_1"), 1; force=true)
-    end
-    for l in ndata["protected_branches"]
-        fix(variable_by_name(model,"x[$l]_1"), 0; force=true)
-    end
-    JuMP.optimize!(model)
-    model_info["opt_val"]=JuMP.objective_value(model)
-    model_info["solve_status"]=JuMP.termination_status(model)
-    model_info["x_soln_str"]=""
-    for l in branch_ids
-        x_var = variable_by_name(model,"x[$l]_1")
-        x_val = JuMP.value(x_var)
-        if x_val > 1.0-1.0e-8
-	        x_val = 1
-            model_info["x_soln_str"] = string(model_info["x_soln_str"]," $l")
-        elseif x_val < 1.0e-8
-	        x_val = 0
-        end
-        model_info["x_soln"][l] = x_val
-    end
-    ndata["x_soln"] = copy(model_info["x_soln"])
-    ndata["bound_value"] = model_info["opt_val"]
-    for kk in keys(PSD)
-        PSD[kk]["dual_val"][:] = JuMP.dual.(PSD[kk]["cref"])[:]
-        for nn=1:PSD[kk]["vec_len"]
-            PSD[kk]["expr_val"][nn] = JuMP.value(psd_expr[kk,nn])
-        end
-    end
-end #end of function
-
-function solveNodeSPFixed(model_info; compute_psd_dual=true)
-    model = model_info["model"]
-    branch_ids = model_info["branch_ids"]
-    PSD=model_info["psd_info"] 
-    psd_expr = model[:psd_expr]
-    unfix_vars(model,branch_ids)
-    model_info["x_soln_str"]=""
-    for l in branch_ids
-        fix(variable_by_name(model,"x[$l]_1"), model_info["x_soln"][l]; force=true)
-        if model_info["x_soln"][l] > 1.0-1.0e-8
-            model_info["x_soln_str"] = string(model_info["x_soln_str"]," $l")
-        end
-    end
-    JuMP.optimize!(model)
-    model_info["opt_val"]=JuMP.objective_value(model)
-    model_info["solve_status"]=JuMP.termination_status(model)
-    model_info["heur_x_soln"] = copy(model_info["x_soln"])
-    model_info["heur_opt_val"] = model_info["opt_val"]
-    sg_info = Dict{Tuple{Int64,Int64},Array{Float64,1}}()
-    if compute_psd_dual
-        for kk in keys(PSD)
-            PSD[kk]["dual_val"][:] = JuMP.dual.(PSD[kk]["cref"])[:]
-            sg_info[kk] = zeros(PSD[kk]["vec_len"])
-            for nn=1:PSD[kk]["vec_len"]
-                PSD[kk]["expr_val"][nn] = JuMP.value(psd_expr[kk,nn])
-                sg_info[kk][nn] = PSD[kk]["dual_val"][nn]
-            end
-        end
-    end
-    unfix_vars(model,branch_ids)
-    return sg_info
-end #end of function
-
-function add_cuts(model_info::Dict{String,Any}, PSD::Dict{Tuple{Int64,Int64},Dict{String,Any}}; cut_type::String="sg", tol=1e-5)
-    model = model_info["model"]
-    psd_expr = model[:psd_expr]
-    for kk in keys(PSD)
-        if cut_type == "sg"  
-            JuMP.@constraint(model, sum( PSD[kk]["ip"][nn]*PSD[kk][cut_type][nn]*psd_expr[kk,nn] for nn in 1:PSD[kk]["vec_len"]) >= 0 )
-        elseif cut_type == "dual_val"
-            vec_norm = norm(PSD[kk][cut_type][:])
-            if vec_norm > tol
-                JuMP.@constraint(model, (1/vec_norm)*sum( PSD[kk]["ip"][nn]*PSD[kk][cut_type][nn]*psd_expr[kk,nn] for nn in 1:PSD[kk]["vec_len"]) >= 0 )
-            end
-        elseif cut_type == "orth_expr_val"
-            if PSD[kk]["orth_norm"] > tol
-                JuMP.@constraint(model, 
-                    (1/PSD[kk]["orth_norm"])*sum( PSD[kk]["ip"][nn]*PSD[kk][cut_type][nn]*psd_expr[kk,nn] for nn in 1:PSD[kk]["vec_len"]) <= 0 
-                )
-            end
-        else
-            println(Base.stderr,"add_cuts(): cut_type=",cut_type," is unrecognized.")
-        end
-    end
-end
-
-function solveNodeSP_ECP(model_info, ndata; compute_psd_dual=false, io=devnull)
-    model = model_info["model"]
-    branch_ids = model_info["branch_ids"]
-    PSD = model_info["psd_info"]
 
     unfix_vars(model,branch_ids)
     for l in ndata["inactive_branches"]
@@ -124,21 +28,8 @@ function solveNodeSP_ECP(model_info, ndata; compute_psd_dual=false, io=devnull)
         fix(variable_by_name(model,"x[$l]_1"), 0; force=true)
     end
 
-    psd_expr = model[:psd_expr]
     JuMP.optimize!(model)
     sg_info = Dict{Tuple{Int64,Int64},Array{Float64,1}}()
-    for kk in keys(PSD)
-        for nn=1:PSD[kk]["vec_len"]
-            PSD[kk]["expr_val"][nn] = JuMP.value(psd_expr[kk,nn])
-        end
-        if compute_psd_dual
-            PSD[kk]["dual_val"][:] = JuMP.dual.(PSD[kk]["cref"])[:]
-            sg_info[kk] = zeros(PSD[kk]["vec_len"])
-            for nn=1:PSD[kk]["vec_len"]
-                sg_info[kk][nn] = PSD[kk]["dual_val"][nn]
-            end
-        end
-    end
     model_info["opt_val"]=JuMP.objective_value(model)
     model_info["solve_status"]=JuMP.termination_status(model)
 
@@ -225,17 +116,15 @@ function solveMaxminViaBnB(pm_data,pm_form; use_dual_minmax=true)
     branch_ids=sort(collect(pm_data["undecided_branches"]))
     println("Branch_ids: ",branch_ids)
 
-    psd_base_maxmin = convertSOCtoPSD(base_maxmin)
     psd_optimizer=with_optimizer(Mosek.Optimizer,MSK_IPAR_LOG=0,MSK_IPAR_NUM_THREADS=8)
-    JuMP.set_optimizer(psd_base_maxmin,psd_optimizer)
+    JuMP.set_optimizer(base_maxmin,psd_optimizer)
 
     psd_model_info=Dict{String,Any}("branch_ids"=>branch_ids,"x_soln"=>Dict{Int64,Float64}(),
             "x_soln_str"=>"","heur_x_soln"=>Dict{Int64,Float64}(),"attacker_budget"=>K)
     for l in branch_ids
         psd_model_info["x_soln"][l]=0
     end
-    psd_model_info["model"] = psd_base_maxmin
-    gatherPSDConInfo(psd_model_info) ### "Sets the 'psd_info' key"
+    psd_model_info["model"] = base_maxmin
 
     BnBTree = Dict{Int64,Dict{String,Any}}()
     BnBTree[0] = init_node ### ADD ROOT NODE TO TREE
@@ -262,7 +151,7 @@ function solveMaxminViaBnB(pm_data,pm_form; use_dual_minmax=true)
             printNode(currNode;pretext="\n",posttext="")
             inn_while_cntr = 0
             while true
-                solveNodeSP_ECP(psd_model_info, currNode; compute_psd_dual=false)
+                solveNodeSP(psd_model_info, currNode; compute_psd_dual=false)
 
                 currNode["bound_value"] = min(psd_model_info["opt_val"],currNode["bound_value"])
                 if currNode["bound_value"] <= IncX["value"]
@@ -340,8 +229,8 @@ function solveMaxminViaBnB(pm_data,pm_form; use_dual_minmax=true)
 end
 
 testcase = Dict(
-	"file" => "data/case300.m", 
- 	"name" => "case300K4",  	
+	"file" => "data/case30.m", 
+ 	"name" => "case30K4",  	
  	"attack_budget" => 4,
  	"inactive_indices" => [],
  	"protected_indices" => []

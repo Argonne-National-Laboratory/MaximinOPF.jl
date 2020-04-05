@@ -1,105 +1,90 @@
 using JuMP, MathOptInterface
 using PowerModels
 
-function add_artificial_var_bds(model::JuMP.Model; bd_mag=1)
-    linobj_expr = objective_function(model, AffExpr)
-    for tt in keys(linobj_expr.terms)
-        if objective_sense(model)==MOI.MAX_SENSE
-            if linobj_expr.terms[tt] > 0
-                if !has_upper_bound(tt)
-                    set_upper_bound(tt,1)
-                end
-            elseif linobj_expr.terms[tt] < 0
-                if !has_lower_bound(tt)
-                    set_lower_bound(tt,-1)
-                end
-            end
-        elseif objective_sense(model)==MOI.MIN_SENSE
-            if linobj_expr.terms[tt] > 0
-                if !has_lower_bound(tt)
-                    set_lower_bound(tt,-1)
-                end
-            elseif linobj_expr.terms[tt] < 0
-                if !has_upper_bound(tt)
-                    set_upper_bound(tt,1)
-                end
-            end
-        else
-            println("Minimization sense is abnormal: ", objective_sense(model) )
-        end
-    end
+function ConvertModelToDualizableForm(model::JuMP.Model)
+    soc_model = MOI.Utilities.Model{Float64}()
+    soc_bridged_model = MOI.Bridges.Constraint.QuadtoSOC{Float64}(soc_model)
+    MOI.copy_to(soc_bridged_model,backend(model))    
+
+    dualizable_model = JuMP.Model()
+    bridged_model = MOI.Bridges.Constraint.Square{Float64}(backend(dualizable_model))
+    MOI.copy_to(bridged_model,soc_model)    
+	return dualizable_model
 end
-function gatherPSDConInfo(model_info)
-    con_types=list_of_constraint_types(model_info["model"])
+
+function removeRSOC(pm)
+    con_types=list_of_constraint_types(pm.model)
     n_con_types=length(con_types)
-    model_info["psd_con"] = Dict{Tuple{Int64,Int64},Dict{String,Any}}()
-    model_info["psd_con_type_ids"] = filter( cc->(con_types[cc][2]==MathOptInterface.PositiveSemidefiniteConeTriangle), 1:n_con_types)
-    model_info["psd_con_keys"]=[]
-    psd_con = Dict{Int64,Any}()
-    psd_con_expr = Dict{Tuple{Int64,Int64},Any}()
-    for cc in model_info["psd_con_type_ids"]
-        psd_con[cc] = all_constraints(model_info["model"], con_types[cc][1], con_types[cc][2]) 
-        n_con = length(psd_con[cc])
-        for nn in 1:n_con
-            push!(model_info["psd_con_keys"],(cc,nn))    
-            psd_con_expr[cc,nn] = constraint_object(psd_con[cc][nn]).func
-        end
-    end
-    @expression(model_info["model"], psd_expr[kk in model_info["psd_con_keys"], nn=1:length(psd_con_expr[kk])], psd_con_expr[kk][nn] )
-    PSD=model_info["psd_con"]
-    for kk in model_info["psd_con_keys"]
-            PSD[kk] = Dict{String,Any}()
-            PSD[kk]["all_cuts"] = Dict{Int64,Dict{String,Any}}() ### "Will be productive later"
-            PSD[kk]["new_cuts"] = Dict{Int64,Dict{String,Any}}()
-            PSD[kk]["vec_len"] = length(psd_con_expr[kk])
-            vec_len = PSD[kk]["vec_len"] 
-            PSD[kk]["expr_val"] = zeros(vec_len)
-            PSD[kk]["expr_val_ctr"] = zeros(vec_len)
-            PSD[kk]["old_proj_expr_val"] = zeros(vec_len)
-            PSD[kk]["proj_expr_val"] = zeros(vec_len)
-            PSD[kk]["C"] = zeros(vec_len) ### Dual solution
-            PSD[kk]["prim_res"] = zeros(vec_len)
-            PSD[kk]["dual_res"] = zeros(vec_len)
-            PSD[kk]["sg"] = Array{Float64,1}(undef, vec_len)
-            PSD[kk]["eig_val"] = 0.0
-            PSD[kk]["ssc_val"] = 0.0
-            PSD[kk]["ip"] = ones(vec_len) ### "coefficients to aid in computing Frobenius inner product"
-            PSD[kk]["is_off_diag"] = zeros(vec_len) ### "coefficients to aid in computing Frobenius inner product"
-            PSD[kk]["ij_coor"] = Vector{Tuple{Int64,Int64}}(undef,vec_len)
-	        jj,ii=1,1
-            for mm in 1:vec_len
-                PSD[kk]["ij_coor"][mm]=(ii,jj)
-                if ii==jj
-                    PSD[kk]["ip"][mm] = 1
-                    PSD[kk]["is_off_diag"][mm] = 0
-                    jj += 1
-                    ii = 1
-                else
-                    PSD[kk]["ip"][mm] = 2
-                    PSD[kk]["is_off_diag"][mm] = 1
-                    ii += 1
+    for cc=1:n_con_types
+        if con_types[cc][2]==MathOptInterface.RotatedSecondOrderCone
+	        ### These constraints are presumably associated with defining the quadratic cost function for the OPF and are usually not needed here.
+	        rsoc_con = all_constraints(pm.model, con_types[cc][1], con_types[cc][2]) 
+	        n_rsoc_con = length(rsoc_con)
+	        for nn=1:n_rsoc_con
+		        rsoc_expr = constraint_object(rsoc_con[nn]).func 
+		        n_vars=length( rsoc_expr ) 
+		        if n_vars == 3  ### "This condition is necessary for the RSOC to have the nonproductive constraint in question"
+                    io2=IOBuffer()
+                    print(io2,rsoc_expr[2])
+                    io3=IOBuffer()
+                    print(io3,rsoc_expr[3])
+                    if occursin("pg", String(take!(io2))) && occursin("pg", String(take!(io3)))
+		                JuMP.delete(pm.model,rsoc_con[nn])
+                    end
                 end
-            end
-            PSD[kk]["n_matcols"]=jj-1
-            PSD[kk]["quad_terms"] = AffExpr(0.0)
-            PSD[kk]["quad_term_vals"] = 0.0
-            PSD[kk]["Lagr_terms"] = AffExpr(0.0)
-            PSD[kk]["Lagr_term_vals"] = 0.0
+	        end
+	    end
     end
 end
 
-function add_psd_initial_cuts(model::JuMP.Model; bd_mag=1e2, io=Base.stdout)
-    model_info = Dict{String,Any}()
-    model_info["model"] = model
-    gatherPSDConInfo(model_info)
-    psd_expr = model_info["model"][:psd_expr]
-    PSD=model_info["psd_con"]
-    #JuMP.@constraint( model_info["model"], psd_expr_lbs[kk in keys(PSD), mm in 1:PSD[kk]["vec_len"]], psd_expr[kk,mm] >= -PSD[kk]["is_off_diag"][mm]*1e2 )
-    #JuMP.@constraint( model_info["model"], psd_expr_lbs[kk in keys(PSD), mm in 1:PSD[kk]["vec_len"]], psd_expr[kk,mm] >= -1e2 )
-    #JuMP.@constraint( model_info["model"], psd_expr_ubs[kk in keys(PSD), mm in 1:PSD[kk]["vec_len"]], psd_expr[kk,mm] <= 1e2 )
-    JuMP.@constraint( model_info["model"], psd_expr_lbs[kk in keys(PSD), mm in filter(mmm->(PSD[kk]["is_off_diag"][mmm]==0),1:PSD[kk]["vec_len"])], psd_expr[kk,mm] >= 0 )
+function removeThermalLineLimits(pm)
+    con_types=list_of_constraint_types(pm.model)
+    n_con_types=length(con_types)
+    for cc=1:n_con_types
+        if con_types[cc][2]==MathOptInterface.SecondOrderCone
+	        #println("SOC:")
+	        soc_con = all_constraints(pm.model, con_types[cc][1], con_types[cc][2]) 
+	        n_soc_con = length(soc_con)
+	        for nn=1:n_soc_con
+		        soc_expr = constraint_object(soc_con[nn]).func 
+		        n_vars=length( soc_expr ) 
+		        if n_vars == 3  ### This condition is necessary for the SOC to be a thermal line limit
+                    io2=IOBuffer()
+                    print(io2,soc_expr[2])
+                    io3=IOBuffer()
+                    print(io3,soc_expr[3])
+                    if occursin("p[(", String(take!(io2))) && occursin("q[(", String(take!(io3)))  
+		                JuMP.delete(pm.model,soc_con[nn])
+                    end
+                else
+		        end
+	        end
+	    end
+    end
+end
 
-    #JuMP.@constraint(model_info["model"], sum( sum( PSD[kk]["ip"][mm]*psd_expr[kk,mm] for mm in 1:PSD[kk]["vec_len"]) for kk in keys(PSD) ) <= 1e2)
+function replaceThermalLineLimits(pm)
+    removeThermalLineLimits(pm)
+    for l in ids(pm,pm.cnw,:branch)
+        branch = ref(pm, pm.cnw, :branch, l)
+        if haskey(branch, "rate_a")
+            f_bus,t_bus = branch["f_bus"],branch["t_bus"]
+            f_idx,t_idx = (l, f_bus, t_bus),(l, t_bus, f_bus)
+            #re-add constraints using auxiliary variable proxies for power flow variables
+            pf_m = var(pm, pm.cnw, :pt_br)[f_idx,0]
+            pf_p = var(pm, pm.cnw, :pt_br)[f_idx,1]
+            pt_m = var(pm, pm.cnw, :pt_br)[t_idx,0]
+            pt_p = var(pm, pm.cnw, :pt_br)[t_idx,1]
+            qf_m = var(pm, pm.cnw, :qt_br)[f_idx,0]
+            qf_p = var(pm, pm.cnw, :qt_br)[f_idx,1]
+            qt_m = var(pm, pm.cnw, :qt_br)[t_idx,0]
+            qt_p = var(pm, pm.cnw, :qt_br)[t_idx,1]
+            cref_f=JuMP.@constraint(pm.model, [branch["rate_a"], pf_p-pf_m, qf_p-qf_m] in JuMP.SecondOrderCone())
+            JuMP.set_name(cref_f,string("th_l_lim_f[",f_idx,"]"))
+            cref_t=JuMP.@constraint(pm.model, [branch["rate_a"], pt_p-pt_m, qt_p-qt_m] in JuMP.SecondOrderCone())
+            JuMP.set_name(cref_t,string("th_l_lim_t[",f_idx,"]"))
+        end
+    end
 end
 
 function convertSOCtoPSD(model::JuMP.Model)
@@ -150,4 +135,38 @@ function relax_integrality(model_dict)
             JuMP.set_upper_bound(variable_by_name(model_dict["model"],"x[$l]_1"),1)
 	    end
     end
+end
+
+### "Copied from current master version of JuMP, as of 7 Feb 2020. At some point, we can use the JuMP stable version."
+function JuMP_write_to_file(
+    model::Model,
+    filename::String;
+    format::MOI.FileFormats.FileFormat = MOI.FileFormats.FORMAT_AUTOMATIC
+)
+    dest = MOI.FileFormats.Model(format = format, filename = filename)
+    # We add a `full_bridge_optimizer` here because MOI.FileFormats models may not
+    # support all constraint types in a JuMP model.
+    bridged_dest = MOI.Bridges.full_bridge_optimizer(dest, Float64)
+    MOI.copy_to(bridged_dest, backend(model))
+    # `dest` will contain the underlying model, with constraints bridged if
+    # necessary.
+    MOI.write_to_file(dest, filename)
+    return
+end
+
+function write_to_cbf(model,fn_base::String)
+    JuMP.write_to_file( model, string(fn_base,".cbf"), format = MOI.FileFormats.FORMAT_CBF)
+end
+
+
+function write_to_cbf_scip(model,fn_base::String)
+    model_psd = convertSOCtoPSD(model)
+    add_psd_initial_cuts(model_psd) ### "If no psd constraints, does nothing"
+    add_artificial_var_bds(model::JuMP.Model; bd_mag=1e2)
+    #add_artificial_var_bds(model::JuMP.Model; bd_mag=1e3, io=Base.stdout)
+    fname=string(fn_base,"_scip",".cbf")
+    JuMP_write_to_file( model_psd, fname, format = MOI.FileFormats.FORMAT_CBF)
+    ### CHANGING VER 3 to VER 2 
+    fix_version=`sed -i -z 's/VER\n3/VER\n2/g' $fname`
+    run(fix_version)
 end

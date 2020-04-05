@@ -3,45 +3,36 @@ using JuMP
 function objective_feasibility_problem(pm::AbstractPowerModel, x_vals::Dict{Int64,Float64}=Dict{Int64,Float64}(); nw::Int=pm.cnw)
     for l in ids(pm,pm.cnw,:branch)
         if !haskey(x_vals,l)
-	    if l in pm.data["inactive_branches"]
-		x_vals[l]=1
-	    else
-		x_vals[l]=0
-	    end
+	        if l in pm.data["inactive_branches"]
+		        x_vals[l]=1
+	        else
+		        x_vals[l]=0
+	        end
         end
     end
-    up_br1 = var(pm,nw,:up_br1)
-    up_br0 = var(pm,nw,:up_br0)
-    uq_br1 = var(pm,nw,:uq_br1)
-    uq_br0 = var(pm,nw,:uq_br0)
+    pd_br = var(pm,nw,:pd_br)
+    pt_br = var(pm,nw,:pt_br)
+    qd_br = var(pm,nw,:qd_br)
+    qt_br = var(pm,nw,:qt_br)
     protected_arcs = filter(a->(a[1] in pm.data["protected_branches"]),ref(pm,nw,:arcs))
     inactive_arcs = filter(a->(a[1] in pm.data["inactive_branches"]),ref(pm,nw,:arcs))
     undecided_arcs = filter(a->!(a in protected_arcs || a in inactive_arcs),ref(pm,nw,:arcs))
 
-#=
-    w_var = var(pm,pm.cnw,:w)
-    w_ids_aux = filter( iii->( has_lower_bound(w_var[iii]) || has_upper_bound(w_var[iii]) ), keys(w_var) )
-    wr_var = var(pm,pm.cnw,:wr)
-    wr_ids_aux = filter( iii->( has_lower_bound(wr_var[iii]) || has_upper_bound(wr_var[iii]) ), keys(wr_var))
-    wi_var = var(pm,pm.cnw,:wi)
-    wi_ids_aux = filter( iii->( has_lower_bound(wi_var[iii]) || has_upper_bound(wi_var[iii]) ), keys(wi_var))
-=#
 
     return JuMP.@objective(pm.model, Min, 
-	sum( (1-x_vals[a[1]])*(up_br1[a,0] + uq_br1[a,0] + up_br1[a,1] + uq_br1[a,1]) 
-            + x_vals[a[1]]*(up_br0[a,0] + uq_br0[a,0] + up_br0[a,1] + uq_br0[a,1]) for a in undecided_arcs)
-            + sum( (up_br1[a,0] + uq_br1[a,0] + up_br1[a,1] + uq_br1[a,1])  for a in protected_arcs)
-            + sum( (up_br0[a,0] + uq_br0[a,0] + up_br0[a,1] + uq_br0[a,1])  for a in inactive_arcs)
-            # + 1e4*( sum( w_var[ii] for ii in w_ids_aux) + sum( wr_var[ii] for ii in wr_ids_aux) + sum( wi_var[ii] for ii in wi_ids_aux) )
+	sum( (1-x_vals[a[1]])*(pd_br[a,0] + qd_br[a,0] + pd_br[a,1] + qd_br[a,1]) 
+            + x_vals[a[1]]*(pt_br[a,0] + qt_br[a,0] + pt_br[a,1] + qt_br[a,1]) for a in undecided_arcs)
+            + sum( (pd_br[a,0] + qd_br[a,0] + pd_br[a,1] + qd_br[a,1])  for a in protected_arcs)
+            + sum( (pt_br[a,0] + qt_br[a,0] + pt_br[a,1] + qt_br[a,1])  for a in inactive_arcs)
     )
 end
 
 function objective_minmax_problem(pm::AbstractPowerModel; nw::Int=pm.cnw)
     K = pm.data["attacker_budget"]
-    up_br1 = var(pm,nw,:up_br1)
-    up_br0 = var(pm,nw,:up_br0)
-    uq_br1 = var(pm,nw,:uq_br1)
-    uq_br0 = var(pm,nw,:uq_br0)
+    pd_br = var(pm,nw,:pd_br)
+    pt_br = var(pm,nw,:pt_br)
+    qd_br = var(pm,nw,:qd_br)
+    qt_br = var(pm,nw,:qt_br)
     u_ord_aux = var(pm,nw,:u_ord_aux)
     u_K = var(pm,nw,:u_K)
     undecided_branches = filter(l->!(l in pm.data["protected_branches"] || l in pm.data["inactive_branches"]), ids(pm,nw,:branch))
@@ -49,19 +40,9 @@ function objective_minmax_problem(pm::AbstractPowerModel; nw::Int=pm.cnw)
     protected_arcs = filter(a->(a[1] in pm.data["protected_branches"]),ref(pm,nw,:arcs))
     attacked_arcs = filter(a->(a[1] in pm.data["inactive_branches"]),ref(pm,nw,:arcs))
 
-#=
-    w_var = var(pm,pm.cnw,:w)
-    w_ids_aux = filter( iii->( has_lower_bound(w_var[iii]) || has_upper_bound(w_var[iii]) ), keys(w_var))
-    wr_var = var(pm,pm.cnw,:wr)
-    wr_ids_aux = filter( iii->( has_lower_bound(wr_var[iii]) || has_upper_bound(wr_var[iii]) ), keys(wr_var))
-    wi_var = var(pm,pm.cnw,:wi)
-    wi_ids_aux = filter( iii->( has_lower_bound(wi_var[iii]) || has_upper_bound(wi_var[iii]) ), keys(wi_var))
-=#
-
     return JuMP.@objective(pm.model, Min, K*u_K + sum( u_ord_aux[l] for l in undecided_branches ) 
-            + sum( up_br1[a,0] + uq_br1[a,0] + up_br1[a,1] + uq_br1[a,1] for a in undecided_arcs)
-            + sum( up_br1[a,0] + uq_br1[a,0] + up_br1[a,1] + uq_br1[a,1] for a in protected_arcs)
-            + sum( up_br0[a,0] + uq_br0[a,0] + up_br0[a,1] + uq_br0[a,1] for a in attacked_arcs)
-            # + 1e4*( sum( w_var[ii] for ii in w_ids_aux) + sum( wr_var[ii] for ii in wr_ids_aux) + sum( wi_var[ii] for ii in wi_ids_aux) )
+            + sum( pd_br[a,0] + qd_br[a,0] + pd_br[a,1] + qd_br[a,1] for a in undecided_arcs)
+            + sum( pd_br[a,0] + qd_br[a,0] + pd_br[a,1] + qd_br[a,1] for a in protected_arcs)
+            + sum( pt_br[a,0] + qt_br[a,0] + pt_br[a,1] + qt_br[a,1] for a in attacked_arcs)
     )
 end

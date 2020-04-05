@@ -44,11 +44,12 @@ function solve_PSD_via_ADMM(model_info::Dict{String,Any}; max_n_iter=100, prox_t
     end
     for ii=0:max_n_iter
         for kk in keys(PSD)
-            rho_kk = PSD[kk]["scale_factor"]
-            PSD[kk]["quad_terms"] = rho_kk*sum( PSD[kk]["ip"][nn]*( psd_expr[kk,nn] - PSD[kk]["expr_val_ctr"][nn] + PSD[kk]["C"][nn]  )^2 for nn in 1:PSD[kk]["vec_len"]) 
+            PSD[kk]["quad_terms"] = sum( PSD[kk]["ip"][nn]*( psd_expr[kk,nn] - PSD[kk]["expr_val_ctr"][nn] + PSD[kk]["C"][nn]  )^2 for nn in 1:PSD[kk]["vec_len"]) 
         end
         @objective( model, model_info["obj_sense"], model[:linobj_expr]  
-            + 0.5* prox_sign * prox_t*sum( PSD[kk]["quad_terms"] for kk in keys(PSD) )
+            + 0.5* prox_sign * prox_t*sum(PSD[kk]["scale_factor"]*(PSD[kk]["quad_terms"] 
+            - sum( PSD[kk]["ip"][nn]*PSD[kk]["C"][nn]*PSD[kk]["C"][nn] for nn in 1:PSD[kk]["vec_len"])) 
+            for kk in keys(PSD) )
         )
         try
             JuMP.optimize!( model) 
@@ -58,20 +59,21 @@ function solve_PSD_via_ADMM(model_info::Dict{String,Any}; max_n_iter=100, prox_t
             break
         end
         for kk in keys(PSD)
-            rho_kk = PSD[kk]["scale_factor"]
             for nn=1:PSD[kk]["vec_len"]
                 PSD[kk]["expr_val"][nn] = JuMP.value(psd_expr[kk,nn])
             end
-            PSD[kk]["quad_term_vals"] = JuMP.value(PSD[kk]["quad_terms"])
         end
-        #model_info["prox_val"]=JuMP.objective_value(model)
+        model_info["prox_val"]=JuMP.objective_value(model)
         model_info["solve_status"]=JuMP.termination_status(model)
 
         ADMMProjections(model_info;io=io)
+#=
         for kk in keys(PSD)
             PSD[kk]["Lagr_term_vals"] = sum( PSD[kk]["ip"][nn]*PSD[kk]["C"][nn]*PSD[kk]["prim_res"][nn] for nn in 1:PSD[kk]["vec_len"]) 
         end
-        model_info["prox_val"]=JuMP.value(model[:linobj_expr]) + prox_sign*prox_t*sum(PSD[kk]["Lagr_term_vals"] + 0.5*PSD[kk]["prim_res_norm"]^2 for kk in keys(PSD))
+        model_info["prox_val"]=JuMP.value(model[:linobj_expr]) 
+        model_info["prox_val"] += prox_sign*prox_t*sum(PSD[kk]["scale_factor"]*PSD[kk]["Lagr_term_vals"] + 0.5*PSD[kk]["prim_res_norm"]^2 for kk in keys(PSD))
+=#
         prim_res = trunc(sqrt(sum( PSD[kk]["prim_res_norm"]^2 for kk in keys(PSD)));digits=4)
         dual_res = trunc(prox_t*sqrt(sum( PSD[kk]["dual_res_norm"]^2 for kk in keys(PSD)));digits=4)
         if mod(ii,display_freq)==0 || ii==1
@@ -81,7 +83,7 @@ function solve_PSD_via_ADMM(model_info::Dict{String,Any}; max_n_iter=100, prox_t
         if prim_res < 1e-4 && dual_res < 1e-4
 	        println("Sub-Iteratione $ii terminante, quia solutio relaxata est factibilis.")
             break
-        elseif rescale && mod(ii,200) == 0 
+        elseif rescale && mod(ii,500) == 0 
             scale_fac = 1.10
             if prim_res > 10*dual_res
                 if model_info["prox_t"] < 1e3

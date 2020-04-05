@@ -53,7 +53,7 @@ options = Dict(:verbose => false,
 
     start_time = time_ns()
 
-    solve_PSD_via_ADMM(model_info; max_n_iter=10000, prox_t=0.01, rescale=true, display_freq=100,io=devnull)
+    solve_PSD_via_ADMM(model_info; max_n_iter=10000, prox_t=0.2, rescale=false, display_freq=100,io=devnull)
 
     end_time = time_ns()
     runtime = (end_time-start_time)/1e9
