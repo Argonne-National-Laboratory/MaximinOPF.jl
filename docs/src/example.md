@@ -1,4 +1,4 @@
-#Examples for the CAPS.jl
+#Examples for the MaximinOPF.jl
 
 ## Solve MinMax Dual problem
 Description of the example

@@ -1,5 +1,5 @@
-# CAPS.jl APIs
-CAPS.jl provides two key APIs to build a JuMP model based on the [PowerModels.jl's](https://github.com/lanl-ansi/PowerModels.jl/tree/master/docs) ParsedPowerSystemModel.
+# MaximinOPF.jl APIs
+MaximinOPF.jl provides two key APIs to build a JuMP model based on the [PowerModels.jl's](https://github.com/lanl-ansi/PowerModels.jl/tree/master/docs) ParsedPowerSystemModel.
 
 ## MaximinOPFModel(ParsedPowerSystemModel, MathOption)
 This API build a JuMP model for the [maximin]() problem that contains [minmax]() and [dualization]() problems.
