@@ -112,7 +112,7 @@ function DualizeMinmaxModel(minmax_model_pm::AbstractPowerModel)
     if typeof(minmax_model_pm) in conic_supported_pm 
 	    dualizable_minmax_model = ConvertModelToDualizableForm(minmax_model_pm.model)
         AssignModelDefaultConstraintNames(dualizable_minmax_model)
-        dualized_minmax_model = dualize(dualizable_minmax_model)
+        dualized_minmax_model = dualize(dualizable_minmax_model;dual_names = DualNames("", ""))
         return dualized_minmax_model
     else 
         println(Base.stderr,"DualizeMinmaxModel: Not supported for ",typeof(minmax_model_pm)," PowerModels, returning 'nothing'.")
@@ -122,7 +122,7 @@ end
 
 function DualizeMinmaxModel(dualizable_minmax_model::JuMP.Model)
     AssignModelDefaultConstraintNames(dualizable_minmax_model)
-    dualized_minmax_model = dualize(dualizable_minmax_model)
+    dualized_minmax_model = dualize(dualizable_minmax_model;dual_names = DualNames("", ""))
 end
 
 
