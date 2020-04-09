@@ -376,7 +376,7 @@ function PSDProjections(model_info; sg_only=false)
     model_info["orth_norm"] = sqrt(model_info["orth_norm"])
 end
 
-function ADMMProjections(model_info; io=Base.stdout)
+function ADMMProjections(model_info; validate=false, io=Base.stdout)
     model_info["total_sum_neg_eigs"] = 0
     model = model_info["model"]
     psd_expr = model[:psd_expr]
@@ -415,8 +415,78 @@ function ADMMProjections(model_info; io=Base.stdout)
         for nn=1:PSD[kk]["vec_len"]
             PSD[kk]["C_norm"] += PSD[kk]["ip"][nn]*PSD[kk]["C"][nn]*PSD[kk]["C"][nn]
         end
-        PSD[kk]["C_norm"] = sqrt(PSD[kk]["C_norm"])
         PSD[kk]["prim_res_norm"] = sqrt(sum( PSD[kk]["ip"][nn]*PSD[kk]["prim_res"][nn]^2 for nn=1:PSD[kk]["vec_len"]))
         PSD[kk]["dual_res_norm"] = sqrt(sum( PSD[kk]["ip"][nn]*PSD[kk]["dual_res"][nn]^2 for nn=1:PSD[kk]["vec_len"]))
+        PSD[kk]["<C,X>"]= sum( PSD[kk]["ip"][nn]*PSD[kk]["C"][nn]*PSD[kk]["expr_val"][nn] for nn=1:PSD[kk]["vec_len"])
+        if validate
+            computePSDMat(PSD[kk], PSD[kk]["C"])
+            E = eigen(PSD[kk]["psd_mat"])
+            eig_vals,eig_vecs = E
+            PSD[kk]["min_eigval_C"],min_idx = findmax(eig_vals)
+            PSD[kk]["min_eigval_C"]=round(PSD[kk]["min_eigval_C"];digits=4)
+            PSD[kk]["<C,Z>"]= round(sum( PSD[kk]["ip"][nn]*PSD[kk]["C"][nn]*PSD[kk]["expr_val_ctr"][nn] for nn=1:PSD[kk]["vec_len"]);digits=4)
+            #println("$kk:\t\tmineigvalC=",PSD[kk]["min_eigval_C"],"\t\t<C,X>=",PSD[kk]["<C,X>"],"\t\t<C,Z>=",PSD[kk]["<C,Z>"],"\t\t|C|=",PSD[kk]["C_norm"])
+        end
+    end
+    if validate
+        model_info["<C,Z>"] = sum(PSD[kk]["<C,Z>"] for kk in keys(PSD))
+        model_info["<C,X>"] = sum(PSD[kk]["<C,X>"] for kk in keys(PSD))
+    end
+end
+
+function solveSP(model_info; fix_x=false, compute_projection=true, compute_psd_dual=false, io=devnull)
+    model = model_info["model"]
+    branch_ids = model_info["branch_ids"]
+    PSD=model_info["psd_info"] 
+    psd_expr = model[:psd_expr]
+    unfix_vars(model,branch_ids)
+    model_info["x_soln_str"]=""
+    for l in branch_ids
+        x_var = variable_by_name(model,"x[$l]_1")
+        if fix_x
+            fix(x_var, max(min(model_info["x_soln"][l],1),0); force=true)
+        end
+    end
+            
+    JuMP.optimize!(model)
+    model_info["opt_val"]=JuMP.objective_value(model)
+    model_info["solve_status"]=JuMP.termination_status(model)
+    for kk in keys(PSD)
+        for nn=1:PSD[kk]["vec_len"]
+            PSD[kk]["expr_val"][nn] = JuMP.value(psd_expr[kk,nn])
+        end
+        if compute_psd_dual
+            PSD[kk]["dual_val"][:] = JuMP.dual.(PSD[kk]["cref"])[:]
+        end
+    end
+    if compute_projection
+        PSDProjections(model_info)
+    end
+    if fix_x
+        unfix_vars(model,branch_ids)
+    end
+end #end of function
+
+### "Precondition: Make sure that the relevant data structure, be it 'sg', 'dual_val', or 'orth_expr_val' has been computed"
+function add_cuts(model_info::Dict{String,Any}, PSD::Dict{Tuple{Int64,Int64},Dict{String,Any}}; cut_type::String="sg", tol=1e-5)
+    model = model_info["model"]
+    psd_expr = model[:psd_expr]
+    for kk in keys(PSD)
+        if cut_type == "sg"  
+            JuMP.@constraint(model, sum( PSD[kk]["ip"][nn]*PSD[kk][cut_type][nn]*psd_expr[kk,nn] for nn in 1:PSD[kk]["vec_len"]) >= 0 )
+        elseif cut_type == "dual_val"
+            vec_norm = norm(PSD[kk][cut_type][:])
+            if vec_norm > tol
+                JuMP.@constraint(model, (1/vec_norm)*sum( PSD[kk]["ip"][nn]*PSD[kk][cut_type][nn]*psd_expr[kk,nn] for nn in 1:PSD[kk]["vec_len"]) >= 0 )
+            end
+        elseif cut_type == "orth_expr_val"
+            if PSD[kk]["orth_norm"] > tol
+                JuMP.@constraint(model, 
+                    (1/PSD[kk]["orth_norm"])*sum( PSD[kk]["ip"][nn]*PSD[kk][cut_type][nn]*psd_expr[kk,nn] for nn in 1:PSD[kk]["vec_len"]) <= 0 
+                )
+            end
+        else
+            println(Base.stderr,"add_cuts(): cut_type=",cut_type," is unrecognized.")
+        end
     end
 end
