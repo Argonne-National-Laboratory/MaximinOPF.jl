@@ -267,8 +267,8 @@ function solveMaxminViaCB(pm_data,pm_form; use_dual_minmax=true)
 end
 
 testcase = Dict(
-	"file" => "data/case30.m", 
- 	"name" => "case30K4",  	
+	"file" => "data/case57.m", 
+ 	"name" => "case57K4",  	
  	"attack_budget" => 4,
  	"inactive_indices" => [],
  	"protected_indices" => []
