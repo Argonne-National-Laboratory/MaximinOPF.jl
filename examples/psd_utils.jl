@@ -29,9 +29,8 @@ function prepare_psd_model_reformulation(model::JuMP.Model, model_info::Dict{Str
     model_info["opt_val"]=1e20
     model_info["lin_objval"]=1e20
     model_info["lin_objval_ctr"]=1e20
-    model_info["cp_model"]=model
     model_info["prox_t_min"] = 1e-3
-    model_info["prox_t_max"] = 1e3
+    model_info["prox_t_max"] = 1e1
 
     model_info["obj_sense"] = objective_sense(model)
     model_info["prox_sign"] = 1
@@ -434,23 +433,38 @@ function ADMMProjections(model_info; validate=false, io=Base.stdout)
     end
 end
 
-function solveSP(model_info; fix_x=false, compute_projection=true, compute_psd_dual=false, io=devnull)
+function solveSP(model_info; fix_x=false, record_x=false, compute_projection=true, compute_psd_dual=false, io=devnull)
     model = model_info["model"]
     branch_ids = model_info["branch_ids"]
     PSD=model_info["psd_info"] 
     psd_expr = model[:psd_expr]
     unfix_vars(model,branch_ids)
-    model_info["x_soln_str"]=""
-    for l in branch_ids
-        x_var = variable_by_name(model,"x[$l]_1")
-        if fix_x
-            fix(x_var, max(min(model_info["x_soln"][l],1),0); force=true)
+    if fix_x
+        if haskey(model_info, "x_soln")
+            for l in keys(model_info["x_soln"])
+                x_var = variable_by_name(model,"x[$l]_1")
+                fix(x_var, max(min(model_info["x_soln"][l],1),0); force=true)
+            end
         end
     end
             
     JuMP.optimize!(model)
     model_info["opt_val"]=JuMP.objective_value(model)
     model_info["solve_status"]=JuMP.termination_status(model)
+    if record_x
+        model_info["x_soln_str"]=""
+        for l in model_info["branch_ids"]
+            x_var = variable_by_name(model_info["model"],"x[$l]_1")
+            x_val = JuMP.value(x_var)
+            if x_val > 1.0-1.0e-8
+	            x_val = 1
+                model_info["x_soln_str"] = string(model_info["x_soln_str"]," $l")
+            elseif x_val < 1.0e-8
+	            x_val = 0
+            end
+            model_info["x_soln"][l] = x_val
+        end
+    end
     for kk in keys(PSD)
         for nn=1:PSD[kk]["vec_len"]
             PSD[kk]["expr_val"][nn] = JuMP.value(psd_expr[kk,nn])
@@ -487,6 +501,124 @@ function add_cuts(model_info::Dict{String,Any}, PSD::Dict{Tuple{Int64,Int64},Dic
             end
         else
             println(Base.stderr,"add_cuts(): cut_type=",cut_type," is unrecognized.")
+        end
+    end
+end
+
+function fixPSDCtr(model_info::Dict{String,Any}; psd_key="expr_val_ctr")
+    model = model_info["model"]
+    PSD=model_info["psd_info"]
+    psd_expr = model[:psd_expr]
+
+    for kk in keys(PSD)
+        for nn=1:PSD[kk]["vec_len"]
+            if typeof(psd_expr[kk,nn])==VariableRef
+                fix(psd_expr[kk,nn], PSD[kk]["expr_val_ctr"][nn]; force=true)
+            elseif typeof(psd_expr[kk,nn])==GenericAffExpr{Float64,VariableRef}
+                n_terms = length(psd_expr[kk,nn].terms)
+                if n_terms == 1
+                    JuMP.@constraint(model, psd_expr[kk,nn] - PSD[kk]["expr_val_ctr"][nn] == 0)
+                elseif n_terms > 1
+                    println(Base.stderr,"Cannot fix ",psd_expr[kk,nn], ", which has $n_terms terms")
+                end
+#=
+                for tt in keys(psd_expr[kk,nn].terms)
+                    fix(tt, PSD[kk]["expr_val_ctr"][nn]/(psd_expr[kk,nn].terms[tt]); force=true)
+                end
+=#
+            else
+                ### TODO
+                println(Base.stderr,"Cannot fix psd_expr[$kk,$nn], which is of type ",typeof(psd_expr[kk,nn]))
+                #=
+                for tt in keys(psd_expr[kk,nn].terms)
+                    fix(psd_expr[kk,nn], PSD[kk]["expr_val_ctr"]); force=true)
+                    PSD[kk]["expr_val"][nn] += psd_expr[kk,nn].terms[tt]*JuMP.callback_value(cb_data,tt)
+                end
+                =#
+            end
+        end
+    end
+end
+
+function unfixPSDCtr(model_info::Dict{String,Any})
+    model = model_info["model"]
+    PSD=model_info["psd_info"]
+    psd_expr = model[:psd_expr]
+
+    for kk in keys(PSD)
+        for nn=1:PSD[kk]["vec_len"]
+            if typeof(psd_expr[kk,nn])==VariableRef
+                unfix(psd_expr[kk,nn])
+            elseif typeof(psd_expr[kk,nn])==GenericAffExpr{Float64,VariableRef}
+                for tt in keys(psd_expr[kk,nn].terms)
+                    unfix(tt)
+                end
+            end
+        end
+    end
+end
+
+function add_C_cuts(model_info; tol=1e-6)
+    model = model_info["model"] 
+    psd_expr = model[:psd_expr]
+    PSD=model_info["psd_info"]
+    for kk in keys(PSD)
+        if PSD[kk]["<C,X>"] >= tol
+            JuMP.@constraint(model_info["model"], 
+                sum( PSD[kk]["ip"][nn]*PSD[kk]["C"][nn]*psd_expr[kk,nn] for nn in 1:PSD[kk]["vec_len"]) <= 0 )
+        end
+    end
+end
+
+### "THIS FUNCTION IS NOT DEBUGGED"
+### "Precondition: C and <C,X> keys of PSD[kk] are computed, and dual values exists for existing C_cut references"
+function add_or_modify_C_cuts(model_info; tol=1e-6)
+    model = model_info["model"] 
+    psd_expr = model[:psd_expr]
+    PSD=model_info["psd_info"]
+    for kk in keys(PSD)
+        if PSD[kk]["<C,X>"] >= tol
+            if !haskey(PSD[kk],"C_cut") 
+                PSD[kk]["C_cut"]=Dict{String,Any}()
+                PSD[kk]["C_cut"]["ref"]=JuMP.@constraint(model_info["model"], 
+                    sum( PSD[kk]["ip"][nn]*PSD[kk]["C"][nn]*psd_expr[kk,nn] for nn in 1:PSD[kk]["vec_len"]) <= 0 )
+                PSD[kk]["C_cut"]["coeff"]=Dict{VariableRef,Float64}()
+                con_expr = constraint_object(PSD[kk]["C_cut"]["ref"]).func 
+                for vv in keys(con_expr.terms)
+                    PSD[kk]["C_cut"]["coeff"][vv]=con_expr.terms[vv]
+                end
+            else
+                if PSD[kk]["C_cut"]["dual_val"] >= tol
+                    for tt in keys(PSD[kk]["C_cut"]["coeff"])
+                        PSD[kk]["C_cut"]["coeff"][tt] *= PSD[kk]["C_cut"]["dual_val"]
+                    end
+                else
+                    for tt in keys(PSD[kk]["C_cut"]["coeff"])
+                        PSD[kk]["C_cut"]["coeff"][tt] = 0.0
+                    end
+                end
+                for nn=1:PSD[kk]["vec_len"]
+                    if typeof(psd_expr[kk,nn])==VariableRef
+                        if haskey(PSD[kk]["C_cut"]["coeff"],psd_expr[kk,nn])
+                            PSD[kk]["C_cut"]["coeff"][psd_expr[kk,nn]] += PSD[kk]["ip"][nn]*PSD[kk]["C"][nn]
+                        else
+                            PSD[kk]["C_cut"]["coeff"][psd_expr[kk,nn]] = PSD[kk]["ip"][nn]*PSD[kk]["C"][nn]
+                        end
+                    else
+                        @assert typeof(psd_expr[kk,nn])==GenericAffExpr{Float64,VariableRef}
+                        for tt in keys(psd_expr[kk,nn].terms)
+                            if haskey(PSD[kk]["C_cut"]["coeff"],tt)
+                                PSD[kk]["C_cut"]["coeff"][tt] += PSD[kk]["ip"][nn]*(psd_expr[kk,nn].terms[tt])*PSD[kk]["C"][nn]
+                            else
+                                PSD[kk]["C_cut"]["coeff"][tt] = PSD[kk]["ip"][nn]*(psd_expr[kk,nn].terms[tt])*PSD[kk]["C"][nn]
+                            end
+                        end
+                    end
+                    for tt in keys(PSD[kk]["C_cut"]["coeff"])
+	                    JuMP.set_normalized_coefficient(PSD[kk]["C_cut"]["ref"],tt,PSD[kk]["C_cut"]["coeff"][tt])
+                    end
+                end
+            end
         end
     end
 end
