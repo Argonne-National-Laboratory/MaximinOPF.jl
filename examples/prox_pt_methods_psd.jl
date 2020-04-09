@@ -44,12 +44,13 @@ function solve_PSD_via_ADMM(model_info::Dict{String,Any}; max_n_iter=100, prox_t
     end
     for ii=0:max_n_iter
         for kk in keys(PSD)
-            PSD[kk]["quad_terms"] = sum( PSD[kk]["ip"][nn]*( psd_expr[kk,nn] - PSD[kk]["expr_val_ctr"][nn] + PSD[kk]["C"][nn]  )^2 for nn in 1:PSD[kk]["vec_len"]) 
+            PSD[kk]["quad_terms"] = sum( 
+                PSD[kk]["ip"][nn]*( ( psd_expr[kk,nn] - PSD[kk]["expr_val_ctr"][nn] + PSD[kk]["C"][nn]  )^2 - PSD[kk]["C"][nn]^2 ) 
+                for nn in 1:PSD[kk]["vec_len"]) 
         end
         @objective( model, model_info["obj_sense"], model[:linobj_expr]  
-            + 0.5* prox_sign * prox_t*sum(PSD[kk]["scale_factor"]*(PSD[kk]["quad_terms"] 
-            - sum( PSD[kk]["ip"][nn]*PSD[kk]["C"][nn]*PSD[kk]["C"][nn] for nn in 1:PSD[kk]["vec_len"])) 
-            for kk in keys(PSD) )
+            + 0.5* prox_sign * prox_t*sum(
+                PSD[kk]["scale_factor"]*( PSD[kk]["quad_terms"] ) for kk in keys(PSD) )
         )
         try
             JuMP.optimize!( model) 
@@ -64,9 +65,10 @@ function solve_PSD_via_ADMM(model_info::Dict{String,Any}; max_n_iter=100, prox_t
             end
         end
         model_info["prox_val"]=JuMP.objective_value(model)
+        obj_val=JuMP.value(model[:linobj_expr]) 
         model_info["solve_status"]=JuMP.termination_status(model)
 
-        ADMMProjections(model_info;io=io)
+        ADMMProjections(model_info;io=io, validate=true)
 #=
         for kk in keys(PSD)
             PSD[kk]["Lagr_term_vals"] = sum( PSD[kk]["ip"][nn]*PSD[kk]["C"][nn]*PSD[kk]["prim_res"][nn] for nn in 1:PSD[kk]["vec_len"]) 
@@ -75,31 +77,50 @@ function solve_PSD_via_ADMM(model_info::Dict{String,Any}; max_n_iter=100, prox_t
         model_info["prox_val"] += prox_sign*prox_t*sum(PSD[kk]["scale_factor"]*PSD[kk]["Lagr_term_vals"] + 0.5*PSD[kk]["prim_res_norm"]^2 for kk in keys(PSD))
 =#
         prim_res = trunc(sqrt(sum( PSD[kk]["prim_res_norm"]^2 for kk in keys(PSD)));digits=4)
+        max_prim = trunc(maximum( PSD[kk]["prim_res_norm"] for kk in keys(PSD));digits=4)
+
         dual_res = trunc(prox_t*sqrt(sum( PSD[kk]["dual_res_norm"]^2 for kk in keys(PSD)));digits=4)
+        max_dual = trunc(prox_t*maximum( PSD[kk]["dual_res_norm"] for kk in keys(PSD));digits=4)
+
+        #dual_res = trunc(prox_t*model_info["<C,X>"];digits=4)
         if mod(ii,display_freq)==0 || ii==1
-            println("\tsub-Iter $ii prox obj value: ",model_info["prox_val"], " in statu: ", 
-                model_info["solve_status"]," p_res=",prim_res," d_res=",dual_res, " prox_t=",prox_t )
+            println("\tsub-Iter $ii prox obj value: ",model_info["prox_val"]," vs obj ",obj_val, " in statu: ", 
+                model_info["solve_status"]," p_res=",max_prim," d_res=",max_dual, " prox_t=",prox_t )
+            println("\t\t<C,X>=",round(model_info["<C,X>"];digits=4),"\t\t<C,Z>=",model_info["<C,Z>"])
         end
-        if prim_res < 1e-4 && dual_res < 1e-4
-	        println("Sub-Iteratione $ii terminante, quia solutio relaxata est factibilis.")
+        if prim_res + dual_res < prox_t*model_info["<C,X>"] && (max_prim + max_dual < 1e-2)
+            println("Adding cuts at iteration $ii")
+            for kk in keys(PSD)
+                JuMP.@constraint(model_info["model"], 
+                    sum( PSD[kk]["ip"][nn]*PSD[kk]["C"][nn]*psd_expr[kk,nn] for nn in 1:PSD[kk]["vec_len"]) <= 0 )
+                PSD[kk]["C"][:] .= 0
+            end
+            continue
+        end
+        if max_prim < 1e-4 && max_dual < 1e-4
+	        println("Sub-Iteratione $ii terminante, propter solutionem relaxatam est factibilem.")
             break
-        elseif rescale && mod(ii,500) == 0 
-            scale_fac = 1.10
-            if prim_res > 10*dual_res
+        elseif rescale && mod(ii,200)==0 && ii>1
+            scale_fac = 2
+            bal_fac = 10 
+            prox_t_updated=false
+            if prim_res > bal_fac*dual_res
                 if model_info["prox_t"] < 1e3
+                    prox_t_updated=true
                     model_info["prox_t"] *= scale_fac
+                    prox_t=round(model_info["prox_t"];digits=5)
                     for kk in keys(PSD)
                         PSD[kk]["C"][:] /= scale_fac
                     end
-                    prox_t=round(model_info["prox_t"];digits=5)
                 end
-            elseif dual_res > 10*prim_res
+            elseif dual_res > bal_fac*prim_res
                 if model_info["prox_t"] > 1e-3
+                    prox_t_updated=true
                     model_info["prox_t"] /= scale_fac
+                    prox_t=round(model_info["prox_t"];digits=5)
                     for kk in keys(PSD)
                         PSD[kk]["C"][:] *= scale_fac
                     end
-                    prox_t=round(model_info["prox_t"];digits=5)
                 end
             end
             
