@@ -19,16 +19,6 @@ PowerModels.silence()
 
 
 
-function getMaxShedding(pm_data)
-    maxShed=0.0
-    for ll in keys(pm_data["load"])
-        maxShed += abs(pm_data["load"][ll]["pd"]) + abs(pm_data["load"][ll]["qd"])
-    end
-    for gg in keys(pm_data["gen"])
-        maxShed += max(pm_data["gen"][gg]["pmin"],0) + max(pm_data["gen"][gg]["qmin"],0)
-    end
-    return maxShed 
-end
 
 function solveMaxminViaCB(pm_data,pm_form; use_dual_minmax=true)
     #global MAX_TIME

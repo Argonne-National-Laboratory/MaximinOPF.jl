@@ -30,11 +30,11 @@ PowerModels.silence()
 
     ### "sdp_relax=[SDPWRMPowerModel, SparseSDPWRMPowerModel]"
     pm_form = SparseSDPWRMPowerModel
-    base_maxmin = MaximinOPF.MaximinOPFModel(pm_data, pm_form; enforce_int=false, rm_rsoc=true, rm_therm_line_lim=false)
+    base_maxmin = MaximinOPF.MaximinOPFModel(pm_data, pm_form; enforce_int=false, rm_rsoc=true, rm_therm_line_lim=true)
     branch_ids=sort(collect(pm_data["undecided_branches"]))
     psd_base_maxmin = convertSOCtoPSD(base_maxmin)
-    #JuMP.set_optimizer(psd_base_maxmin,with_optimizer(Ipopt.Optimizer))
-    JuMP.set_optimizer(psd_base_maxmin,with_optimizer(OSQP.Optimizer,verbose=false,eps_abs=1e-9,max_iter=10000))
+    JuMP.set_optimizer(psd_base_maxmin,with_optimizer(Ipopt.Optimizer,print_level=0))
+    #JuMP.set_optimizer(psd_base_maxmin,with_optimizer(OSQP.Optimizer,verbose=false,eps_abs=1e-9,max_iter=10000))
 #=
 options = Dict(:verbose => false,
                    :eps_abs => 1e-09,
@@ -53,11 +53,23 @@ options = Dict(:verbose => false,
 
     start_time = time_ns()
 
-    solve_PSD_via_ADMM(model_info; max_n_iter=10000, prox_t=0.2, rescale=false, display_freq=100,io=devnull)
+    solve_PSD_via_ADMM(model_info; max_n_iter=10000, prox_t=0.01, rescale=true, display_freq=100,io=devnull)
+
+    println("Testing final value with psd var fixed to center")
+    fixPSDCtr(model_info)
+    try
+        JuMP.optimize!( model_info["model"] ) 
+    catch exc
+        println(exc)
+	    println("Catching solve error, breaking from subiteration loop.")
+    end
+    model_info["opt_val"]=JuMP.value(model_info["model"][:linobj_expr])
+    model_info["solve_status"]=JuMP.termination_status(model_info["model"])
+    println("Optimal value using powerform ", pm_form, " is: ",model_info["opt_val"], " with status ",model_info["solve_status"])
+    
 
     end_time = time_ns()
     runtime = (end_time-start_time)/1e9
-    println("Optimal value using powerform ", pm_form, " is: ",model_info["opt_val"], " with status ",model_info["solve_status"])
 
     println("Runtime: ",runtime)
 
