@@ -63,6 +63,9 @@ function solve_PSD_via_ADMM(model_info::Dict{String,Any}; max_n_iter=100, prox_t
             for nn=1:PSD[kk]["vec_len"]
                 PSD[kk]["expr_val"][nn] = JuMP.value(psd_expr[kk,nn])
             end
+            if haskey(PSD[kk],"C_cut") 
+                PSD[kk]["C_cut"]["dual_val"] = abs(JuMP.dual(PSD[kk]["C_cut"]["ref"]))
+            end
         end
         model_info["prox_val"]=JuMP.objective_value(model)
         obj_val=JuMP.value(model[:linobj_expr]) 
@@ -88,11 +91,11 @@ function solve_PSD_via_ADMM(model_info::Dict{String,Any}; max_n_iter=100, prox_t
                 model_info["solve_status"]," p_res=",max_prim," d_res=",max_dual, " prox_t=",prox_t )
             println("\t\t<C,X>=",round(model_info["<C,X>"];digits=4),"\t\t<C,Z>=",model_info["<C,Z>"])
         end
-        if prim_res + dual_res < prox_t*model_info["<C,X>"] && (max_prim + max_dual < 1e-2)
+        if prim_res + dual_res < prox_t*model_info["<C,X>"] && mod(ii,500)==0 && ii > 1 && max_prim < 1e-2 && max_dual < 1e-2
             println("Adding cuts at iteration $ii")
+            add_C_cuts(model_info)
+            #add_or_modify_C_cuts(model_info)
             for kk in keys(PSD)
-                JuMP.@constraint(model_info["model"], 
-                    sum( PSD[kk]["ip"][nn]*PSD[kk]["C"][nn]*psd_expr[kk,nn] for nn in 1:PSD[kk]["vec_len"]) <= 0 )
                 PSD[kk]["C"][:] .= 0
             end
             continue
@@ -100,7 +103,7 @@ function solve_PSD_via_ADMM(model_info::Dict{String,Any}; max_n_iter=100, prox_t
         if max_prim < 1e-4 && max_dual < 1e-4
 	        println("Sub-Iteratione $ii terminante, propter solutionem relaxatam est factibilem.")
             break
-        elseif rescale && mod(ii,200)==0 && ii>1
+        elseif rescale && mod(ii,100)==0 && ii>1
             scale_fac = 2
             bal_fac = 10 
             prox_t_updated=false
