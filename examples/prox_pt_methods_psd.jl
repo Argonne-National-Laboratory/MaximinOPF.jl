@@ -107,9 +107,9 @@ function solve_PSD_via_ADMM(model_info::Dict{String,Any};
                     " prox_t=",prox_t )
                 break
             end
-        elseif rescale && ii>500
+        elseif rescale # && ii>1 && mod(ii,10)==0
             scale_fac = 2
-            scale_bal = 10
+            scale_bal = 5 
             prox_t_updated=false
             if dual_res > scale_bal*prim_res
                 if model_info["prox_t"] > model_info["prox_t_min"]
@@ -124,9 +124,13 @@ function solve_PSD_via_ADMM(model_info::Dict{String,Any};
                     prox_t_updated=true
                 end
             end
-            if prox_t_updated
+            if prox_t_updated # || prox_t*model_info["<C,X>"] > scale_bal*max(prim_res,dual_res)
                 add_C_cuts(model_info)
-                println("\t\tAdding cuts at iteration $ii due to adjustment of prox_t")
+                if prox_t_updated
+                    println("\t\tAdding cuts at iteration $ii due to adjustment of prox_t")
+                else
+                    println("\t\tAdding cuts at iteration $ii to improve satisfaction of complementary slackness.")
+                end
                 for kk in keys(PSD)
                     PSD[kk]["C"][:] .= 0
                 end

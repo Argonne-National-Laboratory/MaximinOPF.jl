@@ -13,14 +13,41 @@ using OSQP
 #using SCIP
 PowerModels.silence()
 
+    global case_instance="30"
+    global attack_budget=4
+    global form_str="SDP"
+    global use_h_relax="no"
+    global case_spec=false
+    global budget_spec=false
+    for aa in 1:length(ARGS)
+        global case_instance
+        global attack_budget
+        if occursin("--case=",ARGS[aa])
+            case_instance=ARGS[aa][(length("--case=")+1):length(ARGS[aa])]
+            println("case being set to ",case_instance)
+            case_spec=true
+        elseif occursin("--K=",ARGS[aa])
+            attack_budget=parse(Int64,ARGS[aa][(length("--K=")+1):length(ARGS[aa])])
+            println("attack budget being set to ",attack_budget)
+            budget_spec=true
+        elseif occursin("--form_str=",ARGS[aa])
+            form_str=ARGS[aa][(length("--form_str=")+1):length(ARGS[aa])]
+        else
+            println(Base.stderr,"Argument ",ARGS[aa]," not recognized.")
+        end
+    end
+
     testcase = Dict(
-	    "file" => "data/case118.m", 
+	    "file" => string("data/case",case_instance,".m"), 
 	    "PMOption" => SparseSDPWRMPowerModel,
- 	    "name" => "case118K4SDP",  	
- 	    "attack_budget" => 4,
+ 	    "name" => string("case",case_instance,"K",attack_budget,form_str),  	
+ 	    "attack_budget" => attack_budget,
  	    "inactive_indices" => [],
  	    "protected_indices" => []
 	)
+    println("Testing ADMM for root node relaxation of Maxmin problem: ")
+    println(testcase)
+
 
 ### "Initialize power model instance, (relaxed) maxmin problem for identifying critical contingencies"
     pm_data = PowerModels.parse_file(testcase["file"])
@@ -54,19 +81,6 @@ options = Dict(:verbose => false,
     start_time = time_ns()
 
     solve_PSD_via_ADMM(model_info; max_n_iter=10000, prox_t=0.01, rescale=true, display_freq=100,io=devnull)
-
-    println("Testing final value with psd var fixed to center")
-    fixPSDCtr(model_info)
-    try
-        JuMP.optimize!( model_info["model"] ) 
-    catch exc
-        println(exc)
-	    println("Catching solve error, breaking from subiteration loop.")
-    end
-    model_info["opt_val"]=JuMP.value(model_info["model"][:linobj_expr])
-    model_info["solve_status"]=JuMP.termination_status(model_info["model"])
-    println("Optimal value using powerform ", pm_form, " is: ",model_info["opt_val"], " with status ",model_info["solve_status"])
-    
 
     end_time = time_ns()
     runtime = (end_time-start_time)/1e9
