@@ -189,8 +189,8 @@ end
 
 testcase = Dict(
 	"file" => "data/case57.m", 
- 	"name" => "case57K2",  	
- 	"attack_budget" => 2,
+ 	"name" => "case57K4",  	
+ 	"attack_budget" => 4,
  	"inactive_indices" => [],
  	"protected_indices" => []
 	)
