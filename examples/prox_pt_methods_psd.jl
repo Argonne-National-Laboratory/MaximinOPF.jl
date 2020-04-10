@@ -107,17 +107,17 @@ function solve_PSD_via_ADMM(model_info::Dict{String,Any};
                     " prox_t=",prox_t )
                 break
             end
-        elseif rescale && (prim_res < prim_tol || dual_res < dual_tol)
+        elseif rescale && ii>500
             scale_fac = 2
-            scale_bal = 2
+            scale_bal = 10
             prox_t_updated=false
-            if prim_res < prim_tol && dual_res > scale_bal*prim_res
+            if dual_res > scale_bal*prim_res
                 if model_info["prox_t"] > model_info["prox_t_min"]
                     model_info["prox_t"] /= scale_fac
                     prox_t=round(model_info["prox_t"];digits=5)
                     prox_t_updated=true
                 end
-            elseif dual_res < dual_tol && prim_res > scale_bal*dual_res
+            elseif prim_res > scale_bal*dual_res
                 if model_info["prox_t"] < model_info["prox_t_max"]
                     model_info["prox_t"] *= scale_fac
                     prox_t=round(model_info["prox_t"];digits=5)

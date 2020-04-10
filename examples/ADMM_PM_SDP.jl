@@ -33,7 +33,7 @@ PowerModels.silence()
     base_maxmin = MaximinOPF.MaximinOPFModel(pm_data, pm_form; enforce_int=false, rm_rsoc=true, rm_therm_line_lim=true)
     branch_ids=sort(collect(pm_data["undecided_branches"]))
     psd_base_maxmin = convertSOCtoPSD(base_maxmin)
-    JuMP.set_optimizer(psd_base_maxmin,with_optimizer(Ipopt.Optimizer,print_level=0))
+    JuMP.set_optimizer(psd_base_maxmin,with_optimizer(Ipopt.Optimizer,print_level=0,linear_solver="ma57"))
     #JuMP.set_optimizer(psd_base_maxmin,with_optimizer(OSQP.Optimizer,verbose=false,eps_abs=1e-9,max_iter=10000))
 #=
 options = Dict(:verbose => false,
