@@ -21,11 +21,6 @@ git-tree-sha1 = "3663bfffede2ef41358b6fc2e1d8a6d50b3c3904"
 uuid = "6e34b625-4abd-537c-b88f-471c36dfa7a0"
 version = "1.0.6+2"
 
-[[CEnum]]
-git-tree-sha1 = "5a2679abe17f5e70d90753940dcb7f15e61369d4"
-uuid = "fa961155-64e5-5f13-b03f-caf6b980ea82"
-version = "0.1.2"
-
 [[Calculus]]
 deps = ["LinearAlgebra"]
 git-tree-sha1 = "f641eb0a4f00c343bbc32346e1217b86f3ce9dad"
@@ -203,18 +198,6 @@ git-tree-sha1 = "916b850daad0d46b8c71f65f719c49957e9513ed"
 uuid = "78c3b35d-d492-501b-9361-3d52fe80e533"
 version = "0.7.1"
 
-[[Mosek]]
-deps = ["Libdl", "Pkg", "Printf", "SparseArrays"]
-git-tree-sha1 = "82b0df8ba94a086a11615f8103f0db3ca45cc02c"
-uuid = "6405355b-0ac2-5fba-af84-adbd65488c0e"
-version = "1.1.1"
-
-[[MosekTools]]
-deps = ["MathOptInterface", "Mosek", "Printf"]
-git-tree-sha1 = "4d595a5687bd4af2e968c59d6575fd3c4cf21349"
-uuid = "1ec41992-ff65-5c91-ac43-2df89e9693a4"
-version = "0.9.2"
-
 [[MutableArithmetics]]
 deps = ["LinearAlgebra", "SparseArrays", "Test"]
 git-tree-sha1 = "be48bfee38b4cf3baaa3f0de5a769b607651e35d"
@@ -265,12 +248,6 @@ uuid = "3fa0cd96-eef1-5676-8a61-b3b8758bbffb"
 [[Random]]
 deps = ["Serialization"]
 uuid = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
-
-[[SCIP]]
-deps = ["CEnum", "Libdl", "MathOptInterface"]
-git-tree-sha1 = "3e369ea5c8beb06f675d9152c16299b45d910084"
-uuid = "82193955-e24f-5292-bf16-6f2c5261a85f"
-version = "0.9.1"
 
 [[SHA]]
 uuid = "ea8e919c-243c-51af-8825-aaa63cd721ce"
