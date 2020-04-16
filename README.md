@@ -13,13 +13,12 @@ The simplest way to install the MaximinOPF.jl is below:
 (MaximinOPF.jl) pkg> build
 (MaximinOPF.jl) pkg> test
 ```
-The detail information to use this package is available on the [Getting Started](./gettingstarted/) document. The document include the installation, MaximinOPF model building, and optimization option information.
+The detail information to use this package is available on the [Getting Started](./wiki/Getting-Started) document. The document include the installation, MaximinOPF model building, and optimization option information.
 
 ## Links
 * Code Repository: [MaximinOPF.jl](https://github.com/Argonne-National-Laboratory/MaximinOPF.jl)
-* User Guide: [Getting Started](./gettingstarted/)
-* API Documentation: [API Doc](./API/)
-* Mathematical Concept: [Mathematical Concept](./mathematicalconcept/)
+* User Guide: [Getting Started](./wiki/Getting-Started)
+* API Documentation: [API Doc](./wiki/API)
 
 ## Team Members
 * Kibaek Kim: PI, Argonne National Laboratory, USA
