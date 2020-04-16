@@ -1,5 +1,6 @@
 using JuMP, MathOptInterface
 using PowerModels
+#
 
 function ConvertModelToDualizableForm(model::JuMP.Model)
     soc_model = MOI.Utilities.Model{Float64}()
@@ -169,12 +170,21 @@ function write_to_cbf(model,fn_base::String)
     JuMP.write_to_file( model, string(fn_base,".cbf"), format = MOI.FileFormats.FORMAT_CBF)
 end
 
+function add_artificial_var_bds(model::JuMP.Model; bd_mag=1e3)
+    all_vars = JuMP.all_variables(model)
+    for vv in all_vars
+        if !has_lower_bound(vv)
+            JuMP.@constraint(model, vv >= -bd_mag )
+        end
+        if !has_upper_bound(vv)
+            JuMP.@constraint(model, vv <= bd_mag )
+        end
+    end
+end
 
 function write_to_cbf_scip(model,fn_base::String)
     model_psd = convertSOCtoPSD(model)
-    add_psd_initial_cuts(model_psd) ### "If no psd constraints, does nothing"
-    add_artificial_var_bds(model::JuMP.Model; bd_mag=1e2)
-    #add_artificial_var_bds(model::JuMP.Model; bd_mag=1e3, io=Base.stdout)
+    #add_artificial_var_bds(model_psd)
     fname=string(fn_base,"_scip",".cbf")
     JuMP_write_to_file( model_psd, fname, format = MOI.FileFormats.FORMAT_CBF)
     ### CHANGING VER 3 to VER 2 

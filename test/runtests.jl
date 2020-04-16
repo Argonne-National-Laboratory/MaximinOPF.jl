@@ -11,15 +11,15 @@ PowerModels.silence()
 
 for j in 1:length(testcases)
     pm_data = PowerModels.parse_file( testcases[j]["file"] )
-    powerform = testcases[j]["PMOption"]
+    pm_form = testcases[j]["PMOption"]
     pm_data["name"]=testcases[j]["name"]
     pm_data["attacker_budget"] = testcases[j]["attack_budget"] ###Adding another key and entry
     pm_data["inactive_branches"] = testcases[j]["inactive_indices"] ###Adding another key and entry
     pm_data["protected_branches"] = testcases[j]["protected_indices"] ###Adding another key and entry
-    pm_data["powerform"] = powerform
+    pm_data["pm_form"] = pm_form
 
     #Create JUMP Model
-    maxmin_model = MaximinOPF.MaximinOPFModel(pm_data, powerform) 
+    maxmin_model = MaximinOPF.MaximinOPFModel(pm_data, pm_form; enforce_int=true, io=devnull, rm_rsoc=true, rm_therm_line_lim=false)
 
     println(string("Start Solving: ", testcases[j]["name"]))
 
@@ -34,6 +34,7 @@ for j in 1:length(testcases)
         #Convert MOI to CBF
         #Solve with SCIP
         # maxmin_model = MaximinOPF.SOCtoPSD(maxmin_model)
+        MaximinOPF.write_to_cbf_scip(maxmin_model,testcases[j]["name"])
 
         # set_optimizer(maxmin_model,SCIP.Optimizer)  
         # result = @elapsed JuMP.optimize!(maxmin_model)
