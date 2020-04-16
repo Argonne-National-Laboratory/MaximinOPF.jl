@@ -1,7 +1,7 @@
 using MaximinOPF
 using PowerModels
-using Mosek
-using MosekTools
+# using Mosek
+# using MosekTools
 using JuMP
 #using SCIP
 
@@ -24,12 +24,11 @@ for j in 1:length(testcases)
     println(string("Start Solving: ", testcases[j]["name"]))
 
     if occursin("SOC", testcases[j]["name"])
-        
-        set_optimizer(maxmin_model,Mosek.Optimizer)  
-        result = @elapsed JuMP.optimize!(maxmin_model)
-        #Print Result   
-        status=JuMP.termination_status(maxmin_model)
-        println("Time taken to solve is: ", result, " with status ",status,".")     
+        # set_optimizer(maxmin_model,Mosek.Optimizer)  
+        # result = @elapsed JuMP.optimize!(maxmin_model)
+        # #Print Result   
+        # status=JuMP.termination_status(maxmin_model)
+        # println("Time taken to solve is: ", result, " with status ",status,".")     
     elseif occursin("SDP", testcases[j]["name"])
         #Convert MOI to CBF
         #Solve with SCIP
@@ -43,7 +42,6 @@ for j in 1:length(testcases)
         println(string("Solver is not selected for ", testcases[j]["name"]))
     else
         println(string("Solver is not selected for ", testcases[j]["name"]))
-
     end
 end
 
