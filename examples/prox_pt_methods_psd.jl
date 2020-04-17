@@ -28,7 +28,7 @@ PowerModels.silence()
  ### "so that a user can call this function multiple times to get ever more accurate solution information."
  ### "Return aggregated cuts for the PSD constraints, and a Dictionary of new constraints"
 function solve_PSD_via_ADMM(model_info::Dict{String,Any}; 
-    max_n_iter=1000, prox_t=1, prim_tol=1e-3, dual_tol=1e-3, cs_tol=1e-2, rescale=true, display_freq::Int64=10,io=Base.stdout)
+    max_n_iter=1000, prox_t=1, prim_tol=1e-3, dual_tol=1e-3, cs_tol=1e-3, rescale=false, display_freq::Int64=10,io=Base.stdout)
     model = model_info["model"] 
     model_info["prox_t"] = prox_t
     model_info["prox_t_min"] = 1e-3
@@ -64,8 +64,8 @@ function solve_PSD_via_ADMM(model_info::Dict{String,Any};
             for nn=1:PSD[kk]["vec_len"]
                 PSD[kk]["expr_val"][nn] = JuMP.value(psd_expr[kk,nn])
             end
-            if haskey(PSD[kk],"C_cut") 
-                PSD[kk]["C_cut"]["dual_val"] = abs(JuMP.dual(PSD[kk]["C_cut"]["ref"]))
+            for cc in keys(PSD[kk]["cuts"])
+                PSD[kk]["cuts"][cc]["dual_val"] = abs(JuMP.dual(cc))
             end
         end
         model_info["prox_val"]=JuMP.objective_value(model)
@@ -89,15 +89,8 @@ function solve_PSD_via_ADMM(model_info::Dict{String,Any};
                 " p_res=",prim_res," d_res=",dual_res, ", <C,X>=",round(model_info["<C,X>"];digits=4),
                 " prox_t=",prox_t )
         end
-        if prim_res < prim_tol && dual_res < dual_tol
-            if prox_t*model_info["<C,X>"] >= cs_tol
-                add_C_cuts(model_info)
-                println("\t\tAdding cuts at iteration $ii to improve satisfaction of complementary slackness.")
-                for kk in keys(PSD)
-                    PSD[kk]["C"][:] .= 0
-                end
-                continue
-            else
+        if prim_res < prim_tol
+            if dual_res < dual_tol && prox_t*model_info["<C,X>"] < cs_tol
 	            println("Sub-Iteratione $ii terminante, propter solutionem relaxatam est factibilem.")
                 println("\tprox obj value: ",
                     round(model_info["prox_val"];digits=4),
@@ -106,36 +99,63 @@ function solve_PSD_via_ADMM(model_info::Dict{String,Any};
                     " p_res=",prim_res," d_res=",dual_res, ", <C,X>=",round(model_info["<C,X>"];digits=4),
                     " prox_t=",prox_t )
                 break
+            else 
+                if rescale && model_info["prox_t"] > model_info["prox_t_min"] && dual_res >= dual_tol
+                    model_info["prox_t"] *= 0.5
+                    prox_t=round(model_info["prox_t"];digits=5)
+                end
+                #add_or_modify_C_cuts(model_info)
+                add_C_cuts(model_info; delete_inactive=false)
+                println("\t\tAdding cuts at iteration $ii to improve sastifaction of optimality criteria.")
+                for kk in keys(PSD)
+                    PSD[kk]["C"][:] .= 0
+                end
+                continue
             end
-        elseif rescale # && ii>1 && mod(ii,10)==0
+        elseif dual_res < dual_tol 
+            if rescale && model_info["prox_t"] < model_info["prox_t_max"] && prim_res >= prim_tol && mod(ii,100)==0
+                model_info["prox_t"] *= 2
+                prox_t=round(model_info["prox_t"];digits=5)
+                println("\t\tIncreasing prox_t at iteration $ii to ",prox_t)
+                for kk in keys(PSD)
+                    PSD[kk]["C"][:] /= 2
+                end
+#=
+            elseif prox_t*model_info["<C,X>"] >= cs_tol
+                add_C_cuts(model_info; delete_inactive=false)
+                println("\t\tAdding cuts at iteration $ii to improve sastifaction of optimality criteria.")
+                for kk in keys(PSD)
+                    PSD[kk]["C"][:] .= 0
+                end
+=#
+            end
+            continue
+#=
+        elseif rescale 
             scale_fac = 2
-            scale_bal = 5 
-            prox_t_updated=false
+            scale_bal = 10 
             if dual_res > scale_bal*prim_res
                 if model_info["prox_t"] > model_info["prox_t_min"]
                     model_info["prox_t"] /= scale_fac
                     prox_t=round(model_info["prox_t"];digits=5)
-                    prox_t_updated=true
                 end
+                add_C_cuts(model_info)
+                for kk in keys(PSD)
+                    PSD[kk]["C"][:] .= 0
+                end
+                println("\t\tAdding cuts at iteration $ii due to reduction of prox_t to ",prox_t)
             elseif prim_res > scale_bal*dual_res
                 if model_info["prox_t"] < model_info["prox_t_max"]
                     model_info["prox_t"] *= scale_fac
                     prox_t=round(model_info["prox_t"];digits=5)
-                    prox_t_updated=true
-                end
-            end
-            if prox_t_updated # || prox_t*model_info["<C,X>"] > scale_bal*max(prim_res,dual_res)
-                add_C_cuts(model_info)
-                if prox_t_updated
-                    println("\t\tAdding cuts at iteration $ii due to adjustment of prox_t")
-                else
-                    println("\t\tAdding cuts at iteration $ii to improve satisfaction of complementary slackness.")
-                end
-                for kk in keys(PSD)
-                    PSD[kk]["C"][:] .= 0
+                    println("\t\tIncreasing prox_t at iteration $ii to ",prox_t)
+                    for kk in keys(PSD)
+                        PSD[kk]["C"][:] /= scale_fac
+                    end
                 end
             end
             continue
+=#
         end
     end
 end
