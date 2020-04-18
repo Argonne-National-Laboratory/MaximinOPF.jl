@@ -1,9 +1,7 @@
 using MaximinOPF
 using PowerModels
-# using Mosek
-# using MosekTools
 using JuMP
-#using SCIP
+using SCS
 
 include("testcases.jl")
 PowerModels.silence()
@@ -19,29 +17,15 @@ for j in 1:length(testcases)
     pm_data["powerform"] = powerform
 
     #Create JUMP Model
-    maxmin_model = MaximinOPF.MaximinOPFModel(pm_data, powerform) 
+    maxmin_model = MaximinOPF.MaximinOPFModel(pm_data, powerform; enforce_int=false) 
 
     println(string("Start Solving: ", testcases[j]["name"]))
-
-    if occursin("SOC", testcases[j]["name"])
-        # set_optimizer(maxmin_model,Mosek.Optimizer)  
-        # result = @elapsed JuMP.optimize!(maxmin_model)
-        # #Print Result   
-        # status=JuMP.termination_status(maxmin_model)
-        # println("Time taken to solve is: ", result, " with status ",status,".")     
-    elseif occursin("SDP", testcases[j]["name"])
-        #Convert MOI to CBF
-        #Solve with SCIP
-        # maxmin_model = MaximinOPF.SOCtoPSD(maxmin_model)
-
-        # set_optimizer(maxmin_model,SCIP.Optimizer)  
-        # result = @elapsed JuMP.optimize!(maxmin_model)
-        # #Print Result   
-        # status=JuMP.termination_status(maxmin_model)
-        # println("Time taken to solve is: ", result, " with status ",status,".")     
-        println(string("Solver is not selected for ", testcases[j]["name"]))
-    else
-        println(string("Solver is not selected for ", testcases[j]["name"]))
-    end
+    
+    set_optimizer(maxmin_model,SCS.Optimizer)  
+    result = @elapsed JuMP.optimize!(maxmin_model)
+    #Print Result   
+    status=JuMP.termination_status(maxmin_model)
+    println("Time taken to solve is: ", result, " with status ",status,".")     
+    
 end
 

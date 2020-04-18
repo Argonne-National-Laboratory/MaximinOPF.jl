@@ -9,6 +9,7 @@ JuMP = "4076af6c-e467-56ae-b986-b466b2749572"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
 MathOptInterface = "b8f27783-ece8-5eb3-8dc8-9495eed66fee"
 PowerModels = "c36e90e8-916a-50a6-bd94-075b64ef4655"
+SCS = "c946c3f1-0d1f-5ce8-9dea-7daa1f7e2d13"
 TimeZones = "f269a46b-ccf7-5d73-abea-4c690281aa53"
 
 [compat]
@@ -17,3 +18,4 @@ JuMP = "= 0.21.2"
 MathOptInterface = "= 0.9.13"
 PowerModels = "= 0.15.4"
 TimeZones = "= 1.0.0"
+SCS = ">= 0.6.6 "
