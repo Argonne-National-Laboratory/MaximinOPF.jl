@@ -203,8 +203,8 @@ function gatherPSDConInfo(model::JuMP.Model)
     @expression(model, psd_expr[kk in keys(PSD), mm=1:PSD[kk]["vec_len"]], PSD[kk]["expr"][mm] )
     for kk in keys(PSD)
             PSD[kk]["model"] = model
-            PSD[kk]["all_cuts"] = Dict{Int64,Dict{String,Any}}() ### "Will be productive later"
-            PSD[kk]["new_cuts"] = Dict{Int64,Dict{String,Any}}()
+            PSD[kk]["cuts"] = Dict{ConstraintRef,Dict{String,Any}}() ### "Will be productive later"
+            PSD[kk]["new_cuts"] = Dict{ConstraintRef,Dict{String,Any}}()
             vec_len = PSD[kk]["vec_len"] 
             PSD[kk]["expr_val"] = zeros(vec_len)
             PSD[kk]["dual_val"] = zeros(vec_len)
@@ -304,23 +304,48 @@ function conditionallyUpdateProxCenter(model_info)
     end
 end
 
-function aggregateNewCuts(model_info)
+function aggregate_cuts(model_info)
     ###TODO: Aggregate the set of new cuts into an aggregate
-    n_del = 0
+    model = model_info["model"] 
+    psd_expr = model[:psd_expr]
     PSD=model_info["psd_info"]
     for kk in keys(PSD)
-#=
-        for nn in keys(PSD[kk]["new_cuts"])
-        #print(" ", has_duals( model_info["model"] ))
-            if abs( PSD[kk]["new_cuts"][nn]["val"] ) >= 1e-4
-                JuMP.delete(model_info["model"], PSD[kk]["new_cuts"][nn]["ref"] )
+        if length(PSD[kk]["cuts"]) > 1
+            C=zeros(PSD[kk]["vec_len"])
+            dual_sum=0
+            for cc in keys(PSD[kk]["cuts"])
+                dual_sum += PSD[kk]["cuts"][cc]["dual_val"]
+                C[:] += PSD[kk]["cuts"][cc]["dual_val"]*PSD[kk]["cuts"][cc]["C"][:]
+                JuMP.delete(model,cc)
+            end
+            empty!(PSD[kk]["cuts"])
+            if dual_sum > 1e-6
+                C[:] /= dual_sum
+                agg_ref = JuMP.@constraint(model, 
+                    sum( PSD[kk]["ip"][nn]*C[nn]*psd_expr[kk,nn] for nn in 1:PSD[kk]["vec_len"]) <= 0 )
+                PSD[kk]["cuts"][agg_ref]=Dict{String,Any}("C"=>C)
+            end
+        end
+    end
+end
+
+function delete_inactive_cuts(model_info; tol=1e-6)
+    ###TODO: Aggregate the set of new cuts into an aggregate
+    model = model_info["model"] 
+    psd_expr = model[:psd_expr]
+    PSD=model_info["psd_info"]
+    n_del = 0
+    for kk in keys(PSD)
+        cuts = keys(PSD[kk]["cuts"])
+        for cc in cuts 
+            if PSD[kk]["cuts"][cc]["dual_val"] < 1e-6
+                JuMP.delete(model,cc)
+                delete!(PSD[kk]["cuts"],cc)
                 n_del += 1
             end
         end
-        #print("\n")
-=#
     end
-    println("\t\tNumber of cuts deleted: ",n_del)
+    println("\t\tDeleting $n_del inactive cuts.")
 end
 
 
@@ -427,9 +452,9 @@ function ADMMProjections(model_info; validate=false, io=Base.stdout)
             #println("$kk:\t\tmineigvalC=",PSD[kk]["min_eigval_C"],"\t\t<C,X>=",PSD[kk]["<C,X>"],"\t\t<C,Z>=",PSD[kk]["<C,Z>"],"\t\t|C|=",PSD[kk]["C_norm"])
         end
     end
+    model_info["<C,X>"] = sum(PSD[kk]["<C,X>"] for kk in keys(PSD))
     if validate
         model_info["<C,Z>"] = sum(PSD[kk]["<C,Z>"] for kk in keys(PSD))
-        model_info["<C,X>"] = sum(PSD[kk]["<C,X>"] for kk in keys(PSD))
     end
 end
 
@@ -558,14 +583,19 @@ function unfixPSDCtr(model_info::Dict{String,Any})
     end
 end
 
-function add_C_cuts(model_info; tol=1e-6)
+function add_C_cuts(model_info; delete_inactive=false, tol=1e-6)
     model = model_info["model"] 
     psd_expr = model[:psd_expr]
     PSD=model_info["psd_info"]
+    
+    if delete_inactive
+        delete_inactive_cuts(model_info; tol=1e-6)
+    end
     for kk in keys(PSD)
         if PSD[kk]["<C,X>"] >= tol
-            JuMP.@constraint(model_info["model"], 
+            cref = JuMP.@constraint(model_info["model"], 
                 sum( PSD[kk]["ip"][nn]*PSD[kk]["C"][nn]*psd_expr[kk,nn] for nn in 1:PSD[kk]["vec_len"]) <= 0 )
+            PSD[kk]["cuts"][cref]=Dict{String,Any}("C"=>copy(PSD[kk]["C"]))
         end
     end
 end
@@ -588,6 +618,11 @@ function add_or_modify_C_cuts(model_info; tol=1e-6)
                     PSD[kk]["C_cut"]["coeff"][vv]=con_expr.terms[vv]
                 end
             else
+                if !haskey(PSD[kk]["C_cut"], "agg_ref")
+                    PSD[kk]["C_cut"]["agg_ref"] = PSD[kk]["C_cut"]["ref"]
+                else
+                end
+                
                 if PSD[kk]["C_cut"]["dual_val"] >= tol
                     for tt in keys(PSD[kk]["C_cut"]["coeff"])
                         PSD[kk]["C_cut"]["coeff"][tt] *= PSD[kk]["C_cut"]["dual_val"]

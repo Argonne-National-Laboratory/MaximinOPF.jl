@@ -5,13 +5,40 @@ using SCS
 using ProxSDP
 PowerModels.silence()
 
+global case_instance="30"
+global attack_budget=4
+global form_str="SOC"
+global pm_form=SOCWRConicPowerModel
+for aa in 1:length(ARGS)
+    global case_instance
+    global attack_budget
+    global pm_form
+    if occursin("--case=",ARGS[aa])
+            case_instance=ARGS[aa][(length("--case=")+1):length(ARGS[aa])]
+            println("case being set to ",case_instance)
+    elseif occursin("--K=",ARGS[aa])
+            attack_budget=parse(Int64,ARGS[aa][(length("--K=")+1):length(ARGS[aa])])
+            println("attack budget being set to ",attack_budget)
+    elseif occursin("--form_str=",ARGS[aa])
+            form_str=ARGS[aa][(length("--form_str=")+1):length(ARGS[aa])]
+            if occursin("SDP",form_str) || occursin("PSD",form_str)
+                pm_form=SparseSDPWRMPowerModel
+            elseif occursin("SOC")
+                pm_form=SOCWRConicPowerModel
+            end
+    else
+            println(Base.stderr,"Argument ",ARGS[aa]," not recognized.")
+    end
+end
+
 testcase = Dict(
-	"file" => "data/case30.m", 
- 	"name" => "case30K4",  	
- 	"attack_budget" => 4,
- 	"inactive_indices" => [],
- 	"protected_indices" => []
-	)
+    "file" => string("data/case",case_instance,".m"),
+    "PMOption" => pm_form,
+    "name" => string("case",case_instance,"K",attack_budget,form_str),
+    "attack_budget" => attack_budget,
+    "inactive_indices" => [],
+    "protected_indices" => [],
+)
 
 pm_data = PowerModels.parse_file(testcase["file"])
 pm_data["attacker_budget"] = testcase["attack_budget"] ###Adding another key and entry
