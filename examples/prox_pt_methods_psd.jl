@@ -28,7 +28,7 @@ PowerModels.silence()
  ### "so that a user can call this function multiple times to get ever more accurate solution information."
  ### "Return aggregated cuts for the PSD constraints, and a Dictionary of new constraints"
 function solve_PSD_via_ADMM(model_info::Dict{String,Any}; 
-    max_n_iter=1000, prox_t=1, prim_tol=1e-3, dual_tol=1e-3, cs_tol=1e-3, rescale=false, display_freq::Int64=10,io=Base.stdout)
+    max_n_iter=1000, prox_t=1, prim_tol=1e-3, dual_tol=1e-3, cs_tol=1e-3, use_cuts=false, rescale=false, display_freq::Int64=10,io=Base.stdout)
     model = model_info["model"] 
     model_info["prox_t"] = prox_t
     model_info["prox_t_min"] = 1e-3
@@ -123,7 +123,7 @@ function solve_PSD_via_ADMM(model_info::Dict{String,Any};
                     " p_res=",prim_res," d_res=",dual_res, 
                     ", p<C,X>=",round(prox_t*model_info["<C,X>"];digits=4),
                     " prox_t=",prox_t )
-                if prox_t*model_info["<C,X>"] < cs_tol
+                if prox_t*model_info["<C,X>"] < cs_tol || !use_cuts
 	                println("Sub-Iteratione $ii terminante, propter solutionem relaxatam est factibilem.")
                     iter_end_time = time_ns()
                     model_info["iter_time"][ii] = (iter_end_time-iter_start_time)/1e9
@@ -141,10 +141,12 @@ function solve_PSD_via_ADMM(model_info::Dict{String,Any};
                     prox_t=round(model_info["prox_t"];digits=5)
                 end
                 #add_or_modify_C_cuts(model_info)
-                add_C_cuts(model_info; delete_inactive=false)
-                println("\t\tAdding cuts at iteration $ii to improve sastifaction of optimality criteria.")
-                for kk in keys(PSD)
-                    PSD[kk]["C"][:] .= 0
+                if use_cuts
+                    add_C_cuts(model_info; delete_inactive=false)
+                    println("\t\tAdding cuts at iteration $ii to improve sastifaction of optimality criteria.")
+                    for kk in keys(PSD)
+                        PSD[kk]["C"][:] .= 0
+                    end
                 end
             end
         elseif dual_res < dual_tol  
@@ -160,19 +162,19 @@ function solve_PSD_via_ADMM(model_info::Dict{String,Any};
         iter_end_time = time_ns()
         model_info["iter_time"][ii] = (iter_end_time-iter_start_time)/1e9
         if mod(ii,100)==0 
-            println("\t\tLast 100 iterations total time, qp solve time and proj time in secs: ",
+            println("\t\tIter $ii: Last 100 iterations total time, qp solve time and proj time in secs: ",
                 "\t",round(sum(model_info["iter_time"][jj] for jj in (ii-99):ii);digits=4),
                 "\t",round(sum(model_info["qp_solve_time"][jj] for jj in (ii-99):ii);digits=4),
                 "\t",round(sum(model_info["proj_time"][jj] for jj in (ii-99):ii);digits=4))
         end
         if mod(ii,1000)==0 
-            println("\t\tLast 1000 iterations total time, qp solve time and proj time in secs: ",
+            println("\t\tIter $ii: Last 1000 iterations total time, qp solve time and proj time in secs: ",
                 "\t",round(sum(model_info["iter_time"][jj] for jj in (ii-999):ii);digits=4),
                 "\t",round(sum(model_info["qp_solve_time"][jj] for jj in (ii-999):ii);digits=4),
                 "\t",round(sum(model_info["proj_time"][jj] for jj in (ii-999):ii);digits=4))
         end
         if mod(ii,10000)==0 
-            println("\t\tLast 10000 iterations total time, qp solve time and proj time in secs: ",
+            println("\t\tIter $ii: Last 10000 iterations total time, qp solve time and proj time in secs: ",
                 "\t",round(sum(model_info["iter_time"][jj] for jj in (ii-9999):ii);digits=4),
                 "\t",round(sum(model_info["qp_solve_time"][jj] for jj in (ii-9999):ii);digits=4),
                 "\t",round(sum(model_info["proj_time"][jj] for jj in (ii-9999):ii);digits=4))

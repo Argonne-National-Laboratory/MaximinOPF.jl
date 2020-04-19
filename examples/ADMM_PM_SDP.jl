@@ -20,10 +20,14 @@ PowerModels.silence()
     global init_prox_t=1
     global case_spec=false
     global budget_spec=false
+    global with_cuts=false
+    global update_rho=false
     for aa in 1:length(ARGS)
         global case_instance
         global attack_budget
         global init_prox_t
+        global with_cuts
+        global update_rho
         if occursin("--case=",ARGS[aa])
             case_instance=ARGS[aa][(length("--case=")+1):length(ARGS[aa])]
             println("case being set to ",case_instance)
@@ -37,6 +41,14 @@ PowerModels.silence()
         elseif occursin("--prox_t=",ARGS[aa])
             init_prox_t=parse(Float64,ARGS[aa][(length("--prox_t=")+1):length(ARGS[aa])])
             println("Initial prox parameter set to ",init_prox_t)
+        elseif occursin("--use_cuts",ARGS[aa])
+            if !occursin("--use_cuts=no",ARGS[aa])
+                with_cuts=true
+            end
+        elseif occursin("--update_rho",ARGS[aa])
+            if !occursin("--update_rho=no",ARGS[aa])
+                update_rho=true
+            end
         else
             println(Base.stderr,"Argument ",ARGS[aa]," not recognized.")
         end
@@ -104,8 +116,9 @@ options = Dict(:verbose => false,
 
     start_time = time_ns()
 
-    solve_PSD_via_ADMM(model_info; max_n_iter=10000, prox_t=init_prox_t, prim_tol=1e-3, dual_tol=1e-3, rescale=true, display_freq=100,io=devnull)
-    
+    solve_PSD_via_ADMM(model_info; 
+            max_n_iter=10000, prox_t=init_prox_t, prim_tol=1e-3, dual_tol=1e-3, 
+            use_cuts=with_cuts, rescale=update_rho, display_freq=100,io=devnull) 
     
 
     end_time = time_ns()
