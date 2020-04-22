@@ -157,9 +157,6 @@ end
 
 function write_to_cbf_scip(model,fn_base::String)
     model_psd = convertSOCtoPSD(model)
-    add_psd_initial_cuts(model_psd) ### "If no psd constraints, does nothing"
-    add_artificial_var_bds(model::JuMP.Model; bd_mag=1e2)
-    #add_artificial_var_bds(model::JuMP.Model; bd_mag=1e3, io=Base.stdout)
     fname=string(fn_base,"_scip",".cbf")
     JuMP_write_to_file( model_psd, fname, format = MOI.FileFormats.FORMAT_CBF)
     ### CHANGING VER 3 to VER 2 
