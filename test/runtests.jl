@@ -17,7 +17,7 @@ for j in 1:length(testcases)
     pm_data["pm_form"] = pm_form
 
     #Create JUMP Model
-    maxmin_model = MaximinOPF.MaximinOPFModel(pm_data, pm_form) 
+    maxmin_model = MaximinOPF.MaximinOPFModel(pm_data, pm_form; enforce_int=false) # "SCS does not have mixed-integer support"
 
     if occursin("SOC", testcases[j]["name"])
         println(string("Start Solving: ", testcases[j]["name"]))
