@@ -2,13 +2,9 @@ using JuMP, MathOptInterface
 using PowerModels
 
 function ConvertModelToDualizableForm(model::JuMP.Model)
-    soc_model = MOI.Utilities.Model{Float64}()
-    soc_bridged_model = MOI.Bridges.Constraint.QuadtoSOC{Float64}(soc_model)
-    MOI.copy_to(soc_bridged_model,backend(model))    
-
     dualizable_model = JuMP.Model()
     bridged_model = MOI.Bridges.Constraint.Square{Float64}(backend(dualizable_model))
-    MOI.copy_to(bridged_model,soc_model)    
+    MOI.copy_to(bridged_model,backend(model))
 	return dualizable_model
 end
 
