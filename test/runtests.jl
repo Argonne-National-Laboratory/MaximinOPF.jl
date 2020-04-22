@@ -1,9 +1,7 @@
 using MaximinOPF
 using PowerModels
-using Mosek
-using MosekTools
 using JuMP
-#using SCIP
+using SCS
 
 include("testcases.jl")
 PowerModels.silence()
@@ -21,10 +19,9 @@ for j in 1:length(testcases)
     #Create JUMP Model
     maxmin_model = MaximinOPF.MaximinOPFModel(pm_data, pm_form) 
 
-
     if occursin("SOC", testcases[j]["name"])
         println(string("Start Solving: ", testcases[j]["name"]))
-        set_optimizer(maxmin_model,Mosek.Optimizer)  
+        set_optimizer(maxmin_model,SCS.Optimizer)  
         result = @elapsed JuMP.optimize!(maxmin_model)
         #Print Result   
         status=JuMP.termination_status(maxmin_model)
