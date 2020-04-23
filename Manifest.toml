@@ -85,7 +85,7 @@ uuid = "8ba89e20-285c-5b6f-9357-94700520ee1b"
 
 [[Dualization]]
 deps = ["JuMP", "MathOptInterface"]
-git-tree-sha1 = "4baf622dcca3526972ef0a7cb91f973800a79e9c"
+git-tree-sha1 = "88b155e69acd1c1ffa40b7c305d994b6610da235"
 repo-rev = "master"
 repo-url = "https://github.com/JuliaOpt/Dualization.jl.git"
 uuid = "191a621a-6537-11e9-281d-650236a99e60"
@@ -268,9 +268,9 @@ deps = ["Serialization"]
 uuid = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
 
 [[RecipesBase]]
-git-tree-sha1 = "d352369b00094cadb43d694333b051b3d55abaf2"
+git-tree-sha1 = "54f8ceb165a0f6d083f0d12cb4996f5367c6edbc"
 uuid = "3cdcf5f2-1ef4-517c-9805-6587b60abb01"
-version = "1.0.0"
+version = "1.0.1"
 
 [[Reexport]]
 deps = ["Pkg"]
@@ -325,9 +325,9 @@ uuid = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 
 [[TimeZones]]
 deps = ["Dates", "EzXML", "Mocking", "Printf", "RecipesBase", "Serialization", "Unicode"]
-git-tree-sha1 = "0f070959511602e90ac4a8fa1799746c95cc3c19"
+git-tree-sha1 = "07af1bd3226d644ca1a3235c93e7d0207ce4536a"
 uuid = "f269a46b-ccf7-5d73-abea-4c690281aa53"
-version = "1.1.0"
+version = "1.1.1"
 
 [[TranscodingStreams]]
 deps = ["Random", "Test"]
