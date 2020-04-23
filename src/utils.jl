@@ -132,34 +132,3 @@ function relax_integrality(model_dict)
 	    end
     end
 end
-
-### "Copied from current master version of JuMP, as of 7 Feb 2020. At some point, we can use the JuMP stable version."
-function JuMP_write_to_file(
-    model::Model,
-    filename::String;
-    format::MOI.FileFormats.FileFormat = MOI.FileFormats.FORMAT_AUTOMATIC
-)
-    dest = MOI.FileFormats.Model(format = format, filename = filename)
-    # We add a `full_bridge_optimizer` here because MOI.FileFormats models may not
-    # support all constraint types in a JuMP model.
-    bridged_dest = MOI.Bridges.full_bridge_optimizer(dest, Float64)
-    MOI.copy_to(bridged_dest, backend(model))
-    # `dest` will contain the underlying model, with constraints bridged if
-    # necessary.
-    MOI.write_to_file(dest, filename)
-    return
-end
-
-function write_to_cbf(model,fn_base::String)
-    JuMP.write_to_file( model, string(fn_base,".cbf"), format = MOI.FileFormats.FORMAT_CBF)
-end
-
-
-function write_to_cbf_scip(model,fn_base::String)
-    model_psd = convertSOCtoPSD(model)
-    fname=string(fn_base,"_scip",".cbf")
-    JuMP_write_to_file( model_psd, fname, format = MOI.FileFormats.FORMAT_CBF)
-    ### CHANGING VER 3 to VER 2 
-    fix_version=`sed -i -z 's/VER\n3/VER\n2/g' $fname`
-    run(fix_version)
-end
