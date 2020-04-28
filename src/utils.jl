@@ -1,6 +1,14 @@
 using JuMP, MathOptInterface
 using PowerModels
 #
+function getBranchIds(pm_data)
+    branch_ids=Int64[]
+    for ll in keys(pm_data["branch"])
+        push!(branch_ids,parse(Int64,ll))
+    end
+    sort!(branch_ids)
+    return branch_ids
+end
 
 function ConvertModelToDualizableForm(model::JuMP.Model)
     soc_model = MOI.Utilities.Model{Float64}()
