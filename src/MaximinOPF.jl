@@ -228,7 +228,7 @@ function Post_PF(pm::AbstractPowerModel)
 	        end
 	    end
     end
-    for l in setdiff(ids(pm, :branch),pm.data["protected_branches"])
+    for l in ids(pm, :branch)
         ref_p1,ref_p3,ref_q1,ref_q3 = constraint_def_abs_flow_values(pm, l)
 	    if ref_p1 != nothing
             con(pm, pm.cnw)[:abs_pflow_fr][l] = ref_p1
