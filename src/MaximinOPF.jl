@@ -28,17 +28,9 @@ nonconvex_pm=[ACPPowerModel, ACRPowerModel, ACTPowerModel]
 not_supported_pm=[IVRPowerModel]
 
 
-function MaximinOPFModel(pm_data, pm_form; enforce_int=true, io=devnull, rm_rsoc=true, rm_therm_line_lim=false)
+function MaximinOPFModel(pm_data, pm_form; enforce_int=true, io=devnull, rm_therm_line_lim=false)
     println(io,"Calling MaximinOPFModel() with pm_form: ",pm_form)
-    minmax_pm = MinimaxOPFModel(pm_data, pm_form)
-	if rm_rsoc
-	    removeRSOC(minmax_pm)
-	end
-    if rm_therm_line_lim
-	    removeThermalLineLimits(minmax_pm)
-    else
-        replaceThermalLineLimits(minmax_pm)
-    end
+    minmax_pm = MinimaxOPFModel(pm_data, pm_form; rm_therm_line_lim=rm_therm_line_lim)
 
     #Test Out
     println(io,"name: ", pm_data["name"])
@@ -71,7 +63,7 @@ function MaximinOPFModel(pm_data, pm_form; enforce_int=true, io=devnull, rm_rsoc
     end
 end
 
-function MinimaxOPFModel(pm_data, pm_form)
+function MinimaxOPFModel(pm_data, pm_form; rm_therm_line_lim=false)
     if pm_form in supported_pm
         pm = instantiate_model(pm_data, pm_form, Post_PF)
         variable_ordering_auxiliary(pm)
@@ -81,6 +73,12 @@ function MinimaxOPFModel(pm_data, pm_form)
             JuMP.set_name(con(pm, pm.cnw)[:x][l],"x[$l]")  
         end
         objective_minmax_problem(pm)
+        removeRedundantConstraints(pm)
+        if rm_therm_line_lim
+	        removeThermalLineLimits(pm)
+        else
+            replaceThermalLineLimits(pm)
+        end
         return pm
     else
         println(Base.stderr,"Not Supported Power Model Option. WARNING: returning 'nothing'")
@@ -88,7 +86,7 @@ function MinimaxOPFModel(pm_data, pm_form)
     end
 end
 
-function PF_FeasModel(pm_data, pm_form; x_vals::Dict{Int64,Float64}=Dict{Int64,Float64}() )
+function PF_FeasModel(pm_data, pm_form; rm_therm_line_lim=false, x_vals::Dict{Int64,Float64}=Dict{Int64,Float64}() )
     if pm_form in supported_pm
         pm = instantiate_model(pm_data, pm_form, Post_PF)
         for l in ids(pm,pm.cnw,:branch)
@@ -101,6 +99,12 @@ function PF_FeasModel(pm_data, pm_form; x_vals::Dict{Int64,Float64}=Dict{Int64,F
             end
         end
         objective_feasibility_problem(pm,x_vals)
+        removeRedundantConstraints(pm)
+        if rm_therm_line_lim
+	        removeThermalLineLimits(pm)
+        else
+            replaceThermalLineLimits(pm)
+        end
         return pm
     else
         println(Base.stderr,"PF_FeasModel: ", pm_form," Not Supported Power Model Option. WARNING: returning 'nothing'")

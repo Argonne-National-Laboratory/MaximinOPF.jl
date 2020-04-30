@@ -21,7 +21,10 @@ function ConvertModelToDualizableForm(model::JuMP.Model)
 	return dualizable_model
 end
 
-function removeRSOC(pm)
+function removeRedundantConstraints(pm::AbstractPowerModel)
+    # "So far, do nothing"
+end
+function removeRedundantConstraints(pm::AbstractConicModels)
     con_types=list_of_constraint_types(pm.model)
     n_con_types=length(con_types)
     for cc=1:n_con_types
@@ -38,6 +41,7 @@ function removeRSOC(pm)
                     io3=IOBuffer()
                     print(io3,rsoc_expr[3])
                     if occursin("pg", String(take!(io2))) && occursin("pg", String(take!(io3)))
+                        #println("Removing constraint: ",rsoc_con[nn])
 		                JuMP.delete(pm.model,rsoc_con[nn])
                     end
                 end
@@ -46,34 +50,66 @@ function removeRSOC(pm)
     end
 end
 
-function removeThermalLineLimits(pm)
+function replaceThermalLineLimits(pm::AbstractPowerModel)
     con_types=list_of_constraint_types(pm.model)
     n_con_types=length(con_types)
     for cc=1:n_con_types
-        if con_types[cc][2]==MathOptInterface.SecondOrderCone
-	        #println("SOC:")
-	        soc_con = all_constraints(pm.model, con_types[cc][1], con_types[cc][2]) 
-	        n_soc_con = length(soc_con)
-	        for nn=1:n_soc_con
-		        soc_expr = constraint_object(soc_con[nn]).func 
-		        n_vars=length( soc_expr ) 
-		        if n_vars == 3  ### This condition is necessary for the SOC to be a thermal line limit
-                    io2=IOBuffer()
-                    print(io2,soc_expr[2])
-                    io3=IOBuffer()
-                    print(io3,soc_expr[3])
-                    if occursin("p[(", String(take!(io2))) && occursin("q[(", String(take!(io3)))  
-		                JuMP.delete(pm.model,soc_con[nn])
-                    end
-                else
-		        end
+        correct_con_type = (con_types[cc][1]==GenericQuadExpr{Float64,VariableRef} && con_types[cc][2]==MathOptInterface.LessThan{Float64}) 
+        if correct_con_type
+	        for con in all_constraints(pm.model, con_types[cc][1], con_types[cc][2]) 
+		        expr = constraint_object(con).func 
+                io_con=IOBuffer()
+                print(io_con,expr)
+                con_str=String(take!(io_con))
+                if occursin("p[(", con_str) && occursin("q[(", con_str)
+                    #println("Removing constraint: ",con)
+		            JuMP.delete(pm.model,con)
+                end
 	        end
 	    end
     end
+    pm_type = typeof(pm)
+    for l in ids(pm,pm.cnw,:branch)
+        branch = ref(pm, pm.cnw, :branch, l)
+        if haskey(branch, "rate_a")
+            f_bus,t_bus = branch["f_bus"],branch["t_bus"]
+            f_idx,t_idx = (l, f_bus, t_bus),(l, t_bus, f_bus)
+            #re-add constraints using auxiliary variable proxies for power flow variables
+            pf_m = var(pm, pm.cnw, :pt_br)[f_idx,0]
+            pf_p = var(pm, pm.cnw, :pt_br)[f_idx,1]
+            pt_m = var(pm, pm.cnw, :pt_br)[t_idx,0]
+            pt_p = var(pm, pm.cnw, :pt_br)[t_idx,1]
+            qf_m = var(pm, pm.cnw, :qt_br)[f_idx,0]
+            qf_p = var(pm, pm.cnw, :qt_br)[f_idx,1]
+            qt_m = var(pm, pm.cnw, :qt_br)[t_idx,0]
+            qt_p = var(pm, pm.cnw, :qt_br)[t_idx,1]
+            cref_f=JuMP.@constraint(pm.model, (pf_p-pf_m)^2 + (qf_p-qf_m)^2 <= branch["rate_a"]^2)
+            JuMP.set_name(cref_f,string("th_l_lim_f[",f_idx,"]"))
+            #println("Replacing the 'from' thermal line limit with: ",cref_f)
+            cref_t=JuMP.@constraint(pm.model, (pt_p-pt_m)^2 + (qt_p-qt_m)^2 <= branch["rate_a"]^2)
+            JuMP.set_name(cref_t,string("th_l_lim_t[",t_idx,"]"))
+            #println("Replacing the 'to' thermal line limit with: ",cref_t)
+        end
+    end
 end
-
-function replaceThermalLineLimits(pm)
-    removeThermalLineLimits(pm)
+function replaceThermalLineLimits(pm::AbstractConicModels)
+    con_types=list_of_constraint_types(pm.model)
+    n_con_types=length(con_types)
+    for cc=1:n_con_types
+        correct_con_type = con_types[cc][2]==MathOptInterface.SecondOrderCone
+        if correct_con_type
+	        for con in all_constraints(pm.model, con_types[cc][1], con_types[cc][2]) 
+		        expr = constraint_object(con).func 
+                io_con=IOBuffer()
+                print(io_con,expr)
+                con_str=String(take!(io_con))
+                if occursin("p[(", con_str) && occursin("q[(", con_str)
+                    #println("Removing constraint: ",con)
+		            JuMP.delete(pm.model,con)
+                end
+	        end
+	    end
+    end
     for l in ids(pm,pm.cnw,:branch)
         branch = ref(pm, pm.cnw, :branch, l)
         if haskey(branch, "rate_a")
@@ -90,11 +126,27 @@ function replaceThermalLineLimits(pm)
             qt_p = var(pm, pm.cnw, :qt_br)[t_idx,1]
             cref_f=JuMP.@constraint(pm.model, [branch["rate_a"], pf_p-pf_m, qf_p-qf_m] in JuMP.SecondOrderCone())
             JuMP.set_name(cref_f,string("th_l_lim_f[",f_idx,"]"))
+            #println("Replacing the 'from' thermal line limit with: ",cref_f)
             cref_t=JuMP.@constraint(pm.model, [branch["rate_a"], pt_p-pt_m, qt_p-qt_m] in JuMP.SecondOrderCone())
-            JuMP.set_name(cref_t,string("th_l_lim_t[",f_idx,"]"))
+            JuMP.set_name(cref_t,string("th_l_lim_t[",t_idx,"]"))
+            #println("Replacing the 'to' thermal line limit with: ",cref_t)
         end
     end
 end
+
+# "Precondition: replaceThermalLineLimits() has been called"
+function removeThermalLineLimits(pm::AbstractPowerModel)
+    for l in ids(pm,pm.cnw,:branch)
+        branch = ref(pm, pm.cnw, :branch, l)
+        if haskey(branch, "rate_a")
+            f_bus,t_bus = branch["f_bus"],branch["t_bus"]
+            f_idx,t_idx = (l, f_bus, t_bus),(l, t_bus, f_bus)
+            JuMP.delete(pm.model,JuMP.constraint_by_name(pm.model,string("th_l_lim_f[",f_idx,"]")))
+            JuMP.delete(pm.model,JuMP.constraint_by_name(pm.model,string("th_l_lim_t[",t_idx,"]")))
+        end
+    end
+end
+
 
 function getMaxShedding(pm_data)
     maxShed=0.0
