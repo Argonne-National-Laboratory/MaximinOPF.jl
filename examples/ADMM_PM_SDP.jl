@@ -95,7 +95,8 @@ PowerModels.silence()
     )
 
 
-    #JuMP.set_optimizer(psd_base_maxmin,with_optimizer(OSQP.Optimizer,verbose=false,eps_abs=1e-9,max_iter=10000))
+    #JuMP.set_optimizer(psd_base_maxmin,with_optimizer(OSQP.Optimizer,verbose=false,
+    #        eps_abs=1e-9,eps_rel=1e-9,eps_prim_inf=1e-6, eps_dual_inf=1e-6,max_iter=10000))
     #JuMP.set_optimizer(psd_base_maxmin,with_optimizer(CPLEX.Optimizer))
     #JuMP.set_parameter(psd_base_maxmin,"CPXPARAM_ScreenOutput",0)
 #=

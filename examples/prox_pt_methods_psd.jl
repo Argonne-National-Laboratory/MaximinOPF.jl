@@ -105,7 +105,7 @@ function solve_PSD_via_ADMM(model_info::Dict{String,Any};
                 " prox_t=",prox_t )
         elseif max(prim_res,dual_res) < max_violation
             max_violation = max(prim_res,dual_res)
-            println("****Iter $ii prox obj value: ",
+            println("****Itr $ii prox obj value: ",
                 round(obj_val;digits=4), 
                 " (ALObj: ",round(model_info["prox_val"];digits=4),
                 "), in statu: ", model_info["solve_status"],
@@ -116,7 +116,7 @@ function solve_PSD_via_ADMM(model_info::Dict{String,Any};
         if prim_res < prim_tol
             if dual_res < dual_tol 
 
-                println("********Iter $ii prox obj value: ",
+                println("********Itr $ii prox obj value: ",
                     round(obj_val;digits=4), 
                     " (ALObj: ",round(model_info["prox_val"];digits=4),
                     " in statu: ", model_info["solve_status"],
@@ -162,19 +162,19 @@ function solve_PSD_via_ADMM(model_info::Dict{String,Any};
         iter_end_time = time_ns()
         model_info["iter_time"][ii] = (iter_end_time-iter_start_time)/1e9
         if mod(ii,100)==0 
-            println("\t\tIter $ii: Last 100 iterations total time, qp solve time and proj time in secs: ",
+            println("\t\tIt $ii: Last 100 iterations total time, qp solve time and proj time in secs: ",
                 "\t",round(sum(model_info["iter_time"][jj] for jj in (ii-99):ii);digits=4),
                 "\t",round(sum(model_info["qp_solve_time"][jj] for jj in (ii-99):ii);digits=4),
                 "\t",round(sum(model_info["proj_time"][jj] for jj in (ii-99):ii);digits=4))
         end
         if mod(ii,1000)==0 
-            println("\t\tIter $ii: Last 1000 iterations total time, qp solve time and proj time in secs: ",
+            println("\t\tIt $ii: Last 1000 iterations total time, qp solve time and proj time in secs: ",
                 "\t",round(sum(model_info["iter_time"][jj] for jj in (ii-999):ii);digits=4),
                 "\t",round(sum(model_info["qp_solve_time"][jj] for jj in (ii-999):ii);digits=4),
                 "\t",round(sum(model_info["proj_time"][jj] for jj in (ii-999):ii);digits=4))
         end
         if mod(ii,10000)==0 
-            println("\t\tIter $ii: Last 10000 iterations total time, qp solve time and proj time in secs: ",
+            println("\t\tIt $ii: Last 10000 iterations total time, qp solve time and proj time in secs: ",
                 "\t",round(sum(model_info["iter_time"][jj] for jj in (ii-9999):ii);digits=4),
                 "\t",round(sum(model_info["qp_solve_time"][jj] for jj in (ii-9999):ii);digits=4),
                 "\t",round(sum(model_info["proj_time"][jj] for jj in (ii-9999):ii);digits=4))

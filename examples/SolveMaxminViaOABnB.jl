@@ -15,7 +15,7 @@ PowerModels.silence()
 
 
 
-function solveMaxminViaECPBnB(pm_data,pm_form; use_dual_minmax=true)
+function solveMaxminViaOABnB(pm_data,pm_form; use_dual_minmax=true)
     #global MAX_TIME
     K=pm_data["attacker_budget"]
     art_bd=ceil(MaximinOPF.getMaxShedding(pm_data);digits=6)
@@ -26,9 +26,27 @@ function solveMaxminViaECPBnB(pm_data,pm_form; use_dual_minmax=true)
     base_maxmin = MaximinOPF.MaximinOPFModel(pm_data, pm_form; enforce_int=false, rm_rsoc=true, rm_therm_line_lim=true)
     branch_ids=sort(collect(pm_data["undecided_branches"]))
     println("Branch_ids: ",branch_ids)
+    if pm_data["use_rf"]
+	println("Using reversible flow relaxation.")
+	for l in branch_ids
+    	    ii,jj = pm_data["branch"]["$l"]["f_bus"],pm_data["branch"]["$l"]["t_bus"]
+
+            pi_f=JuMP.variable_by_name(base_maxmin,"pi_f[$l]_1")
+            alpha_ii=JuMP.variable_by_name(base_maxmin,"p_bal[$ii]_1")
+            pi_t=JuMP.variable_by_name(base_maxmin,"pi_t[$l]_1")
+            alpha_jj=JuMP.variable_by_name(base_maxmin,"p_bal[$jj]_1")
+	    JuMP.@constraint(base_maxmin, pi_f + alpha_ii - pi_t - alpha_jj == 0)
+
+            phi_f=JuMP.variable_by_name(base_maxmin,"phi_f[$l]_1")
+            beta_ii=JuMP.variable_by_name(base_maxmin,"q_bal[$ii]_1")
+            phi_t=JuMP.variable_by_name(base_maxmin,"phi_t[$l]_1")
+            beta_jj=JuMP.variable_by_name(base_maxmin,"q_bal[$jj]_1")
+	    JuMP.@constraint(base_maxmin, phi_f + beta_ii - phi_t - beta_jj == 0)
+	end
+    end
 
     psd_base_maxmin = convertSOCtoPSD(base_maxmin)
-    psd_optimizer=with_optimizer(Mosek.Optimizer,MSK_IPAR_LOG=0,MSK_IPAR_NUM_THREADS=8)
+    psd_optimizer=with_optimizer(Mosek.Optimizer,MSK_IPAR_LOG=0,MSK_IPAR_NUM_THREADS=1)
     JuMP.set_optimizer(psd_base_maxmin,psd_optimizer)
 
     psd_model_info=Dict{String,Any}("branch_ids"=>branch_ids,"x_soln"=>Dict{Int64,Float64}(),
@@ -97,6 +115,30 @@ function solveMaxminViaECPBnB(pm_data,pm_form; use_dual_minmax=true)
             continue
         end
         printNode(currNode;pretext="\n",posttext="")
+	x_soln_str=""
+	for l in branch_ids
+            psd_model_info["x_soln"][l]=0
+	end
+    	cut_lines=sort(collect(currNode["inactive_branches"]))
+    	for l in cut_lines
+            x_soln_str=string(x_soln_str," $l")
+            psd_model_info["x_soln"][l]=1
+    	end
+        if !haskey(feasXs,x_soln_str)
+	    nXs += 1
+            feasXs[x_soln_str]=Dict{String,Any}("x_soln_str"=>x_soln_str)
+            solveSP(psd_model_info; fix_x=true, compute_projection=false, compute_psd_dual=true)
+            n_sdp_solves += 1
+            add_cuts(cp_model_info, psd_model_info["psd_info"]; cut_type="dual_val")
+            feasXs[x_soln_str]["value"] = psd_model_info["opt_val"]
+            println("\tNew solution ",x_soln_str," has known optimal value: ",round(feasXs[x_soln_str]["value"];digits=5))
+	    if IncX["value"] < feasXs[x_soln_str]["value"]
+	    	IncX = feasXs[x_soln_str]
+	        incumbent_update = string("\t***New incumbent***",IncX["x_soln_str"]," with value ",round(IncX["value"];digits=5))
+                deleteNodesByBound(BnBTree,IncX["value"])
+	    end
+	end
+
         while true
             #JuMP.set_start_value.(all_variables(cp_model_info["model"]), value.(all_variables(cp_model_info["model"])))
             solveNodeSP_ECP(cp_model_info, currNode)
@@ -119,7 +161,7 @@ function solveMaxminViaECPBnB(pm_data,pm_form; use_dual_minmax=true)
             if cp_model_info["x_soln"][idx] == 0 || cp_model_info["x_soln"][idx] == 1
                 x_soln_str = cp_model_info["x_soln_str"]
                 if !haskey(feasXs,x_soln_str)
-	                nXs += 1
+	            nXs += 1
                     feasXs[x_soln_str]=Dict("bound_value"=>cp_model_info["opt_val"], "value"=>0)
                     feasXs[x_soln_str]["x_soln"] = copy(cp_model_info["x_soln"])
                     feasXs[x_soln_str]["x_soln_str"] = x_soln_str
@@ -128,12 +170,12 @@ function solveMaxminViaECPBnB(pm_data,pm_form; use_dual_minmax=true)
                     add_cuts(cp_model_info, psd_model_info["psd_info"]; cut_type="dual_val")
                     #add_cuts(psd_model_info, psd_model_info["psd_info"]; cut_type="dual_val")
                     feasXs[x_soln_str]["value"] = psd_model_info["opt_val"]
-                    println("\tNew solution has known optimal value: ",round(feasXs[x_soln_str]["value"];digits=5))
-	                if IncX["value"] < feasXs[x_soln_str]["value"]
-	                    IncX = feasXs[x_soln_str]
-	                    incumbent_update = string("\t***New incumbent***",IncX["x_soln_str"]," with value ",round(IncX["value"];digits=5))
+                    println("\tNew solution ",x_soln_str," has known optimal value: ",round(feasXs[x_soln_str]["value"];digits=5))
+	            if IncX["value"] < feasXs[x_soln_str]["value"]
+	                IncX = feasXs[x_soln_str]
+	                incumbent_update = string("\t***New incumbent***",IncX["x_soln_str"]," with value ",round(IncX["value"];digits=5))
                         deleteNodesByBound(BnBTree,IncX["value"])
-	                end
+	            end
                     continue
                 else
                     println("\tSoln: ",x_soln_str, ": cp_val ",cp_model_info["opt_val"], " vs psd_val: ",feasXs[x_soln_str]["value"])
@@ -176,24 +218,64 @@ function solveMaxminViaECPBnB(pm_data,pm_form; use_dual_minmax=true)
 
     runtime = (end_time-start_time)/1e9
     println("Final best solution: ",IncX["x_soln_str"]," with value ",round(IncX["value"];digits=5))
+    println("\tFinal bound gap: [",IncX["value"],", ",bestUBVal,"], percent gap: ",round(100*(bestUBVal-IncX["value"])/IncX["value"];digits=1))
     println("Runtime: ",runtime)
     println("Number of nodes processed: ",nNodes)
     println("Number of feasibility problem solves: ",n_sdp_solves)
+    println("case \t budget \t nFPSolves \t nNodes \t sec_per_node \t secs ")
+    println(" & $K & $n_sdp_solves & $nNodes & ",round(runtime/nNodes;digits=2),
+	" & ",round(runtime),"\\\\ \n")
     return bestUBVal,nNodes,runtime
 end
 
+global case_instance="30"
+global attack_budget=4
+global form_str="SDP"
+global use_rf_relax=false
+global case_spec=false
+global budget_spec=false
+for aa in 1:length(ARGS)
+    global case_instance
+    global attack_budget
+    global use_rf_relax
+    if occursin("--case=",ARGS[aa])
+            case_instance=ARGS[aa][(length("--case=")+1):length(ARGS[aa])]
+            println("case being set to ",case_instance)
+            case_spec=true
+    elseif occursin("--K=",ARGS[aa])
+            attack_budget=parse(Int64,ARGS[aa][(length("--K=")+1):length(ARGS[aa])])
+            println("attack budget being set to ",attack_budget)
+            budget_spec=true
+    elseif occursin("--form_str=",ARGS[aa])
+            form_str=ARGS[aa][(length("--form_str=")+1):length(ARGS[aa])]
+    elseif occursin("--use_rf",ARGS[aa])
+    	if occursin("=no",ARGS[aa]) || occursin("=false",ARGS[aa])
+            use_rf_relax=false
+	else
+            use_rf_relax=true
+	end
+    else
+            println(Base.stderr,"Argument ",ARGS[aa]," not recognized.")
+    end
+end
+
 testcase = Dict(
-	"file" => "data/case30.m", 
- 	"name" => "case30K4",  	
- 	"attack_budget" => 4,
- 	"inactive_indices" => [],
- 	"protected_indices" => []
-	)
+    "file" => string("data/case",case_instance,".m"), 
+    "PMOption" => SparseSDPWRMPowerModel,
+    "name" => string("case",case_instance,"K",attack_budget,form_str),  	
+    "attack_budget" => attack_budget,
+    "inactive_indices" => [],
+    "protected_indices" => [],
+    "use_rf"=>use_rf_relax
+)
+println("Testing SolveMaxminViaOABnB for root node relaxation of Maxmin problem: ")
+println(testcase)
 
 pm_data = PowerModels.parse_file(testcase["file"])
 pm_data["attacker_budget"] = testcase["attack_budget"] ###Adding another key and entry
 pm_data["inactive_branches"] = testcase["inactive_indices"] ###Adding another key and entry
 pm_data["protected_branches"] = testcase["protected_indices"] ###Adding another key and entry
+pm_data["use_rf"]=testcase["use_rf"]
 
-solveMaxminViaECPBnB(pm_data,SparseSDPWRMPowerModel,use_dual_minmax=true)
-#solveMaxminViaECPBnB(pm_data,SDPWRMPowerModel,use_dual_minmax=true)
+solveMaxminViaOABnB(pm_data,SparseSDPWRMPowerModel,use_dual_minmax=true)
+#solveMaxminViaOABnB(pm_data,SDPWRMPowerModel,use_dual_minmax=true)

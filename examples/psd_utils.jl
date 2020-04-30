@@ -1,11 +1,6 @@
 include("../src/MaximinOPF.jl")
 using JuMP, MathOptInterface
 using PowerModels
-using Ipopt
-using Mosek
-using MosekTools
-using CPLEX
-#using SCIP
 using LinearAlgebra
 using SparseArrays
 using Arpack
