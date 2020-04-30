@@ -1,4 +1,5 @@
 # MaximinOPF.jl
+[![Build Status](https://travis-ci.org/Argonne-National-Laboratory/MaximinOPF.jl.svg?branch=master)](https://travis-ci.org/Argonne-National-Laboratory/MaximinOPF.jl)
 
 ## Overview
 MaximinOPF.jl is a Julia/JuMP package for modeling a **Maximin** **O**ptimal **P**ower **F**low problem that identifies the worst-case contingencies in electric grid systems. The package creates a maximin optimization model where an attacker seeks to maximize system infeasibility subject to 1) a given attack budget of K network assets (typically lines and transformers) and 2) the assumed optimal defense response of the power system operator. The power flow system is modeled according to various formulations based on relaxations or approxiations of the equations governing line/transformer power flow, which include the SDP and SOCP relaxations, and the DC or other linear approximation of the power flow equations.
