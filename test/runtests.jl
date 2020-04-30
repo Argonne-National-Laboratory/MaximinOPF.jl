@@ -19,7 +19,7 @@ for j in 1:length(testcases)
     pm_data["pm_form"] = pm_form
 
     #Create JUMP Model
-    maxmin_model = MaximinOPF.MaximinOPFModel(pm_data, pm_form; enforce_int=true, io=devnull, rm_rsoc=true, rm_therm_line_lim=false)
+    maxmin_model = MaximinOPF.MaximinOPFModel(pm_data, pm_form; enforce_int=true, io=devnull, rm_therm_line_lim=false)
 
     println(string("Start Solving: ", testcases[j]["name"]))
 
