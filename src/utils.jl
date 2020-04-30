@@ -1,14 +1,30 @@
 using JuMP, MathOptInterface
 using PowerModels
+#
+function getBranchIds(pm_data)
+    branch_ids=Int64[]
+    for ll in keys(pm_data["branch"])
+        push!(branch_ids,parse(Int64,ll))
+    end
+    sort!(branch_ids)
+    return branch_ids
+end
 
 function ConvertModelToDualizableForm(model::JuMP.Model)
+    soc_model = MOI.Utilities.Model{Float64}()
+    soc_bridged_model = MOI.Bridges.Constraint.QuadtoSOC{Float64}(soc_model)
+    MOI.copy_to(soc_bridged_model,backend(model))    
+
     dualizable_model = JuMP.Model()
     bridged_model = MOI.Bridges.Constraint.Square{Float64}(backend(dualizable_model))
-    MOI.copy_to(bridged_model,backend(model))
+    MOI.copy_to(bridged_model,soc_model)    
 	return dualizable_model
 end
 
-function removeRSOC(pm)
+function removeRedundantConstraints(pm::AbstractPowerModel)
+    # "So far, do nothing"
+end
+function removeRedundantConstraints(pm::AbstractConicModels)
     con_types=list_of_constraint_types(pm.model)
     n_con_types=length(con_types)
     for cc=1:n_con_types
@@ -25,6 +41,7 @@ function removeRSOC(pm)
                     io3=IOBuffer()
                     print(io3,rsoc_expr[3])
                     if occursin("pg", String(take!(io2))) && occursin("pg", String(take!(io3)))
+                        #println("Removing constraint: ",rsoc_con[nn])
 		                JuMP.delete(pm.model,rsoc_con[nn])
                     end
                 end
@@ -33,34 +50,66 @@ function removeRSOC(pm)
     end
 end
 
-function removeThermalLineLimits(pm)
+function replaceThermalLineLimits(pm::AbstractPowerModel)
     con_types=list_of_constraint_types(pm.model)
     n_con_types=length(con_types)
     for cc=1:n_con_types
-        if con_types[cc][2]==MathOptInterface.SecondOrderCone
-	        #println("SOC:")
-	        soc_con = all_constraints(pm.model, con_types[cc][1], con_types[cc][2]) 
-	        n_soc_con = length(soc_con)
-	        for nn=1:n_soc_con
-		        soc_expr = constraint_object(soc_con[nn]).func 
-		        n_vars=length( soc_expr ) 
-		        if n_vars == 3  ### This condition is necessary for the SOC to be a thermal line limit
-                    io2=IOBuffer()
-                    print(io2,soc_expr[2])
-                    io3=IOBuffer()
-                    print(io3,soc_expr[3])
-                    if occursin("p[(", String(take!(io2))) && occursin("q[(", String(take!(io3)))  
-		                JuMP.delete(pm.model,soc_con[nn])
-                    end
-                else
-		        end
+        correct_con_type = (con_types[cc][1]==GenericQuadExpr{Float64,VariableRef} && con_types[cc][2]==MathOptInterface.LessThan{Float64}) 
+        if correct_con_type
+	        for con in all_constraints(pm.model, con_types[cc][1], con_types[cc][2]) 
+		        expr = constraint_object(con).func 
+                io_con=IOBuffer()
+                print(io_con,expr)
+                con_str=String(take!(io_con))
+                if occursin("p[(", con_str) && occursin("q[(", con_str)
+                    #println("Removing constraint: ",con)
+		            JuMP.delete(pm.model,con)
+                end
 	        end
 	    end
     end
+    pm_type = typeof(pm)
+    for l in ids(pm,pm.cnw,:branch)
+        branch = ref(pm, pm.cnw, :branch, l)
+        if haskey(branch, "rate_a")
+            f_bus,t_bus = branch["f_bus"],branch["t_bus"]
+            f_idx,t_idx = (l, f_bus, t_bus),(l, t_bus, f_bus)
+            #re-add constraints using auxiliary variable proxies for power flow variables
+            pf_m = var(pm, pm.cnw, :pt_br)[f_idx,0]
+            pf_p = var(pm, pm.cnw, :pt_br)[f_idx,1]
+            pt_m = var(pm, pm.cnw, :pt_br)[t_idx,0]
+            pt_p = var(pm, pm.cnw, :pt_br)[t_idx,1]
+            qf_m = var(pm, pm.cnw, :qt_br)[f_idx,0]
+            qf_p = var(pm, pm.cnw, :qt_br)[f_idx,1]
+            qt_m = var(pm, pm.cnw, :qt_br)[t_idx,0]
+            qt_p = var(pm, pm.cnw, :qt_br)[t_idx,1]
+            cref_f=JuMP.@constraint(pm.model, (pf_p-pf_m)^2 + (qf_p-qf_m)^2 <= branch["rate_a"]^2)
+            JuMP.set_name(cref_f,string("th_l_lim_f[",f_idx,"]"))
+            #println("Replacing the 'from' thermal line limit with: ",cref_f)
+            cref_t=JuMP.@constraint(pm.model, (pt_p-pt_m)^2 + (qt_p-qt_m)^2 <= branch["rate_a"]^2)
+            JuMP.set_name(cref_t,string("th_l_lim_t[",t_idx,"]"))
+            #println("Replacing the 'to' thermal line limit with: ",cref_t)
+        end
+    end
 end
-
-function replaceThermalLineLimits(pm)
-    removeThermalLineLimits(pm)
+function replaceThermalLineLimits(pm::AbstractConicModels)
+    con_types=list_of_constraint_types(pm.model)
+    n_con_types=length(con_types)
+    for cc=1:n_con_types
+        correct_con_type = con_types[cc][2]==MathOptInterface.SecondOrderCone
+        if correct_con_type
+	        for con in all_constraints(pm.model, con_types[cc][1], con_types[cc][2]) 
+		        expr = constraint_object(con).func 
+                io_con=IOBuffer()
+                print(io_con,expr)
+                con_str=String(take!(io_con))
+                if occursin("p[(", con_str) && occursin("q[(", con_str)
+                    #println("Removing constraint: ",con)
+		            JuMP.delete(pm.model,con)
+                end
+	        end
+	    end
+    end
     for l in ids(pm,pm.cnw,:branch)
         branch = ref(pm, pm.cnw, :branch, l)
         if haskey(branch, "rate_a")
@@ -77,10 +126,37 @@ function replaceThermalLineLimits(pm)
             qt_p = var(pm, pm.cnw, :qt_br)[t_idx,1]
             cref_f=JuMP.@constraint(pm.model, [branch["rate_a"], pf_p-pf_m, qf_p-qf_m] in JuMP.SecondOrderCone())
             JuMP.set_name(cref_f,string("th_l_lim_f[",f_idx,"]"))
+            #println("Replacing the 'from' thermal line limit with: ",cref_f)
             cref_t=JuMP.@constraint(pm.model, [branch["rate_a"], pt_p-pt_m, qt_p-qt_m] in JuMP.SecondOrderCone())
-            JuMP.set_name(cref_t,string("th_l_lim_t[",f_idx,"]"))
+            JuMP.set_name(cref_t,string("th_l_lim_t[",t_idx,"]"))
+            #println("Replacing the 'to' thermal line limit with: ",cref_t)
         end
     end
+end
+
+# "Precondition: replaceThermalLineLimits() has been called"
+function removeThermalLineLimits(pm::AbstractPowerModel)
+    for l in ids(pm,pm.cnw,:branch)
+        branch = ref(pm, pm.cnw, :branch, l)
+        if haskey(branch, "rate_a")
+            f_bus,t_bus = branch["f_bus"],branch["t_bus"]
+            f_idx,t_idx = (l, f_bus, t_bus),(l, t_bus, f_bus)
+            JuMP.delete(pm.model,JuMP.constraint_by_name(pm.model,string("th_l_lim_f[",f_idx,"]")))
+            JuMP.delete(pm.model,JuMP.constraint_by_name(pm.model,string("th_l_lim_t[",t_idx,"]")))
+        end
+    end
+end
+
+
+function getMaxShedding(pm_data)
+    maxShed=0.0
+    for ll in keys(pm_data["load"])
+        maxShed += abs(pm_data["load"][ll]["pd"]) + abs(pm_data["load"][ll]["qd"])
+    end
+    for gg in keys(pm_data["gen"])
+        maxShed += max(pm_data["gen"][gg]["pmin"],0) + max(pm_data["gen"][gg]["qmin"],0)
+    end
+    return maxShed 
 end
 
 function convertSOCtoPSD(model::JuMP.Model)
@@ -154,9 +230,21 @@ function write_to_cbf(model,fn_base::String)
     JuMP.write_to_file( model, string(fn_base,".cbf"), format = MOI.FileFormats.FORMAT_CBF)
 end
 
+function add_artificial_var_bds(model::JuMP.Model; bd_mag=1e3)
+    all_vars = JuMP.all_variables(model)
+    for vv in all_vars
+        if !has_lower_bound(vv)
+            JuMP.@constraint(model, vv >= -bd_mag )
+        end
+        if !has_upper_bound(vv)
+            JuMP.@constraint(model, vv <= bd_mag )
+        end
+    end
+end
 
 function write_to_cbf_scip(model,fn_base::String)
     model_psd = convertSOCtoPSD(model)
+    #add_artificial_var_bds(model_psd)
     fname=string(fn_base,"_scip",".cbf")
     JuMP_write_to_file( model_psd, fname, format = MOI.FileFormats.FORMAT_CBF)
     ### CHANGING VER 3 to VER 2 
