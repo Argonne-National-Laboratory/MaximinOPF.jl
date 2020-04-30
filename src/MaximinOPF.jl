@@ -76,8 +76,6 @@ function MinimaxOPFModel(pm_data, pm_form; rm_therm_line_lim=false)
         removeRedundantConstraints(pm)
         if rm_therm_line_lim
 	        removeThermalLineLimits(pm)
-        else
-            replaceThermalLineLimits(pm)
         end
         return pm
     else
@@ -102,8 +100,6 @@ function PF_FeasModel(pm_data, pm_form; rm_therm_line_lim=false, x_vals::Dict{In
         removeRedundantConstraints(pm)
         if rm_therm_line_lim
 	        removeThermalLineLimits(pm)
-        else
-            replaceThermalLineLimits(pm)
         end
         return pm
     else
@@ -228,7 +224,8 @@ function Post_PF(pm::AbstractPowerModel)
 	        end
 	    end
     end
-    for l in setdiff(ids(pm, :branch),pm.data["protected_branches"])
+    #for l in setdiff(ids(pm, :branch),pm.data["protected_branches"])
+    for l in ids(pm, :branch)
         ref_p1,ref_p3,ref_q1,ref_q3 = constraint_def_abs_flow_values(pm, l)
 	    if ref_p1 != nothing
             con(pm, pm.cnw)[:abs_pflow_fr][l] = ref_p1

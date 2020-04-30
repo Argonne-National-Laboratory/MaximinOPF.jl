@@ -68,7 +68,6 @@ function replaceThermalLineLimits(pm::AbstractPowerModel)
 	        end
 	    end
     end
-    pm_type = typeof(pm)
     for l in ids(pm,pm.cnw,:branch)
         branch = ref(pm, pm.cnw, :branch, l)
         if haskey(branch, "rate_a")

@@ -56,7 +56,7 @@ if (pm_form in MaximinOPF.sdp_pm) && !relax_int
 else
     start_time = time_ns()
     println("Formulating and solving the form ",pm_form)
-    maxmin_model=MaximinOPF.MaximinOPFModel(pm_data, pm_form; enforce_int=!relax_int,rm_therm_line_lim=true)
+    maxmin_model=MaximinOPF.MaximinOPFModel(pm_data, pm_form; enforce_int=!relax_int,rm_therm_line_lim=false)
     JuMP.set_optimizer(maxmin_model,soc_solver)
     JuMP.optimize!(maxmin_model)
     branch_ids=sort(collect(pm_data["undecided_branches"]))
