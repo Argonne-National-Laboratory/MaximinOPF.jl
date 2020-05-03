@@ -10,6 +10,20 @@ function getBranchIds(pm_data)
     return branch_ids
 end
 
+function getNonInactiveBranches(pm_data)
+    branch_ids=getBranchIds(pm_data)
+    non_inactive_ids = filter( l->!(l in pm_data["inactive_branches"]), branch_ids)
+    sort!(non_inactive_ids)
+    return non_inactive_ids
+end
+
+function getUndecidedBranches(pm_data)
+    branch_ids=getBranchIds(pm_data)
+    undecided_ids = filter(l->!( (l in pm_data["inactive_branches"]) || (l in pm_data["protected_branches"]) ), branch_ids)
+    sort!(undecided_ids)
+    return undecided_ids
+end
+
 function ConvertModelToDualizableForm(model::JuMP.Model)
     soc_model = MOI.Utilities.Model{Float64}()
     soc_bridged_model = MOI.Bridges.Constraint.QuadtoSOC{Float64}(soc_model)

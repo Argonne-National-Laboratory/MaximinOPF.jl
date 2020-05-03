@@ -53,7 +53,7 @@ end
 
 function deleteNodesByBound(BnBTree,bdval)
     for bb in keys(BnBTree)
-        if BnBTree[bb]["bound_value"] <= bdval
+        if BnBTree[bb]["bound_value"] < bdval
             delete!(BnBTree,bb)
         end
     end
