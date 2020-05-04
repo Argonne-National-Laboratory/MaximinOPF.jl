@@ -71,6 +71,18 @@ function findNextNode(BnBTree::Dict{Int64,Dict{String,Any}})
   return nodekey,weakestUBVal
 end
 
+function findNextNode(BnBTree::Dict{String,Dict{String,Any}})
+  nodekey=""
+  weakestUBVal = -1e20
+  for kk in keys(BnBTree) 
+    if BnBTree[kk]["bound_value"] > weakestUBVal
+        nodekey = kk
+        weakestUBVal = BnBTree[kk]["bound_value"]
+    end
+  end
+  return nodekey,weakestUBVal
+end
+
 function findNextIndex(undecided_branches,x_vals)
   return reduce((k1, k2) -> abs(x_vals[k1]-0.5) <= abs(x_vals[k2]-0.5) ? k1 : k2, undecided_branches)
 end

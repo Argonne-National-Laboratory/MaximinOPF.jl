@@ -19,8 +19,8 @@ using MosekTools
 #using SCIP
 PowerModels.silence()
 
-#global MAX_TIME = 24*60*60
-global MAX_TIME = 300
+global MAX_TIME = 24*60*60
+#global MAX_TIME = 180
 global ac_optimizer=with_optimizer(Ipopt.Optimizer,
     print_level=0,
     linear_solver="ma57",
@@ -33,6 +33,22 @@ function pad_string(str,len)
         str=string(str," ")
     end
     return str
+end
+function print_node(node_key::String, node::Dict{String,Any}; flag_str="",io=Base.stdout)
+        attack_str=string("Inactive:",node["inactive_branches"],"\tProtected:",node["protected_branches"])
+        println(io,"\n",attack_str)
+        acsdp_diff = round(node["bound_value"] - node["sdp_value"];digits=3)
+        diff_str=""
+        if acsdp_diff > 0
+            diff_str=string("ac-sdp=",acsdp_diff)
+        else
+            diff_str="ac=sdp"
+        end
+        diff_str=pad_string(diff_str,16)
+        gap_str=string("[",node["sdp_value"],
+            ",", node["bound_value"],"]")
+        gap_str=pad_string(gap_str,16)
+        println(io,"\t\t",gap_str,"\t",diff_str,"\t",flag_str)
 end
 
 #  "nonconvex_ac=[ACPPowerModel, ACRPowerModel, ACTPowerModel]"
@@ -60,13 +76,13 @@ function solveNodeSP(pm_data, node_info; pm_form=ACRPowerModel, fix_all_x=false,
     node_info["value"] = 1.0e30
     node_info["solve_status"] = JuMP.termination_status(model)
     if pm_form==SparseSDPWRMPowerModel || pm_form==SDPWRMPowerModel
-        node_info["value"] = round(JuMP.objective_value(model);digits=3)
+        node_info["value"] = round( max(JuMP.objective_value(model),0.0);digits=3)
         node_info["sdp_value"] = node_info["value"]
     elseif pm_form==ACRPowerModel
         acceptable_status = node_info["solve_status"]==LOCALLY_SOLVED || node_info["solve_status"]==ALMOST_LOCALLY_SOLVED 
         for nn=1:100
             if acceptable_status 
-                node_info["value"] = round(JuMP.objective_value(model);digits=3)
+                node_info["value"] = round( max(JuMP.objective_value(model),0.0);digits=3)
                 if node_info["value"] <= node_info["bound_value"]
                     break
                 end
@@ -100,7 +116,6 @@ function solveNodeSP(pm_data, node_info; pm_form=ACRPowerModel, fix_all_x=false,
         node_info["u"]=Dict{Int64,Float64}()
     end
 
-    node_info["x_soln_str"]=""
     node_info["x_soln"]=Dict{Int64,Float64}()
     best_dual_val=-1.0
     test_val=-1.0
@@ -109,7 +124,6 @@ function solveNodeSP(pm_data, node_info; pm_form=ACRPowerModel, fix_all_x=false,
     for l in pm_data["branch_ids"]
         if l in pm_data["inactive_branches"]
             node_info["x_soln"][l]=1
-            node_info["x_soln_str"] = string(node_info["x_soln_str"]," $l")
         elseif l in pm_data["protected_branches"] 
             node_info["x_soln"][l]=0
         else
@@ -156,118 +170,98 @@ function solveMaxminACBnB(pm_data)
 
 
     feasXs = Dict{String,Dict{String,Any}}()
-    BnBTree = Dict{Int64,Dict{String,Any}}()
-    BnBTree[0] = Dict("inactive_branches"=>[], "protected_branches"=>[], 
-                    "bound_value"=>1e20, "K"=>K, "attacker_budget"=>K, "node_key"=>0) ### CREATE ROOT NODE
+    BnBTree = Dict{String,Dict{String,Any}}()
+    BnBTree[""] = Dict("inactive_branches"=>Int64[], "protected_branches"=>Int64[], 
+                    "bound_value"=>1e20, "K"=>K, "sdp_value"=>0.0, "bound_value"=>1e20) ### CREATE ROOT NODE
+    F_OPT = Dict{String,Dict{String,Any}}()
+    F_BD = Dict{String,Dict{String,Any}}()
+
     treeUB=1e20
-	nXs = 1
-    BnBTree[0]=solveNodeSP(pm_data, BnBTree[0]; pm_form=SparseSDPWRMPowerModel, fix_all_x=true )
-    #solveNodeSP(pm_data, BnBTree[0]; pm_form=ACRPowerModel, fix_all_x=true )
+    nNodes=1
+
+    BnBTree[""]=solveNodeSP(pm_data, BnBTree[""]; pm_form=SparseSDPWRMPowerModel, fix_all_x=true )
     n_sdp_solves=1
 
-    treeLB = BnBTree[0]["sdp_value"]
-    treeLB_soln = BnBTree[0]["x_soln_str"]
-    feasXs[treeLB_soln]=Dict{String,Any}("sdp_value"=>treeLB,"bound_value"=>treeUB,"ac_value"=>treeUB, "status"=>"ACTIVE")
-    println("\tInitial solution [",treeLB_soln,"] has known optimal value SDP lower bound ", treeLB)
+    treeLB = BnBTree[""]["sdp_value"]
+    treeLB_soln = ""
+    incumbent_node=BnBTree[""]
 
-    nNodes=1
     while length(BnBTree) > 0
-        nodekey,treeUB=findNextNode(BnBTree)
-        incumbent_update=""
-        currNode = pop!(BnBTree,nodekey)
+        x_soln_str,treeUB=findNextNode(BnBTree)
+        node_soln_str=string(x_soln_str)
+        node_soln_str=pad_string(node_soln_str,K*6)
+        noteworthy_str=""
         end_time = time_ns()
         runtime = round((end_time-start_time)/1e9)
         if treeUB - treeLB <= eps_tol || runtime >= MAX_TIME
             if treeUB - treeLB <= eps_tol 
                 println("Optimal solution found within tolerance $eps_tol, terminating.")
-                if !haskey(feasXs,treeLB_soln)
-                    feasXs[treeLB_soln]=Dict{String,Any}("bound_value"=>treeUB,"sdp_value"=>treeLB, "ac_value"=>treeUB, "x_soln_str"=>treeLB_soln, "status"=>"F_OPT")
-                end
             else
                 println("Maximum runtime of $MAX_TIME seconds reached, terminating.")
             end
-            #currNode=solveNodeSP(pm_data, currNode; pm_form=ACRPowerModel, fix_all_x=true )
-            #feasXs[currNode["x_soln_str"] ]["ac_value"] = currNode["ac_value"]
-            #feasXs[currNode["x_soln_str"] ]["bound_value"] = currNode["ac_value"]
-            #feasXs[ currNode["x_soln_str"] ]["status"]="F_TERM"
             break
         end
-        printNode(currNode;pretext="\n",posttext="")
 
-        currNode=solveNodeSP(pm_data, currNode; pm_form=ACRPowerModel, fix_all_x=false, br_idx_rule="max_dual")
-        feasXs[currNode["x_soln_str"] ]["bound_value"] = currNode["bound_value"]
-        feasXs[currNode["x_soln_str"] ]["ac_value"] = currNode["ac_value"]
-        println("\tNew node bound: ",currNode["bound_value"], " with status: ", currNode["solve_status"])
+        BnBTree[x_soln_str]=solveNodeSP(pm_data, BnBTree[x_soln_str]; pm_form=ACRPowerModel, fix_all_x=false, br_idx_rule="max_dual")
+	    node_gap_str=string("[", BnBTree[x_soln_str]["sdp_value"],",",BnBTree[x_soln_str]["bound_value"],"]")
+        node_gap_str=pad_string(node_gap_str,20)
 
-        fathom_by_opt = (K == length(currNode["inactive_branches"]))
-        fathom_by_opt = fathom_by_opt || length(currNode["protected_branches"]) + length(currNode["inactive_branches"]) == length(pm_data["branch_ids"])
-        fathom_by_opt = fathom_by_opt || (currNode["bound_value"] - currNode["sdp_value"] <= eps_tol)
+        fathom_by_opt = (K == length(BnBTree[x_soln_str]["inactive_branches"]))
+        fathom_by_opt = fathom_by_opt || length(BnBTree[x_soln_str]["protected_branches"]) + length(BnBTree[x_soln_str]["inactive_branches"]) == length(pm_data["branch_ids"])
+        fathom_by_opt = fathom_by_opt || (BnBTree[x_soln_str]["bound_value"] - BnBTree[x_soln_str]["sdp_value"] <= eps_tol)
         if fathom_by_opt
-	        println("\tFathoming node $nodekey due to optimality.")
-            println("\tFathomed solution ", currNode["x_soln_str"]," has known optimal value bounded between: [",
-                feasXs[ currNode["x_soln_str"] ]["sdp_value"],",",
-                feasXs[ currNode["x_soln_str"] ]["ac_value"],",",
-                feasXs[ currNode["x_soln_str"] ]["bound_value"],"]"
-            )
-            feasXs[ currNode["x_soln_str"] ]["status"]="F_OPT"
-        elseif currNode["bound_value"] <= treeLB 
-            println("\tFathoming node $nodekey due to its updated bound ",currNode["bound_value"]," <= ",treeLB)
-            feasXs[ currNode["x_soln_str"] ]["status"]="F_BD"
+	        noteworthy_str = string(noteworthy_str," ***Fathoming by optimality***")
+            F_OPT[x_soln_str]=BnBTree[x_soln_str]
+            delete!(BnBTree,x_soln_str)
+        elseif BnBTree[x_soln_str]["bound_value"] <= treeLB 
+	        noteworthy_str = string(noteworthy_str," ***Fathoming by treeLB $treeLB***")
+            F_BD[x_soln_str]=BnBTree[x_soln_str]
+            delete!(BnBTree,x_soln_str)
         else
 	        # "BRANCH"
-            idx=currNode["branch_idx"]
-            bd_val=currNode["bound_value"]
-	        println("\tAdding two new nodes, the branching index is: ",idx," based on dual val: ",currNode["x_soln"][idx])
-            node0=Dict{String,Any}("node_key"=>nNodes, "bound_value"=>bd_val, "K"=>K,"x_soln_str"=>currNode["x_soln_str"],
-                "sdp_value"=>currNode["sdp_value"], "ac_value"=>currNode["ac_value"], 
-                "inactive_branches"=>copy(currNode["inactive_branches"]), 
-                "protected_branches"=>copy(currNode["protected_branches"])
-            )
-            push!(node0["protected_branches"],idx)
-	        BnBTree[nNodes]=node0
-            nNodes += 1
+            idx = BnBTree[x_soln_str]["branch_idx"]
+            up_br_str = string(x_soln_str," $idx")
+            BnBTree[up_br_str] = Dict(  "inactive_branches"=>copy(BnBTree[x_soln_str]["inactive_branches"]), 
+                                        "protected_branches"=>copy(BnBTree[x_soln_str]["protected_branches"]),"K"=>K, 
+                                        "sdp_value"=>BnBTree[x_soln_str]["sdp_value"],
+                                        "bound_value"=>BnBTree[x_soln_str]["bound_value"]) 
+            nNodes += 2 ### "BnBTree[x_soln_str] is recycled as the 'down' branch node"
 
-            node1=Dict{String,Any}("node_key"=>nNodes, "bound_value"=>bd_val,"K"=>K,"x_soln_str"=>currNode["x_soln_str"],
-                "sdp_value"=>currNode["sdp_value"], "ac_value"=>currNode["ac_value"], 
-                "inactive_branches"=>copy(currNode["inactive_branches"]), 
-                "protected_branches"=>copy(currNode["protected_branches"])
-            )
-            push!(node1["inactive_branches"],idx)
-            node1=solveNodeSP(pm_data, node1; pm_form=SparseSDPWRMPowerModel, fix_all_x=true )
+            push!(BnBTree[x_soln_str]["protected_branches"],idx)  ### "BnBTree[x_soln_str] is recycled as the 'down' branch node"
+            push!(BnBTree[up_br_str]["inactive_branches"],idx)
+            BnBTree[up_br_str]=solveNodeSP(pm_data, BnBTree[up_br_str]; pm_form=SparseSDPWRMPowerModel, fix_all_x=true )
             n_sdp_solves += 1
-            feasXs[node1["x_soln_str"]]=Dict{String,Any}("sdp_value"=>node1["sdp_value"],"bound_value"=>node1["bound_value"],
-                                                         "ac_value"=>node1["ac_value"], "status"=>"ACTIVE")
-            println("\tSDP solve no. $n_sdp_solves, soln: ",node1["x_soln_str"],
-                " has SDP lower bound value ", node1["sdp_value"])
-	        if treeLB < node1["sdp_value"]
-	            treeLB = node1["sdp_value"]
-                treeLB_soln = node1["x_soln_str"]
-	            incumbent_update = string("\t***New incumbent SDP LB***",node1["x_soln_str"]," with value ",treeLB)
+	        if treeLB < BnBTree[up_br_str]["sdp_value"]
+	            treeLB = BnBTree[up_br_str]["sdp_value"]
+                treeLB_soln = up_br_str
+                incumbent_node=BnBTree[up_br_str]
+	            noteworthy_str = string(noteworthy_str," ***New incumbent SDP LB $treeLB****")
                 for bb in keys(BnBTree)
                     if BnBTree[bb]["bound_value"] < treeLB
-                        feasXs[ BnBTree[bb]["x_soln_str"] ]["status"]="F_BD"
+                        F_BD[bb]=BnBTree[bb]
                         delete!(BnBTree,bb)
                     end
                 end
 	        end
-            BnBTree[nNodes]=node1
-            nNodes += 1
         end
-        tree_report=string(" Nodes left: ",length(BnBTree)," out of ", nNodes,)
-        println("\tBound gap: [",treeLB,", ",treeUB, "]",incumbent_update,",\t",tree_report)
+        tree_gap=string("[",treeLB,", ",treeUB, "]")
+        tree_gap=pad_string(tree_gap,20)
+        tree_report=string("(",length(BnBTree),",",length(F_OPT),",",length(F_BD),",",nNodes,")")
+        tree_report=pad_string(tree_report,28)
+        println("  Soln:",node_soln_str," Node:",node_gap_str," Tree:",tree_gap,"(ACT,OPT,BD,TOT)=",tree_report,noteworthy_str)
     end # "while BnB tree not empty"
 
-    treeUB = treeLB
+    treeUB = max(treeUB,treeLB)
     end_time = time_ns()
     runtime = round((end_time-start_time)/1e9)
     println("Final best SDP LB solution: ",treeLB_soln," with best SDP LB ",treeLB)
-#=
+
     percent_gap_str=""
     if treeLB > 1e-2
         percent_gap_str=string("\tpercent gap: ",100*(treeUB-treeLB)/treeLB)
     end
     println("\tFinal bound gap: [",treeLB,", ",treeUB,"]",percent_gap_str)
-=#
+
     println("Runtime: ",runtime)
     println("Number of nodes processed: ",nNodes)
     println("Number of feasibility problem solves: ",n_sdp_solves)
@@ -276,39 +270,23 @@ function solveMaxminACBnB(pm_data)
 	" & ",round(runtime),"\\\\ \n")
     #io = open(string("case",case_instance,"K",K,"_acbnb_solns.txt"),"w")
     io=Base.stdout
-    println(io,"Feasible X's and their value bounds:")
-#=
-    for kk in keys(BnBTree)
-        BnBTree[kk]=solveNodeSP(pm_data, BnBTree[kk]; pm_form=ACRPowerModel, fix_all_x=true )
-        feasXs[ BnBTree[kk]["x_soln_str"] ]["ac_value"] = BnBTree[kk]["ac_value"]
-        feasXs[ BnBTree[kk]["x_soln_str"] ]["bound_value"] = BnBTree[kk]["ac_value"]
-        feasXs[ BnBTree[kk]["x_soln_str"] ]["status"]="F_TERM"
-    end
-=#
-    for nn in keys(feasXs)
-        #if feasXs[nn]["status"] !="F_BD" 
-        if true 
-            attack_str=nn
-            attack_str=pad_string(attack_str,16)
-            acsdp_diff = round(feasXs[nn]["bound_value"] - feasXs[nn]["sdp_value"];digits=3)
-            diff_str=""
-            if acsdp_diff > 0
-                diff_str=string("ac-sdp=",acsdp_diff)
-            else
-                diff_str="ac=sdp"
-            end
-            diff_str=pad_string(diff_str,16)
-            flag_str=feasXs[nn]["status"]
-            if feasXs[nn]["bound_value"] > treeLB
-                flag_str=string(flag_str,"\t****")
-            end
-            gap_str=string("[",feasXs[nn]["sdp_value"],
-                ",",feasXs[nn]["bound_value"],"]")
-            gap_str=pad_string(gap_str,32)
-            println(io,attack_str,"\t",gap_str,"\t",diff_str,"\t",flag_str)
+
+    println(io,"\nNodes fathomed by optimality: ")
+    for nn in keys(F_OPT)
+        post_str=""
+        if F_OPT[nn]["bound_value"] >= treeLB
+            post_str="\txxxx"
         end
+        print_node(nn, F_OPT[nn];flag_str=post_str)
     end
-    #close(io)
+    println(io,"\nNodes that were still active at termination: ")
+    for nn in keys(BnBTree)
+        print_node(nn, BnBTree[nn])
+    end
+    println(io,"\nNodes that were fathomed due to bound (and may warrant more processing): ")
+    for nn in keys(F_BD)
+        print_node(nn, F_BD[nn])
+    end
     return treeUB,nNodes,runtime
 end
 
