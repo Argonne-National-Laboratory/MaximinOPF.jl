@@ -1,1 +1,2 @@
 src/*.jl linguist-detectable
+data/* linguist-vendored
